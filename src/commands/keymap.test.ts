@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 import { bind, dispose, init, normalizeEvent } from './keymap';
 import { hydrate } from './mru';
 import { register } from './registry';
@@ -26,7 +26,7 @@ describe('normalizeEvent', () => {
 });
 
 describe('keymap 分发', () => {
-  let run: ReturnType<typeof vi.fn>;
+  let run: Mock<() => void>;
 
   beforeEach(() => {
     hydrate([]);
