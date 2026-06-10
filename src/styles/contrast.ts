@@ -23,17 +23,17 @@ export function hslToRgb(hsl: string): Rgb {
   const x = c * (1 - Math.abs((hp % 2) - 1));
   const m = l - c / 2;
 
-  let r = 0;
-  let g = 0;
-  let b = 0;
-  if (hp < 1) [r, g, b] = [c, x, 0];
-  else if (hp < 2) [r, g, b] = [x, c, 0];
-  else if (hp < 3) [r, g, b] = [0, c, x];
-  else if (hp < 4) [r, g, b] = [0, x, c];
-  else if (hp < 5) [r, g, b] = [x, 0, c];
-  else [r, g, b] = [c, 0, x];
-
+  const [r, g, b] = hueSector(hp, c, x);
   return { r: r + m, g: g + m, b: b + m };
+}
+
+function hueSector(hp: number, c: number, x: number): [number, number, number] {
+  if (hp < 1) return [c, x, 0];
+  if (hp < 2) return [x, c, 0];
+  if (hp < 3) return [0, c, x];
+  if (hp < 4) return [0, x, c];
+  if (hp < 5) return [x, 0, c];
+  return [c, 0, x];
 }
 
 /** WCAG 相对亮度（sRGB 线性化加权）。 */
