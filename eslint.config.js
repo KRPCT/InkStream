@@ -45,5 +45,10 @@ export default tseslint.config(
     files: ['src/ipc/**'],
     rules: { 'no-restricted-imports': 'off' },
   },
+  {
+    // public/ 静态脚本（boot.js 首帧引导）：浏览器全局
+    files: ['public/**/*.js'],
+    languageOptions: { globals: globals.browser },
+  },
   prettier,
 );

@@ -4,6 +4,12 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>InkStream / 墨流</title>
+    <!--
+      FOUC 契约第 2 步：boot.js 同步读取 localStorage 'inkstream.boot' 镜像，
+      React 挂载前设置 <html data-theme data-mode>。外置脚本而非内联：
+      CSP script-src 'self' 不放宽（threat T-01-02b），经典 script 阻塞执行与内联等价。
+    -->
+    <script src="/boot.js"></script>
   </head>
   <body>
     <div id="root"></div>
