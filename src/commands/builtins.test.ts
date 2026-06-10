@@ -1,0 +1,109 @@
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { windowControls } from '../ipc/window';
+import { usePaletteStore } from '../stores/usePaletteStore';
+import { useSettingsStore } from '../stores/useSettingsStore';
+import { useWorkbenchStore } from '../stores/useWorkbenchStore';
+import { DEFAULT_LAYOUT } from '../types/workbench';
+import { registerBuiltinCommands } from './builtins';
+import { dispose as disposeKeymap, init as initKeymap } from './keymap';
+import { hydrate } from './mru';
+import { execute, getAll } from './registry';
+
+/** UI-SPEC 命令注册表文案表字面（含 TitleBar 菜单条目的命令面板/退出）。 */
+const TITLES: Record<string, string> = {
+  'theme.light': '主题：亮色',
+  'theme.dark': '主题：暗色',
+  'theme.system': '主题：跟随系统',
+  'view.toggle-sidebar': '视图：切换侧边栏',
+  'view.toggle-right-panel': '视图：切换右侧面板',
+  'view.reset-layout': '视图：重置当前模式布局',
+  'view.command-palette': '视图：命令面板',
+  'app.exit': '应用：退出',
+};
+
+function key(init: KeyboardEventInit): KeyboardEvent {
+  return new KeyboardEvent('keydown', { cancelable: true, ...init });
+}
+
+let disposeBuiltins: () => void;
+
+describe('builtins', () => {
+  beforeEach(() => {
+    hydrate([]);
+    useSettingsStore.setState(useSettingsStore.getInitialState(), true);
+    useWorkbenchStore.setState(useWorkbenchStore.getInitialState(), true);
+    usePaletteStore.setState(usePaletteStore.getInitialState(), true);
+    delete document.documentElement.dataset.theme;
+    disposeBuiltins = registerBuiltinCommands();
+  });
+
+  afterEach(() => {
+    disposeBuiltins();
+    disposeKeymap();
+  });
+
+  it('注册 8 条命令，标题与 UI-SPEC 字面逐字一致', () => {
+    const all = getAll();
+    expect(all).toHaveLength(8);
+    for (const [id, title] of Object.entries(TITLES)) {
+      expect(all.find((c) => c.id === id)?.title).toBe(title);
+    }
+  });
+
+  it('快捷键提示与键盘表一致', () => {
+    const byId = new Map(getAll().map((c) => [c.id, c]));
+    expect(byId.get('view.toggle-sidebar')?.shortcut).toBe('Ctrl+B');
+    expect(byId.get('view.toggle-right-panel')?.shortcut).toBe('Ctrl+Alt+B');
+    expect(byId.get('view.command-palette')?.shortcut).toBe('Ctrl+Shift+P');
+  });
+
+  it('重复调用安全（StrictMode）：先清旧注册再登记', () => {
+    expect(() => {
+      disposeBuiltins = registerBuiltinCommands();
+    }).not.toThrow();
+    expect(getAll()).toHaveLength(8);
+  });
+
+  it('execute theme.dark 后 documentElement data-theme=dark', async () => {
+    await execute('theme.dark');
+    expect(document.documentElement.dataset.theme).toBe('dark');
+    expect(useSettingsStore.getState().theme).toBe('dark');
+  });
+
+  it('execute view.toggle-sidebar 翻转当前模式 sidebarCollapsed', async () => {
+    await execute('view.toggle-sidebar');
+    expect(useWorkbenchStore.getState().layouts.standard.sidebarCollapsed).toBe(true);
+    await execute('view.toggle-sidebar');
+    expect(useWorkbenchStore.getState().layouts.standard.sidebarCollapsed).toBe(false);
+  });
+
+  it('合成 Ctrl+B / Ctrl+Alt+B 经 keymap 触发折叠', () => {
+    initKeymap();
+    window.dispatchEvent(key({ key: 'b', ctrlKey: true }));
+    expect(useWorkbenchStore.getState().layouts.standard.sidebarCollapsed).toBe(true);
+    window.dispatchEvent(key({ key: 'b', ctrlKey: true, altKey: true }));
+    expect(useWorkbenchStore.getState().layouts.standard.rightPanelCollapsed).toBe(true);
+  });
+
+  it('合成 Ctrl+Shift+P 切换命令面板', () => {
+    initKeymap();
+    window.dispatchEvent(key({ key: 'P', ctrlKey: true, shiftKey: true }));
+    expect(usePaletteStore.getState().open).toBe(true);
+    expect(usePaletteStore.getState().query).toBe('>');
+    window.dispatchEvent(key({ key: 'P', ctrlKey: true, shiftKey: true }));
+    expect(usePaletteStore.getState().open).toBe(false);
+  });
+
+  it('execute view.reset-layout 恢复 DEFAULT_LAYOUT', async () => {
+    useWorkbenchStore.getState().setLayout({ sidebarWidth: 333, rightPanelCollapsed: true });
+    await execute('view.reset-layout');
+    expect(useWorkbenchStore.getState().layouts.standard).toEqual(DEFAULT_LAYOUT);
+  });
+
+  it('execute app.exit 经 ipc 收口调 close', async () => {
+    const close = vi.spyOn(windowControls, 'close').mockResolvedValue(undefined);
+    await execute('app.exit');
+    expect(close).toHaveBeenCalledTimes(1);
+    close.mockRestore();
+  });
+});
