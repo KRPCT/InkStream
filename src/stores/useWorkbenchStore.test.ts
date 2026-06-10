@@ -6,6 +6,7 @@ describe('useWorkbenchStore', () => {
   beforeEach(() => {
     useWorkbenchStore.setState(useWorkbenchStore.getInitialState(), true);
     delete document.documentElement.dataset.mode;
+    localStorage.clear();
   });
 
   it('初始：mode=standard、activeTab=outline、三模式布局各为 DEFAULT_LAYOUT', () => {
@@ -64,5 +65,37 @@ describe('useWorkbenchStore', () => {
   it('setActiveTab 切换右侧面板激活 tab', () => {
     useWorkbenchStore.getState().setActiveTab('backlinks');
     expect(useWorkbenchStore.getState().activeTab).toBe('backlinks');
+  });
+
+  it('按模式记忆布局（D-10）：切走再切回各自恢复', () => {
+    useWorkbenchStore.getState().setMode('academic');
+    useWorkbenchStore.getState().setLayout({ sidebarWidth: 350 });
+    useWorkbenchStore.getState().setMode('standard');
+    expect(useWorkbenchStore.getState().layouts.standard.sidebarWidth).toBe(
+      DEFAULT_LAYOUT.sidebarWidth,
+    );
+    useWorkbenchStore.getState().setMode('academic');
+    expect(useWorkbenchStore.getState().layouts.academic.sidebarWidth).toBe(350);
+  });
+
+  it('setMode 重置 activeTab 为新模式 tabs[0]', () => {
+    useWorkbenchStore.getState().setActiveTab('backlinks');
+    useWorkbenchStore.getState().setMode('academic');
+    expect(useWorkbenchStore.getState().activeTab).toBe('citation');
+    useWorkbenchStore.getState().setMode('creative');
+    expect(useWorkbenchStore.getState().activeTab).toBe('codex');
+    useWorkbenchStore.getState().setMode('standard');
+    expect(useWorkbenchStore.getState().activeTab).toBe('outline');
+  });
+
+  it('setMode 双写 inkstream.boot 镜像 mode 字段且 merge 保留 theme', () => {
+    localStorage.setItem('inkstream.boot', JSON.stringify({ theme: 'dark' }));
+    useWorkbenchStore.getState().setMode('creative');
+    const boot = JSON.parse(localStorage.getItem('inkstream.boot') ?? '{}') as Record<
+      string,
+      unknown
+    >;
+    expect(boot.mode).toBe('creative');
+    expect(boot.theme).toBe('dark');
   });
 });

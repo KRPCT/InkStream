@@ -19,6 +19,9 @@ const TITLES: Record<string, string> = {
   'view.reset-layout': '视图：重置当前模式布局',
   'view.command-palette': '视图：命令面板',
   'app.exit': '应用：退出',
+  'mode.switch-standard': '模式：切换到 Standard（通用）',
+  'mode.switch-academic': '模式：切换到 Academic（学术）',
+  'mode.switch-creative': '模式：切换到 Creative（长篇创作）',
 };
 
 function key(init: KeyboardEventInit): KeyboardEvent {
@@ -34,6 +37,7 @@ describe('builtins', () => {
     useWorkbenchStore.setState(useWorkbenchStore.getInitialState(), true);
     usePaletteStore.setState(usePaletteStore.getInitialState(), true);
     delete document.documentElement.dataset.theme;
+    delete document.documentElement.dataset.mode;
     disposeBuiltins = registerBuiltinCommands();
   });
 
@@ -42,9 +46,9 @@ describe('builtins', () => {
     disposeKeymap();
   });
 
-  it('注册 8 条命令，标题与 UI-SPEC 字面逐字一致', () => {
+  it('注册 11 条命令，标题与 UI-SPEC 字面逐字一致', () => {
     const all = getAll();
-    expect(all).toHaveLength(8);
+    expect(all).toHaveLength(11);
     for (const [id, title] of Object.entries(TITLES)) {
       expect(all.find((c) => c.id === id)?.title).toBe(title);
     }
@@ -61,7 +65,18 @@ describe('builtins', () => {
     expect(() => {
       disposeBuiltins = registerBuiltinCommands();
     }).not.toThrow();
-    expect(getAll()).toHaveLength(8);
+    expect(getAll()).toHaveLength(11);
+  });
+
+  it('execute mode.switch-academic 切换模式且不占用全局快捷键（D-08）', async () => {
+    await execute('mode.switch-academic');
+    expect(useWorkbenchStore.getState().mode).toBe('academic');
+    expect(document.documentElement.dataset.mode).toBe('academic');
+    const byId = new Map(getAll().map((c) => [c.id, c]));
+    expect(byId.get('mode.switch-academic')?.title).toBe('模式：切换到 Academic（学术）');
+    expect(byId.get('mode.switch-standard')?.shortcut).toBeUndefined();
+    expect(byId.get('mode.switch-academic')?.shortcut).toBeUndefined();
+    expect(byId.get('mode.switch-creative')?.shortcut).toBeUndefined();
   });
 
   it('execute theme.dark 后 documentElement data-theme=dark', async () => {
