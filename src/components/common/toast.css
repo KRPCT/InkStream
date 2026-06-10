@@ -1,0 +1,21 @@
+/*
+ * Toast 进入动效（UI-SPEC §动效：--duration-base 160ms ease-out，
+ * opacity 0→1 + translateY(8px)→0；prefers-reduced-motion 时 token 归零）。
+ * keyframes 只动 transform/opacity（menu.css / palette.css 同先例）。
+ * 消失即时卸载（6 秒定时或点击），与菜单关闭裁量一致。
+ */
+
+.toast-pop {
+  animation: toast-in var(--duration-base) ease-out;
+}
+
+@keyframes toast-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
