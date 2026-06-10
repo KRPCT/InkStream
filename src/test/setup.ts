@@ -29,6 +29,19 @@ Object.defineProperty(window, 'matchMedia', {
 });
 
 // ---------------------------------------------------------------------------
+// ResizeObserver mock（jsdom 缺失；react-resizable-panels v4 运行时依赖）
+// ---------------------------------------------------------------------------
+
+if (!('ResizeObserver' in globalThis)) {
+  class MockResizeObserver {
+    observe = vi.fn();
+    unobserve = vi.fn();
+    disconnect = vi.fn();
+  }
+  globalThis.ResizeObserver = MockResizeObserver as unknown as typeof ResizeObserver;
+}
+
+// ---------------------------------------------------------------------------
 // Tauri API 默认 mock 工厂：所有组件/单元测试不依赖真 Tauri runtime
 // ---------------------------------------------------------------------------
 
