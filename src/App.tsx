@@ -1,4 +1,5 @@
 import { useEffect } from 'react';
+import CommandPalette from './components/palette/CommandPalette';
 import WorkbenchLayout from './components/workbench/WorkbenchLayout';
 import { windowControls } from './ipc/window';
 
@@ -8,5 +9,11 @@ export default function App() {
     void windowControls.show();
   }, []);
 
-  return <WorkbenchLayout />;
+  return (
+    <>
+      <WorkbenchLayout />
+      {/* 统一弹层：永挂载，显隐由 usePaletteStore.open 控制 */}
+      <CommandPalette />
+    </>
+  );
 }

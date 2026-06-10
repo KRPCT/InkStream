@@ -30,6 +30,8 @@ html[data-theme='light'] {
   --text-faint: hsl(230, 4%, 64%);
   --text-on-accent: hsl(0, 0%, 100%);
   --color-error: hsl(344, 84%, 43%);
+  /* 弹出层阴影（UI-SPEC：阴影仅弹出层使用，禁止卡片化滥用） */
+  --shadow-popup: 0 4px 16px hsl(230 8% 24% / 0.12);
   /* 模式身份静态色点（与各模式 accent 同源，Plan 05 模式菜单消费） */
   --mode-dot-standard: hsl(220, 10%, 50%);
   --mode-dot-academic: hsl(220, 70%, 45%);
@@ -49,6 +51,7 @@ html[data-theme='dark'] {
   --text-faint: hsl(220, 10%, 40%);
   --text-on-accent: hsl(220, 13%, 18%);
   --color-error: hsl(355, 65%, 65%);
+  --shadow-popup: 0 4px 16px hsl(0 0% 0% / 0.18);
   --mode-dot-standard: hsl(220, 14%, 71%);
   --mode-dot-academic: hsl(207, 82%, 66%);
   --mode-dot-creative: hsl(355, 65%, 65%);

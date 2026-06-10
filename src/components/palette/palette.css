@@ -1,0 +1,27 @@
+/*
+ * 命令面板弹层定位与开启动效（UI-SPEC：宽 560 居中、距顶 64；动效 token
+ * --duration-base 160ms ease-out，opacity 0→1 + translateY(-4px)→0；
+ * prefers-reduced-motion 时 token 归零即无动画）。
+ * 定位 transform 与动画 keyframes 同走 transform 属性，避免与 Tailwind v4
+ * 原生 translate 属性叠加位移。关闭即时卸载（100ms 关闭动效需延迟卸载机制，
+ * 收益低，见 01-04-SUMMARY 裁量）。
+ */
+
+.palette-pop {
+  position: absolute;
+  top: 64px;
+  left: 50%;
+  transform: translateX(-50%);
+  animation: palette-in var(--duration-base) ease-out;
+}
+
+@keyframes palette-in {
+  from {
+    opacity: 0;
+    transform: translate(-50%, -4px);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, 0);
+  }
+}
