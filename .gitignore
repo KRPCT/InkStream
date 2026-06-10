@@ -1,10 +1,23 @@
+# Dependencies and build output
+node_modules/
+dist/
+src-tauri/target/
+src-tauri/gen/
+coverage/
+
 # Workflow and AI assistant artifacts (not part of the product)
 .planning/
 .claude/
+.agents/
 .codex/
 CLAUDE.md
 AGENTS.md
+PRD.md
 graphify-out/
+
+# Local and editor files
+*.local
+.vscode/
 
 # OS
 .DS_Store
