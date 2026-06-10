@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { windowControls } from '../ipc/window';
+import { useAboutStore } from '../stores/useAboutStore';
 import { usePaletteStore } from '../stores/usePaletteStore';
 import { useSettingsStore } from '../stores/useSettingsStore';
 import { useWorkbenchStore } from '../stores/useWorkbenchStore';
@@ -22,6 +23,7 @@ const TITLES: Record<string, string> = {
   'mode.switch-standard': '模式：切换到 Standard（通用）',
   'mode.switch-academic': '模式：切换到 Academic（学术）',
   'mode.switch-creative': '模式：切换到 Creative（长篇创作）',
+  'app.about': '帮助：关于 InkStream',
 };
 
 function key(init: KeyboardEventInit): KeyboardEvent {
@@ -46,9 +48,9 @@ describe('builtins', () => {
     disposeKeymap();
   });
 
-  it('注册 11 条命令，标题与 UI-SPEC 字面逐字一致', () => {
+  it('注册 12 条命令，标题与 UI-SPEC 字面逐字一致', () => {
     const all = getAll();
-    expect(all).toHaveLength(11);
+    expect(all).toHaveLength(12);
     for (const [id, title] of Object.entries(TITLES)) {
       expect(all.find((c) => c.id === id)?.title).toBe(title);
     }
@@ -65,7 +67,7 @@ describe('builtins', () => {
     expect(() => {
       disposeBuiltins = registerBuiltinCommands();
     }).not.toThrow();
-    expect(getAll()).toHaveLength(11);
+    expect(getAll()).toHaveLength(12);
   });
 
   it('execute mode.switch-academic 切换模式且不占用全局快捷键（D-08）', async () => {
@@ -113,6 +115,12 @@ describe('builtins', () => {
     useWorkbenchStore.getState().setLayout({ sidebarWidth: 333, rightPanelCollapsed: true });
     await execute('view.reset-layout');
     expect(useWorkbenchStore.getState().layouts.standard).toEqual(DEFAULT_LAYOUT);
+  });
+
+  it('execute app.about 打开关于对话框状态', async () => {
+    useAboutStore.setState(useAboutStore.getInitialState(), true);
+    await execute('app.about');
+    expect(useAboutStore.getState().open).toBe(true);
   });
 
   it('execute app.exit 经 ipc 收口调 close', async () => {

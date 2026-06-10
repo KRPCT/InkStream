@@ -1,4 +1,5 @@
 import { windowControls } from '../ipc/window';
+import { useAboutStore } from '../stores/useAboutStore';
 import { usePaletteStore } from '../stores/usePaletteStore';
 import { useSettingsStore } from '../stores/useSettingsStore';
 import { useWorkbenchStore } from '../stores/useWorkbenchStore';
@@ -70,6 +71,11 @@ const BUILTINS: Command[] = [
     id: 'app.exit',
     title: '应用：退出',
     run: () => void windowControls.close(),
+  },
+  {
+    id: 'app.about',
+    title: '帮助：关于 InkStream',
+    run: () => useAboutStore.getState().openAbout(),
   },
 ];
 

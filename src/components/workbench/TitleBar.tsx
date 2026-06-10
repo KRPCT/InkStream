@@ -1,6 +1,7 @@
 import type { MouseEvent } from 'react';
 import { isMacOS } from '../../ipc/platform';
 import { windowControls } from '../../ipc/window';
+import MenuBar from './MenuBar';
 import WindowControls from './WindowControls';
 
 interface TitleBarProps {
@@ -35,7 +36,8 @@ export default function TitleBar({ title = 'InkStream / 墨流' }: TitleBarProps
     >
       {mac ? <div data-testid="titlebar-mac-inset" className="w-20 shrink-0" /> : null}
       <div data-testid="titlebar-menu-slot" className="flex h-full items-center">
-        {/* MenuBar 属 Plan 05：插槽预留 */}
+        {/* 菜单元素不挂 drag-region：保持可点，不影响拖拽区命中 */}
+        <MenuBar />
       </div>
       <span
         data-tauri-drag-region

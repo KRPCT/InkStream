@@ -1,4 +1,5 @@
 import { useEffect } from 'react';
+import AboutDialog from './components/common/AboutDialog';
 import CommandPalette from './components/palette/CommandPalette';
 import WorkbenchLayout from './components/workbench/WorkbenchLayout';
 import { windowControls } from './ipc/window';
@@ -14,6 +15,8 @@ export default function App() {
       <WorkbenchLayout />
       {/* 统一弹层：永挂载，显隐由 usePaletteStore.open 控制 */}
       <CommandPalette />
+      {/* 关于对话框：app.about 命令打开（useAboutStore） */}
+      <AboutDialog />
     </>
   );
 }
