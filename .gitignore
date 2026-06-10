@@ -1,0 +1,11 @@
+# Workflow and AI assistant artifacts (not part of the product)
+.planning/
+.claude/
+.codex/
+CLAUDE.md
+AGENTS.md
+graphify-out/
+
+# OS
+.DS_Store
+Thumbs.db
