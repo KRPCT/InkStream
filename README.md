@@ -4,7 +4,7 @@
 [![React](https://img.shields.io/badge/React-19-61DAFB?logo=react&logoColor=white)](https://react.dev/)
 [![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178C6?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
 [![CodeMirror](https://img.shields.io/badge/CodeMirror-6-d30707)](https://codemirror.net/)
-[![Status](https://img.shields.io/badge/status-pre--alpha-orange)](#开发状态)
+[![Status](https://img.shields.io/badge/status-alpha-orange)](#当前状态)
 
 **文本编辑器中的 IntelliJ** —— 单内核、三模式、git 原生的桌面写作应用。
 
@@ -17,8 +17,9 @@
 - [它为谁而做](#它为谁而做)
 - [三模式](#三模式)
 - [核心特性](#核心特性)
+- [当前状态](#当前状态)
 - [技术栈](#技术栈)
-- [开发状态](#开发状态)
+- [开发指引](#开发指引)
 - [开发标准](#开发标准)
 
 ## 它为谁而做
@@ -53,6 +54,21 @@
 - **GitHub 集成**：Device Flow 登录、Issue/PR 浏览评论、PR diff 内嵌审阅
 - **中文优先**：中文 IME 输入全程不被渲染打断、中英混合字数统计、中文模糊搜索
 
+## 当前状态
+
+v1 共 12 个开发阶段，详见 [ROADMAP.md](./ROADMAP.md)。当前已完成 Phase 1（应用骨架与三模式 Workbench），已交付能力：
+
+- 五插槽工作台：TitleBar / Sidebar / EditorArea / RightPanel / StatusBar，面板宽度可拖拽并按模式记忆
+- 三模式运行时切换：Standard / Academic / Creative 布局预设与强调色即时变化，不重建窗口、不丢内容
+- 主题系统：亮色 / 暗色 / 跟随系统三态，CSS 变量分层（Obsidian 命名习惯，Atom one-dark/one-light 取值），6 组合 WCAG 对比度单测看护，启动无主题闪烁
+- 命令面板与命令注册表：Ctrl+Shift+P 打开，中文模糊搜索，MRU 置顶，中文 IME 组合输入防御（组合中快捷键与 Enter 不误触发）
+- Windows 自绘标题栏：拖拽 / 双击最大化还原 / 窗口控制按钮，嵌入式文字菜单
+- 持久化：主题 / 模式 / 各模式布局 / 命令 MRU 重启原样恢复，损坏配置自动回落默认并提示，窗口离屏自动回中
+- 三平台冒烟 CI：ubuntu / windows / macos 矩阵跑 typecheck / lint / test / build / cargo check
+- ATDD 验收规范：[specs/01-workbench.spec.md](./specs/01-workbench.spec.md)
+
+v1 范围外（明确不做）：实时多人协作、移动端、插件市场、内置 AI 写作、成为代码 IDE、复刻 Obsidian 插件 API。
+
 ## 技术栈
 
 | 层 | 选型 |
@@ -61,28 +77,38 @@
 | 前端 | React 19 + TypeScript strict |
 | 状态 | Zustand 5 |
 | 样式 | Tailwind 4（布局）+ 原生 CSS 变量（主题，Obsidian 命名习惯） |
-| 编辑器内核 | CodeMirror 6 + @lezer/markdown |
-| 数学排版 | KaTeX / @myriaddreamin/typst.ts (wasm) / MathJax |
-| Git | git2 (libgit2 Rust binding) |
-| GitHub | @octokit/rest + Device Flow |
-| 全文索引 | SQLite FTS5（Rust 端单写入队列） |
+| 编辑器内核 | CodeMirror 6 + @lezer/markdown（规划中，Phase 2 起接入） |
+| 数学排版 | KaTeX / @myriaddreamin/typst.ts (wasm) / MathJax（规划中） |
+| Git | git2 (libgit2 Rust binding)（规划中） |
+| GitHub | @octokit/rest + Device Flow（规划中） |
+| 全文索引 | SQLite FTS5（Rust 端单写入队列）（规划中） |
 
-## 开发状态
+## 开发指引
 
-项目处于 pre-alpha 规划完成阶段，v1 共 12 个开发阶段，详见 [ROADMAP.md](./ROADMAP.md)。
+环境要求：
 
-| 当前阶段 | 状态 |
-|----------|------|
-| Phase 1 应用骨架与三模式 Workbench | 未开始 |
+- Node 22（LTS）
+- Rust stable 工具链（rustup）
+- pnpm 11.5.2（经 corepack 激活，与 package.json 的 packageManager 字段一致）
 
-v1 范围外（明确不做）：实时多人协作、移动端、插件市场、内置 AI 写作、成为代码 IDE、复刻 Obsidian 插件 API。
+```bash
+corepack enable
+pnpm install          # 安装依赖（精确版本锁定）
+pnpm tauri dev        # 启动桌面应用（开发模式）
+pnpm test             # Vitest 单元测试
+pnpm typecheck        # TypeScript 类型检查
+pnpm lint             # ESLint
+pnpm build            # 类型检查 + 前端构建
+```
+
+Linux 构建需先安装 webkit2gtk 等系统依赖，清单见 [.github/workflows/ci.yml](./.github/workflows/ci.yml)。
 
 ## 开发标准
 
 - TypeScript strict 强制；ESLint + Prettier；单文件不超过 200 行（编辑器扩展除外）
-- 每个 CodeMirror 扩展配对 Vitest 单元测试；Playwright E2E 随桌面壳成熟引入
+- 每个 CodeMirror 扩展配对 Vitest 单元测试；ATDD 验收规范随阶段交付（specs/）；Playwright E2E 随桌面壳成熟引入
 - Conventional Commits；全部提交 SSH 签名（Verified）
-- pnpm 精确版本锁定，提交 lockfile
+- pnpm 精确版本锁定，提交 lockfile；CI 中 actions 按 commit SHA 锁定
 
 ---
 
