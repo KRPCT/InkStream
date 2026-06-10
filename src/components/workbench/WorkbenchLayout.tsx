@@ -23,13 +23,29 @@ function syncCollapsed(panel: PanelImperativeHandle | null, collapsed: boolean):
   else panel.expand();
 }
 
+/** 模式切换时命令式应用该模式记忆几何（D-10）：折叠态 + 像素宽度，瞬时无动画。 */
+function applyPanelLayout(
+  panel: PanelImperativeHandle | null,
+  collapsed: boolean,
+  width: number,
+): void {
+  if (!panel) return;
+  if (collapsed) {
+    if (!panel.isCollapsed()) panel.collapse();
+    return;
+  }
+  if (panel.isCollapsed()) panel.expand();
+  panel.resize(width);
+}
+
 /**
  * 唯一布局容器（react-resizable-panels v4 像素布局）。
  * 五插槽 Shell 永不卸载；模式切换严禁 key={mode} 重建（Anti-Pattern），
- * Plan 05 经 groupRef.setLayout 命令式应用各模式记忆布局。
+ * 订阅 mode 经 panelRef 命令式应用各模式记忆布局（D-10，瞬时无动画）。
  * 几何契约（UI-SPEC）：Sidebar 280(200-480) / EditorArea min 400 / RightPanel 320(240-560)。
  */
 export default function WorkbenchLayout() {
+  const mode = useWorkbenchStore((s) => s.mode);
   const layout = useWorkbenchStore((s) => s.layouts[s.mode]);
   const setLayout = useWorkbenchStore((s) => s.setLayout);
   const groupRef = useGroupRef();
@@ -37,6 +53,17 @@ export default function WorkbenchLayout() {
   const rightRef = usePanelRef();
   // defaultSize 仅挂载时读取：捕获挂载时刻的当前模式几何
   const mountLayout = useRef(layout);
+  const prevMode = useRef(mode);
+
+  // 模式切换（D-10）：命令式恢复该模式记忆布局（宽度 + 折叠态），瞬时无动画。
+  // 严禁 key={mode} 重建（Anti-Pattern）——五插槽与 EditorArea 全程零卸载。
+  useEffect(() => {
+    if (prevMode.current === mode) return;
+    prevMode.current = mode;
+    const remembered = useWorkbenchStore.getState().layouts[mode];
+    applyPanelLayout(sidebarRef.current, remembered.sidebarCollapsed, remembered.sidebarWidth);
+    applyPanelLayout(rightRef.current, remembered.rightPanelCollapsed, remembered.rightPanelWidth);
+  }, [mode, sidebarRef, rightRef]);
 
   useEffect(() => {
     syncCollapsed(sidebarRef.current, layout.sidebarCollapsed);

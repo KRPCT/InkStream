@@ -7,10 +7,10 @@ import { bind } from './keymap';
 import { register } from './registry';
 
 /**
- * 内置命令（SHELL-04 首批）：主题 x3（D-15）、视图 x4（D-12）、应用：退出。
- * 标题字面照 01-UI-SPEC.md 命令注册表文案表；菜单（Plan 05）与面板均从
+ * 内置命令（SHELL-04）：主题 x3（D-15）、视图 x4（D-12）、模式 x3（D-08）、应用：退出。
+ * 标题字面照 01-UI-SPEC.md 命令注册表文案表；菜单与面板均从
  * registry.getAll() 取 title/shortcut（D-02 同源）。
- * 模式命令 x3 与 app.about 由 Plan 05 注册（依赖 MODE_PRESETS）。
+ * 模式命令不占用全局快捷键（D-08：命令面板为主路，StatusBar 指示器为常驻入口）。
  */
 const BUILTINS: Command[] = [
   {
@@ -50,6 +50,21 @@ const BUILTINS: Command[] = [
     title: '视图：命令面板',
     shortcut: 'Ctrl+Shift+P',
     run: () => usePaletteStore.getState().toggle(),
+  },
+  {
+    id: 'mode.switch-standard',
+    title: '模式：切换到 Standard（通用）',
+    run: () => useWorkbenchStore.getState().setMode('standard'),
+  },
+  {
+    id: 'mode.switch-academic',
+    title: '模式：切换到 Academic（学术）',
+    run: () => useWorkbenchStore.getState().setMode('academic'),
+  },
+  {
+    id: 'mode.switch-creative',
+    title: '模式：切换到 Creative（长篇创作）',
+    run: () => useWorkbenchStore.getState().setMode('creative'),
   },
   {
     id: 'app.exit',

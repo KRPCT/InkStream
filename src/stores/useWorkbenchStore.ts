@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { MODE_PRESETS } from '../modes/presets';
 import type { AppMode } from '../types/settings';
 import { DEFAULT_LAYOUT, type ModeLayout, type TabId } from '../types/workbench';
 
@@ -30,10 +31,27 @@ function patchCurrent(state: WorkbenchState, patch: Partial<ModeLayout>): Partia
   };
 }
 
+/** 双写 localStorage 镜像 mode 字段（merge，与 settings store 的 theme 字段互不覆盖）。 */
+function writeBootMode(mode: AppMode): void {
+  let boot: Record<string, unknown> = {};
+  try {
+    boot = (JSON.parse(localStorage.getItem('inkstream.boot') ?? '{}') as typeof boot) ?? {};
+  } catch {
+    boot = {};
+  }
+  boot.mode = mode;
+  try {
+    localStorage.setItem('inkstream.boot', JSON.stringify(boot));
+  } catch {
+    /* 镜像写失败仅影响下次首帧视觉，不阻塞 */
+  }
+}
+
 /**
- * 模式感知的 Workbench 状态层（数据结构在本 plan 定型，D-10）。
- * setMode 仅切数据与 html data-mode（与 settings store 的 data-theme 同构）；
- * 布局应用（Group.setLayout）在 Plan 05 接通，持久化在 Plan 06。
+ * 模式感知的 Workbench 状态层（D-10 按模式记忆）。
+ * setMode 全链路：state.mode + html data-mode（theme.css mode 层切 --accent-hsl）
+ * + activeTab 重置为新模式 tabs[0] + boot 镜像；布局恢复由 WorkbenchLayout 订阅 mode
+ * 命令式应用（禁 key={mode}），持久化在 Plan 06。
  */
 export const useWorkbenchStore = create<WorkbenchState>((set) => ({
   mode: 'standard',
@@ -41,7 +59,8 @@ export const useWorkbenchStore = create<WorkbenchState>((set) => ({
   activeTab: 'outline',
   setMode: (mode) => {
     document.documentElement.dataset.mode = mode;
-    set({ mode });
+    writeBootMode(mode);
+    set({ mode, activeTab: MODE_PRESETS[mode].rightPanelTabs[0] });
   },
   setLayout: (partial) => set((s) => patchCurrent(s, partial)),
   toggleSidebar: () =>
