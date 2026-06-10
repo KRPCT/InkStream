@@ -1,0 +1,33 @@
+/*
+ * base.css —— 全局基线：字体栈、盒模型重置、body 默认、焦点环。
+ * 颜色一律消费 theme.css 语义变量（消费纪律见 theme.css 头注释）。
+ */
+
+:root {
+  /* UI-SPEC §Design System 字体栈（系统栈，不打包字体） */
+  --font-ui:
+    -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB',
+    'Microsoft YaHei', 'Noto Sans CJK SC', sans-serif;
+  --font-mono: ui-monospace, 'Cascadia Mono', Consolas, monospace;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: var(--font-ui);
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--text-normal);
+  background: var(--background-primary);
+}
+
+/* 键盘焦点环：accent 保留清单第 4 项（仅 :focus-visible 出现） */
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}

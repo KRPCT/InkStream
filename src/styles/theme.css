@@ -1,0 +1,90 @@
+/*
+ * theme.css —— 变量唯一来源（SHELL-03 / D-14 立约，本文件架构定型后不再变动）。
+ *
+ * 消费纪律（硬规则）：
+ * 1. 组件与 Tailwind 任意位置只引用本文件的语义变量，永不直接写色值；
+ *    新增颜色必须先进本文件评审。
+ * 2. --accent 仅限 UI-SPEC 强调色保留清单 6 处：StatusBar 模式指示点、
+ *    RightPanel active tab 底部指示条、命令面板选中行左指示条、:focus-visible 焦点环、
+ *    分隔条拖拽高亮线、模式菜单身份色点。
+ * 3. 禁止将 --accent 用作 <18px 文本色或任何背景填充（含低透明度大面积 tint）；
+ *    active 文本一律 --text-normal + 600 字重。
+ * 4. --text-accent 定义但本阶段禁用（Phase 2 链接场景启用前逐模式复核对比度）。
+ *
+ * 取值来源：01-UI-SPEC.md §Color 变量总表（Obsidian 命名 + Atom one-light/one-dark HSL），
+ * 任何取值变更必须先过 theme.test.ts（WCAG 8 项 + 6 组合齐备性）。
+ */
+
+/* ── 层 1 base：中性变量挂 data-theme（UI-SPEC 总表逐行照抄） ───────────── */
+
+html[data-theme='light'] {
+  --background-primary: hsl(230, 1%, 98%);
+  --background-primary-alt: hsl(230, 1%, 95%);
+  --background-secondary: hsl(230, 1%, 94%);
+  --background-secondary-alt: hsl(230, 1%, 92%);
+  --background-modifier-border: hsl(230, 4%, 86%);
+  --background-modifier-hover: hsl(230, 8%, 24%, 0.06);
+  --background-modifier-active: hsl(230, 8%, 24%, 0.1);
+  --text-normal: hsl(230, 8%, 24%);
+  --text-muted: hsl(230, 6%, 44%);
+  --text-faint: hsl(230, 4%, 64%);
+  --text-on-accent: hsl(0, 0%, 100%);
+  --color-error: hsl(344, 84%, 43%);
+  /* 模式身份静态色点（与各模式 accent 同源，Plan 05 模式菜单消费） */
+  --mode-dot-standard: hsl(220, 10%, 50%);
+  --mode-dot-academic: hsl(220, 70%, 45%);
+  --mode-dot-creative: hsl(355, 65%, 50%);
+}
+
+html[data-theme='dark'] {
+  --background-primary: hsl(220, 13%, 18%);
+  --background-primary-alt: hsl(220, 13%, 16%);
+  --background-secondary: hsl(220, 13%, 15%);
+  --background-secondary-alt: hsl(220, 13%, 13%);
+  --background-modifier-border: hsl(222, 13%, 11%);
+  --background-modifier-hover: hsl(220, 14%, 71%, 0.08);
+  --background-modifier-active: hsl(220, 14%, 71%, 0.12);
+  --text-normal: hsl(220, 14%, 71%);
+  --text-muted: hsl(220, 9%, 55%);
+  --text-faint: hsl(220, 10%, 40%);
+  --text-on-accent: hsl(220, 13%, 18%);
+  --color-error: hsl(355, 65%, 65%);
+  --mode-dot-standard: hsl(220, 14%, 71%);
+  --mode-dot-academic: hsl(207, 82%, 66%);
+  --mode-dot-creative: hsl(355, 65%, 65%);
+}
+
+/* ── 层 2 mode：6 组合只覆写 --accent-hsl（3 模式 x 2 亮暗，D-14 一次定型） ── */
+
+html[data-mode='standard'][data-theme='light'] { --accent-hsl: 220 10% 50%; }
+html[data-mode='standard'][data-theme='dark'] { --accent-hsl: 220 14% 71%; }
+html[data-mode='academic'][data-theme='light'] { --accent-hsl: 220 70% 45%; }
+html[data-mode='academic'][data-theme='dark'] { --accent-hsl: 207 82% 66%; }
+html[data-mode='creative'][data-theme='light'] { --accent-hsl: 355 65% 50%; }
+html[data-mode='creative'][data-theme='dark'] { --accent-hsl: 355 65% 65%; }
+
+/* ── 层 3 派生 + 动效 token（JS 永不注入色值，只切 data 属性） ──────────── */
+
+:root {
+  --accent: hsl(var(--accent-hsl));
+  --interactive-accent: hsl(var(--accent-hsl));
+  --interactive-accent-hover: var(--interactive-accent);
+  /* 定义但本阶段禁用（Phase 2 启用前逐模式复核对比度） */
+  --text-accent: hsl(var(--accent-hsl));
+  /* 文本选区（Phase 2 启用） */
+  --text-selection: hsl(var(--accent-hsl) / 0.25);
+  --titlebar-background: var(--background-secondary);
+
+  /* 动效 token（UI-SPEC §Interaction） */
+  --duration-fast: 100ms;
+  --duration-base: 160ms;
+  --duration-accent: 150ms;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --duration-fast: 0ms;
+    --duration-base: 0ms;
+    --duration-accent: 0ms;
+  }
+}
