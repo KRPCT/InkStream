@@ -1,4 +1,5 @@
 import { useEffect } from 'react';
+import WorkbenchLayout from './components/workbench/WorkbenchLayout';
 import { windowControls } from './ipc/window';
 
 export default function App() {
@@ -7,9 +8,5 @@ export default function App() {
     void windowControls.show();
   }, []);
 
-  return (
-    <div className="flex h-screen items-center justify-center">
-      <p className="text-lg">InkStream / 墨流</p>
-    </div>
-  );
+  return <WorkbenchLayout />;
 }

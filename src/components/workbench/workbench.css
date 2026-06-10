@@ -1,0 +1,29 @@
+/*
+ * Workbench 局部样式：分隔条（UI-SPEC Layout Contract 分隔条规格）。
+ * 视觉 1px（--background-modifier-border）；命中区 8px（::before 扩展热区，
+ * 伪元素属元素命中区域，配合库的 pointer 处理生效）；hover 显示 8px 中性背景条；
+ * 拖拽中（:active）显示 2px accent 线（accent 保留清单第 5 项）。
+ */
+
+[data-separator].workbench-separator {
+  position: relative;
+  width: 1px;
+  background: var(--background-modifier-border);
+}
+
+[data-separator].workbench-separator::before {
+  content: '';
+  position: absolute;
+  inset: 0 -3.5px;
+}
+
+[data-separator].workbench-separator:hover::before {
+  background: var(--background-modifier-hover);
+}
+
+[data-separator].workbench-separator:active::after {
+  content: '';
+  position: absolute;
+  inset: 0 -0.5px;
+  background: var(--accent);
+}
