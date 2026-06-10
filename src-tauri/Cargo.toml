@@ -6,7 +6,10 @@ edition = "2021"
 
 [lib]
 name = "inkstream_lib"
-crate-type = ["staticlib", "cdylib", "rlib"]
+# 仅 rlib：桌面端 main.rs 经 rlib 链接即可。cdylib/staticlib 为移动端
+# （iOS/Android）所需，本项目不在范围；且 gnu 工具链 ld 对 cdylib 全量导出
+# 报 "export ordinal too large"（>65535 导出上限），保留会阻断 build/test。
+crate-type = ["rlib"]
 
 [build-dependencies]
 tauri-build = { version = "=2.6.2", features = [] }
