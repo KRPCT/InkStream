@@ -66,3 +66,14 @@ vi.mock('@tauri-apps/api/core', () => ({
   invoke: vi.fn().mockResolvedValue(undefined),
   Channel: MockChannel,
 }));
+
+const mockStore = {
+  entries: vi.fn().mockResolvedValue([]),
+  get: vi.fn().mockResolvedValue(undefined),
+  set: vi.fn().mockResolvedValue(undefined),
+  save: vi.fn().mockResolvedValue(undefined),
+};
+
+vi.mock('@tauri-apps/plugin-store', () => ({
+  load: vi.fn().mockResolvedValue(mockStore),
+}));

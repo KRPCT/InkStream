@@ -4,9 +4,13 @@ import Toast from './components/common/Toast';
 import CommandPalette from './components/palette/CommandPalette';
 import WorkbenchLayout from './components/workbench/WorkbenchLayout';
 import { windowControls } from './ipc/window';
+import { initPersistence } from './stores/persistSettings';
 
 export default function App() {
   useEffect(() => {
+    // 持久化 hydrate 先于 show() 发起、不阻塞首帧：首帧由 boot.js 镜像保证，
+    // settings.json 到达后校正（Pattern 6 第 3 步）。initPersistence 幂等。
+    void initPersistence();
     // FOUC 契约第 1 步收尾：首帧渲染后显示窗口（show 幂等，StrictMode 双执行无害）
     void windowControls.show();
   }, []);
