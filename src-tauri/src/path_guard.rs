@@ -63,13 +63,94 @@ pub fn resolve_new_target_in_root(root: &Path, rel: &str) -> Result<PathBuf, Str
 
 #[cfg(test)]
 mod tests {
-    use super::is_within_root;
+    use super::{is_within_root, resolve_new_target_in_root};
+    use std::fs;
     use std::path::Path;
+
+    /// 在 temp 下建唯一目录，返回其规范化路径。
+    fn temp_dir(tag: &str) -> std::path::PathBuf {
+        let base = std::env::temp_dir().join(format!(
+            "inkstream-guard-{}-{}-{}",
+            tag,
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        fs::create_dir_all(&base).unwrap();
+        base.canonicalize().unwrap()
+    }
 
     #[test]
     fn child_path_is_within_root() {
         let root = Path::new("/vault");
         assert!(is_within_root(root, Path::new("/vault/notes/a.md")));
+    }
+
+    #[test]
+    fn resolve_new_target_rejects_dotdot_leaf() {
+        // 叶子段为 `..` 须显式拒绝（不依赖 file_name() 返回 None 的隐式行为）。
+        let root = temp_dir("leaf-dotdot");
+        assert!(resolve_new_target_in_root(&root, "..").is_err());
+        fs::remove_dir_all(&root).ok();
+    }
+
+    #[test]
+    fn resolve_new_target_rejects_dot_leaf() {
+        // 叶子段为 `.` 须显式拒绝。
+        let root = temp_dir("leaf-dot");
+        assert!(resolve_new_target_in_root(&root, ".").is_err());
+        fs::remove_dir_all(&root).ok();
+    }
+
+    #[test]
+    fn resolve_new_target_allows_plain_leaf() {
+        // 普通新建文件名（目标尚不存在）应被接受，落在 root 内。
+        let root = temp_dir("leaf-plain");
+        let resolved = resolve_new_target_in_root(&root, "note.md").unwrap();
+        assert_eq!(resolved, root.join("note.md"));
+        fs::remove_dir_all(&root).ok();
+    }
+
+    /// 符号链接叶子逃逸：当 root 内已存在指向 root 外的 symlink 叶子，
+    /// resolve_new_target_in_root 须拒绝（否则后续 std::fs::write 跟随 symlink 写到 root 外）。
+    ///
+    /// symlink 创建需特权（Windows 非管理员不可用），故 cfg 门控：创建失败时优雅跳过。
+    #[cfg(unix)]
+    #[test]
+    fn resolve_new_target_rejects_symlink_leaf_escaping_root() {
+        let root = temp_dir("leaf-symlink-unix");
+        let outside = temp_dir("leaf-symlink-unix-outside");
+        let outside_target = outside.join("secret.txt");
+        fs::write(&outside_target, "secret").unwrap();
+        let link = root.join("evil.md");
+        std::os::unix::fs::symlink(&outside_target, &link).unwrap();
+        // 叶子是逃逸 symlink → 必须拒绝。
+        assert!(resolve_new_target_in_root(&root, "evil.md").is_err());
+        fs::remove_dir_all(&root).ok();
+        fs::remove_dir_all(&outside).ok();
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn resolve_new_target_rejects_symlink_leaf_escaping_root() {
+        let root = temp_dir("leaf-symlink-win");
+        let outside = temp_dir("leaf-symlink-win-outside");
+        let outside_target = outside.join("secret.txt");
+        fs::write(&outside_target, "secret").unwrap();
+        let link = root.join("evil.md");
+        // Windows 创建 symlink 需开发者模式/管理员；不可用时优雅跳过（不算失败）。
+        match std::os::windows::fs::symlink_file(&outside_target, &link) {
+            Ok(()) => {
+                assert!(resolve_new_target_in_root(&root, "evil.md").is_err());
+            }
+            Err(_) => {
+                eprintln!("跳过 symlink 测试：当前环境无 symlink 创建特权");
+            }
+        }
+        fs::remove_dir_all(&root).ok();
+        fs::remove_dir_all(&outside).ok();
     }
 
     #[test]
