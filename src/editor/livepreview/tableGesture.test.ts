@@ -5,7 +5,6 @@ import { EditorSelection } from '@codemirror/state';
 import { EditorView } from '@codemirror/view';
 import { destroyTestView, makeTestView } from '../../test/composition';
 import { extensionsForLanguage } from '../languages';
-import { composingGuard } from './composingGuard';
 import { blockField } from './blockField';
 import { handleTableMousedown } from './tableGesture';
 import { TableWidget } from './widgets/TableWidget';
@@ -45,7 +44,7 @@ const TABLE_TO = TABLE_DOC.indexOf('| 1 | 2 |') + '| 1 | 2 |'.length;
 
 /** 用 markdown(GFM) + blockField 构建 view，光标默认在 doc 起点（表格外，表格被替换为 widget）。 */
 function tgView(doc: string): EditorView {
-  return makeTestView(doc, [extensionsForLanguage('markdown'), blockField, composingGuard]);
+  return makeTestView(doc, [extensionsForLanguage('markdown'), blockField]);
 }
 
 /** 钉死 posAtCoords 返回值（jsdom 无布局）。 */

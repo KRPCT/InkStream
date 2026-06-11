@@ -1,5 +1,4 @@
 import { Compartment, type Extension } from '@codemirror/state';
-import { composingGuard } from './composingGuard';
 import { inlinePlugin } from './inlinePlugin';
 import { blockExtensions } from './blockField';
 import { linkGesture } from './linkGesture';
@@ -19,7 +18,7 @@ import { tableGesture } from './tableGesture';
  */
 
 /**
- * 装饰扩展集组合根：返回 [inlinePlugin（行内层）, blockExtensions（块级层）, composingGuard（IME 全局闸门）]。
+ * 装饰扩展集组合根：返回 [inlinePlugin（行内层）, blockExtensions（块级层）, linkGesture, tableGesture]。
  *
  * 行内 ViewPlugin 与块级 StateField 共存（CM6 自动合并 decorations facet，Pattern 3）；
  * blockExtensions = [blockField（块级 replace provide）, tableAtomicRanges（光标跳过）, tableTheme]。
@@ -27,11 +26,11 @@ import { tableGesture } from './tableGesture';
  * tableGesture 紧随其后：截获落在表格 widget 上的点击，程序化派发光标进块 → 整块还原源码可编辑（UAT #1）。
  *   顺序关键——linkGesture 在前：Ctrl/Cmd+外链点击它返回 true 短路，tableGesture 不劫持导航；
  *   普通点击命中表格时 linkGesture 无链接返回 false，轮到 tableGesture（CM6 按注册序短路 domEventHandlers）。
- * composingGuard 是全局护栏：后续装饰只要走同一 isFrozen / view.composing（行内层）或 CM6 原生
- * `input.type.compose` userEvent（块级 StateField）短路即自动受保护（D-13）。
+ * IME（EDIT-06，Option 1）：不再挂自建 composition 闸门——CM6 6.43.1 内置合成范围保护，装饰层照常
+ * 规范重建即可（codemirror-rich-markdoc / SilverBullet / Obsidian 同此范式，零 composition 代码）。
  */
 export function livePreviewExtensions(): Extension[] {
-  return [inlinePlugin, blockExtensions, linkGesture, tableGesture, composingGuard];
+  return [inlinePlugin, blockExtensions, linkGesture, tableGesture];
 }
 
 /**

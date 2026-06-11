@@ -2,13 +2,14 @@ import { EditorState, type Extension } from '@codemirror/state';
 import { EditorView } from '@codemirror/view';
 
 /**
- * IME 组合输入测试桩（EDIT-06 / RESEARCH「Validation Architecture」）。
+ * IME 组合输入测试桩（EDIT-06，Option 1 / RESEARCH「Validation Architecture」）。
  *
- * 背景：composingGuard 在 `compositionstart` 置冻结标志、`compositionend` 解冻并强制刷新，
- * update() 内还叠加 `view.composing` 短路。jsdom 不会真正驱动浏览器的 IME 组合状态，
- * 也不会自动把 `view.composing` 置 true，故本桩提供两件事：
- *   1. dispatchComposition：经 contentDOM 派发真实 CompositionEvent，驱动 domEventHandlers；
- *   2. mockComposing：直接覆写 view.composing getter，供「组合期 update 短路」断言。
+ * 背景：Option 1 删除了自建 composition 冻结闸门，改信赖 CM6 6.43.1 内置合成保护；装饰层照常规范重建。
+ * jsdom 不会真正驱动浏览器的 IME 组合状态（无 inputState.composing / MutationObserver），故真实吞字
+ * 类回归在 jsdom 复现不了——本桩只用于锁「组合期 docChange 照常重建」契约与 useCodeMirror 的
+ * `!view.composing` 副作用门。EDIT-06 的真验收是手动 Windows+WebView2 拼音测试（咕咕咕 + 长句）。
+ *   1. dispatchComposition：经 contentDOM 派发真实 CompositionEvent；
+ *   2. mockComposing：直接覆写 view.composing getter，供「composing 期副作用/重建」断言。
  *
  * 真实 EditorView 在 afterEach 必须 destroyTestView（承 Pitfall 5 StrictMode 泄漏纪律）。
  */

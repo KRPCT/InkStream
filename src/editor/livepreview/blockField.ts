@@ -3,7 +3,6 @@ import { RangeSetBuilder, StateField, type EditorState } from '@codemirror/state
 import { Decoration, type DecorationSet, EditorView } from '@codemirror/view';
 import { BLOCK_REPLACE } from './nodeNames';
 import { cursorInRange } from './revealLine';
-import { refreshLivePreview } from './composingGuard';
 import { TableWidget } from './widgets/TableWidget';
 
 /**
@@ -19,11 +18,9 @@ import { TableWidget } from './widgets/TableWidget';
  * atomicRanges（Pattern 4）：`tableAtomicRanges` 喂同一替换 RangeSet，使键盘 moveByChar/Backspace
  * 把表格 widget 当原子跳过（光标不卡进 widget；进块经整块还原退回可编辑源码）。
  *
- * IME 闸门（Pitfall 1）：StateField update 内只有 transaction/state、拿不到 view，故不能查
- * WeakMap——改据 CM6 原生 `tr.isUserEvent('input.type.compose')` 识别组合事务（CM6 给每个 IME 组合
- * docChange 自动打此 userEvent，无需扩展自注入冻结态）。组合期**不重算语法树**，但 docChanged 时
- * 把旧 deco + 表格 range 经 tr.changes 映射跟随位移（保 atomicRanges 对齐，避免错位触发 DOM 重建）；
- * compositionend 的 refreshLivePreview effect 触发一次重建。
+ * IME（EDIT-06，Option 1）：不再自建 composition 冻结闸门——CM6 6.43.1 内置合成范围保护，组合期的
+ * docChange 事务照常走 buildBlockState 规范重建（CM6 自身保护正在合成的文本节点）。UAT #8 的选区复用
+ * 优化（仅跨表格边界才重建、普通选区移动零语法树访问）是与 IME 正交的纯性能关切，照旧保留。
  *
  * 与行内层（ViewPlugin）共存于 livePreviewExtensions——CM6 自动合并多个 decorations facet 输入
  * （行内 mark/line 装饰 + 块级 replace 装饰 range 不重叠，无冲突，Pattern 3）。
@@ -100,32 +97,17 @@ function selectionCrossesBoundary(prev: BlockState, tr: { startState: EditorStat
  * 块级层 StateField：持 BlockState（替换 DecorationSet + 全表 range），经 provide 提供其装饰子集。
  *
  * update 重建判据（按代价升序短路）：
- *   1. IME 组合期（CM6 原生 `input.type.compose` userEvent）：不重算语法树；docChanged 时把旧
- *      deco + 表格 range 经 tr.changes 映射跟随位移（保 atomicRanges 对齐），否则原样复用（最高优先级闸门）。
- *   2. docChanged / refreshLivePreview：全文扫描重建（doc 结构可能变，表格 range 须刷新）。
- *   3. 选区变化：仅当 head 跨越表格块边界才重建（O(blocks) 判定）；普通移动原样复用——
- *      消除每次点击的 O(doc) 全树重算（UAT #8 卡顿根因）。
+ *   1. docChanged：全文扫描重建（doc 结构可能变，表格 range 须刷新）——组合期 docChange 亦走此路
+ *      （CM6 6.43.1 内置合成保护，无需自建闸门，EDIT-06 Option 1）。
+ *   2. 选区变化：仅当 head 跨越表格块边界才重建（O(blocks) 判定）；普通移动原样复用——
+ *      消除每次点击的 O(doc) 全树重算（UAT #8 卡顿根因，与 IME 正交的纯性能优化，照旧保留）。
  */
 export const blockField = StateField.define<BlockState>({
   create: (state) => buildBlockState(state),
   update(prev, tr) {
-    // 1. IME 闸门：组合事务不重算语法树（避免破坏 composition 锚点 → 吞字 root cause B）。
-    //    但 docChanged 时 map 旧 deco + 表格 range 跟随位移——返回未映射的旧集会让插入点后的
-    //    替换装饰 / atomicRanges 错位，CM6 据此重建合成中的 DOM（吞字根因）。映射为 O(blocks) 位移。
-    if (tr.isUserEvent('input.type.compose')) {
-      if (!tr.docChanged) return prev;
-      return {
-        deco: prev.deco.map(tr.changes),
-        tables: prev.tables.map((t) => ({
-          from: tr.changes.mapPos(t.from),
-          to: tr.changes.mapPos(t.to),
-        })),
-      };
-    }
-    // 2. doc 变 / compositionend 强刷：全文扫描重建。
-    const refreshed = tr.effects.some((e) => e.is(refreshLivePreview));
-    if (tr.docChanged || refreshed) return buildBlockState(tr.state);
-    // 3. 选区变化：仅跨越表格块边界才重建（O(blocks)），否则复用——不做全树 O(doc) 重算。
+    // 1. doc 变：全文扫描重建（组合期 docChange 同走此路，CM6 自身保护合成节点）。
+    if (tr.docChanged) return buildBlockState(tr.state);
+    // 2. 选区变化：仅跨越表格块边界才重建（O(blocks)），否则复用——不做全树 O(doc) 重算（UAT #8）。
     if (tr.selection && selectionCrossesBoundary(prev, tr)) {
       return buildBlockState(tr.state);
     }

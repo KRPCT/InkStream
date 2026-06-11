@@ -14,10 +14,10 @@ vi.mock('../../ipc/opener', () => ({
 const { livePreviewExtensions, renderModeCompartment } = await import('./livePreview');
 
 /**
- * 组合根接线回归门（Pattern 3：行内层 + IME 闸门经一个 Extension[] 共存生效）。
+ * 组合根接线回归门（Pattern 3：行内层 + 块级层经一个 Extension[] 共存生效，EDIT-06 Option 1）。
  *
- * 断言 livePreviewExtensions() 同时挂上 inlinePlugin（标题渲染）与 composingGuard（IME 短路），
- * 且 baseExtensions 默认装入 renderModeCompartment（D-02 默认 Live Preview）。
+ * 断言 livePreviewExtensions() 挂上 inlinePlugin（标题渲染），组合期 docChange 照常规范重建
+ * （不再有自建 IME 闸门——CM6 6.43.1 内置合成保护），且 baseExtensions 默认装入 renderModeCompartment。
  */
 
 let view: EditorView | null = null;
@@ -28,7 +28,7 @@ afterEach(() => {
 });
 
 describe('livePreviewExtensions 组合根', () => {
-  it('返回数组同时含 inlinePlugin 与 composingGuard（标题渲染 + IME 短路一处验证）', () => {
+  it('含 inlinePlugin（标题渲染）且组合 docChange 照常规范重建（Option 1：无自建 IME 闸门）', () => {
     view = makeTestView('# H1\n\n正文', [
       extensionsForLanguage('markdown'),
       livePreviewExtensions(),
@@ -47,27 +47,21 @@ describe('livePreviewExtensions 组合根', () => {
     }
     expect(hiddenAtStart).toBe(true);
 
-    // composingGuard 生效：compositionstart 后组合期 docChanged 不重算语法树，但旧装饰经 changes 映射
-    // 跟随位移（root cause B 修复后契约）。此处在文末插入、所有装饰之前位置不变，故映射后 (from,to) 不变。
-    const before = view.plugin(inlinePlugin)!.decorations;
-    const flat = (set: typeof before) => {
-      const out: Array<{ from: number; to: number }> = [];
+    // Option 1：组合 userEvent 的 docChange 与普通输入一样规范重建——文首插入新二级标题后，
+    // 装饰层立即产出其 cm-ink-h2 行级 class（若仍有冻结闸门则不会出现）。
+    const hasH2 = (): boolean => {
+      const set = view!.plugin(inlinePlugin)!.decorations;
       const it = set.iter();
       while (it.value) {
-        out.push({ from: it.from, to: it.to });
+        if ((it.value.spec as { class?: string }).class === 'cm-ink-h2') return true;
         it.next();
       }
-      return out;
+      return false;
     };
-    const beforeRanges = flat(before);
+    expect(hasH2()).toBe(false);
     dispatchComposition(view, { phase: 'compositionstart', data: '你' });
-    const changes = view.state.changes({ from: view.state.doc.length, insert: '你' });
-    const expected = flat(before.map(changes));
-    view.dispatch({ changes: { from: view.state.doc.length, insert: '你' }, userEvent: 'input.type.compose' });
-    const after = view.plugin(inlinePlugin)!.decorations;
-    // 组合期未重算（条数守恒），位置等于映射结果（文末插入：装饰位置不变）。
-    expect(flat(after)).toEqual(expected);
-    expect(flat(after)).toEqual(beforeRanges);
+    view.dispatch({ changes: { from: 0, insert: '## 二级\n\n' }, userEvent: 'input.type.compose' });
+    expect(hasH2()).toBe(true);
   });
 });
 

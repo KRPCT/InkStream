@@ -18,7 +18,6 @@ import {
   TASK_MARKER_NODE,
   headingLevel,
 } from './nodeNames';
-import { isFrozen, refreshLivePreview } from './composingGuard';
 import { cursorInRange, isCursorOnLineOf } from './revealLine';
 import { HrWidget } from './widgets/HrWidget';
 import { type ImageVaultContext, ImageWidget } from './widgets/ImageWidget';
@@ -39,8 +38,11 @@ import { useEditorStore } from '../../stores/useEditorStore';
  *     （旧 return false 跳子树满字号满不透明），改为压入还原深度栈并继续迭代子树，内部标记走 FAINT_MARK
  *     淡显（满字形宽 + 仅降不透明度，光标进出该行不跳位）；列表项 / 引用块按「光标所在行」逐行淡显
  *     （LINE_REVEAL_MARK）。嵌套元素（如链接内加粗）用深度栈兜底，全层标记一致淡显。
- *   - IME 闸门：update() 首行 `if (u.view.composing || isFrozen(u.view)) return;`——组合期保旧 RangeSet，
- *     绝不重算（接 composingGuard，EDIT-06 最高风险件）；compositionend 后由 refreshLivePreview 触发一次重建。
+ *   - IME（EDIT-06，Option 1）：不再自建 composition 冻结闸门——CM6 6.15.3+（本项目 6.43.1）内置
+ *     合成范围保护（findCompositionRange），update() 照常无条件重建装饰；组合期的 docChange 事务正常
+ *     触发 buildInlineDecorations，CM6 自身保护正在合成的文本节点（codemirror-rich-markdoc / SilverBullet /
+ *     Obsidian 同此范式，零 composition 代码）。docChanged 的 React/落盘副作用在 useCodeMirror 内据
+ *     `!view.composing` 推迟到上屏提交事务，避免每次候选键击触发同步重活。
  *   - 性能纪律：仅 view.visibleRanges 内迭代 + 构建，视口外不迭代（10 万字 < 16ms）。
  *
  * 样式经 EditorView.theme() 消费 var(--cm-*)，**永不硬编色值**（highlightTheme.ts 纪律）。
@@ -262,10 +264,12 @@ export function buildInlineDecorations(view: EditorView): DecorationSet {
  * 行内装饰样式：标题字号阶梯 + 标记隐藏 + D-08 元素集（删除线 / 行内代码 / 链接 / 列表 / 引用 / <u> / 水平线）。
  *
  * 取色复用既有 --cm-link / --cm-inline-code-bg / --cm-blockquote-border / --cm-hr（theme.css 在册），
- * 本 theme 不引硬编色。cm-ink-hidden 用 font-size:0 收宽标记字符（零位移「不跳契约」）。
+ * 本 theme 不引硬编色。标记隐藏用 Obsidian/HyperMD 技法（font-size:0.1px + letter-spacing:-1ch +
+ * color:transparent）收窄字符且**保留非退化盒几何**——font-size:0 会让 contentEditable 盒退化，IME
+ * 合成锚点 / 光标定位易错位；保 0.1px 高度的盒既视觉不可见又维持可定位盒（零位移「不跳契约」）。
  */
 const inlineTheme = EditorView.theme({
-  '.cm-ink-hidden': { fontSize: '0', letterSpacing: '0' },
+  '.cm-ink-hidden': { fontSize: '0.1px', letterSpacing: '-1ch', color: 'transparent' },
   // 光标行标记淡显（UAT #4，Typora 风）：仅降不透明度、保满字形宽——光标进出该行字号/行高不跳。
   '.cm-ink-mark-faint': { opacity: 'var(--cm-mark-faint-opacity)' },
   '.cm-ink-h1': { fontSize: '1.802em', fontWeight: '600', color: 'var(--cm-heading)' },
@@ -288,13 +292,13 @@ const inlineTheme = EditorView.theme({
   // 链接：色 var(--cm-link)（隐 url 后仅 text 呈现），默认 cursor:text（手势层切 pointer）。
   '.cm-link': { color: 'var(--cm-link)', cursor: 'text' },
   // 列表项符号：隐原标记后由 ::before 呈现 •（项目符号缩进保排版）。
-  '.cm-ink-list-mark': { fontSize: '0', letterSpacing: '0' },
+  '.cm-ink-list-mark': { fontSize: '0.1px', letterSpacing: '-1ch', color: 'transparent' },
   // 引用块：行级左竖条 var(--cm-blockquote-border) + 缩进（逐行 D-06）。
   '.cm-ink-quote': {
     borderLeft: '3px solid var(--cm-blockquote-border)',
     paddingLeft: '12px',
   },
-  '.cm-ink-quote-mark': { fontSize: '0', letterSpacing: '0' },
+  '.cm-ink-quote-mark': { fontSize: '0.1px', letterSpacing: '-1ch', color: 'transparent' },
   // 水平线 widget：1px var(--cm-hr) 贯穿 + 上下留白。
   '.cm-ink-hr': {
     border: 'none',
@@ -326,7 +330,7 @@ const inlineTheme = EditorView.theme({
   },
 });
 
-/** 行内层 ViewPlugin 类：持 decorations，update 接 IME 闸门 + 仅相关变化重算。 */
+/** 行内层 ViewPlugin 类：持 decorations，仅文档/视口/选区变化时无条件重算（信赖 CM6 合成保护）。 */
 class InlinePluginValue {
   decorations: DecorationSet;
 
@@ -335,22 +339,9 @@ class InlinePluginValue {
   }
 
   update(u: ViewUpdate): void {
-    // refreshLivePreview（compositionend 解冻后强刷一次）必须先于 IME 短路判定：compositionend 时
-    // u.view.composing 可能残留 true（codemirror/dev#1069），若先短路则强刷被吞、装饰留旧（CR-01）。
-    const refreshed = u.transactions.some((tr) =>
-      tr.effects.some((e) => e.is(refreshLivePreview)),
-    );
-    // IME 闸门（EDIT-06）：组合期保旧装饰、绝不重算语法树（避免破坏 composition 锚点）——唯 refreshLivePreview
-    // 例外（仅 compositionend 后推迟派发，放行安全；view.composing 残留 true 由 isFrozen 兜底双判）。
-    // 但 docChanged 时**必须把旧 RangeSet 经 changes 映射跟随位移**：返回未映射的旧集会让 CM6 的
-    // findChangedDeco 把插入点后所有 chunk 判为未共享 → 伪 changedRanges → 在合成中的文本节点重建 DOM
-    // → Chromium 中止 IME（吞字 root cause B）。映射只是 O(chunks) 位移，不重算语法树，性能守恒。
-    if (!refreshed && (u.view.composing || isFrozen(u.view))) {
-      if (u.docChanged) this.decorations = this.decorations.map(u.changes);
-      return;
-    }
-    // 仅文档/视口/选区变化时重算（选区变化驱动光标行还原）；refreshLivePreview effect 亦触发一次重建。
-    if (u.docChanged || u.viewportChanged || u.selectionSet || refreshed) {
+    // 规范重建（EDIT-06，Option 1）：不再为 IME 自建冻结/映射闸门——CM6 6.43.1 内置合成范围保护，
+    // 组合期 docChange 照常无条件重建（选区变化驱动光标行还原）；CM6 自身保护正在合成的文本节点。
+    if (u.docChanged || u.viewportChanged || u.selectionSet) {
       this.decorations = buildInlineDecorations(u.view);
     }
   }

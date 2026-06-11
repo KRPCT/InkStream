@@ -6,19 +6,19 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { EditorView } from '@codemirror/view';
 import { destroyTestView, dispatchComposition, makeTestView } from '../../test/composition';
 import { extensionsForLanguage } from '../languages';
-import { composingGuard } from './composingGuard';
 import { blockField, tableAtomicRanges } from './blockField';
 import { TableWidget } from './widgets/TableWidget';
 
 /**
- * 块级层 StateField 回归门（RESEARCH Pattern 2 + 4 / Pitfall 3 / D-06）。
+ * 块级层 StateField 回归门（RESEARCH Pattern 2 + 4 / Pitfall 3 / D-06，EDIT-06 Option 1）。
  *
  * 断言：
  *   1. 含 GFM 表格 doc 构建后 blockField 持的 DecorationSet 含 block widget（TableWidget）；
  *   2. 光标移入表格 range 内后该表不再被替换（整块还原源码，D-06）；
  *   3. tableAtomicRanges 覆盖表格 range（键盘光标移动跳过 widget，Pattern 4）；
- *   4. IME 短路：compositionstart 后 docChanged 不重建块级 deco（保旧 RangeSet）；
- *   5. 源纪律：provide 调 EditorView.decorations.from + block:true + atomicRanges + isFrozen/composing 短路。
+ *   4. 规范重建：组合 userEvent 的 docChanged 照常全文重建（不再有 IME 冻结/映射闸门）；
+ *   5. UAT #8 选区复用性能：普通选区移动零语法树访问（与 IME 正交，照旧保留）；
+ *   6. 源纪律：provide 调 EditorView.decorations.from + block:true + atomicRanges，无 composition 残留。
  */
 
 let view: EditorView | null = null;
@@ -44,7 +44,7 @@ const TABLE_TO = TABLE_DOC.indexOf('| 1 | 2 |') + '| 1 | 2 |'.length;
 
 /** 用 markdown(GFM) + blockField 构建 view，光标默认放在 doc 起点（表格外）。 */
 function bfView(doc: string): EditorView {
-  return makeTestView(doc, [extensionsForLanguage('markdown'), blockField, composingGuard]);
+  return makeTestView(doc, [extensionsForLanguage('markdown'), blockField]);
 }
 
 /** 收集 blockField 替换 DecorationSet 的 (from,to,widget) 序列。 */
@@ -195,7 +195,6 @@ describe('blockField atomicRanges（Pattern 4）', () => {
       extensionsForLanguage('markdown'),
       blockField,
       tableAtomicRanges,
-      composingGuard,
     ]);
     view.dispatch({ selection: EditorSelection.cursor(0) });
 
@@ -213,49 +212,31 @@ describe('blockField atomicRanges（Pattern 4）', () => {
   });
 });
 
-describe('blockField IME 短路（input.type.compose 组合事务）', () => {
-  /** 把表格替换 DecorationSet 摊为 (from,to) 数组。 */
-  function blockRanges(set: { iter: () => { from: number; to: number; value: unknown; next: () => void } }): Array<{ from: number; to: number }> {
-    const out: Array<{ from: number; to: number }> = [];
-    const it = set.iter();
-    while (it.value) {
-      out.push({ from: it.from, to: it.to });
-      it.next();
-    }
-    return out;
-  }
-
-  it('组合事务 docChanged：不重建语法树，但 deco 经 changes 映射跟随位移（root cause B 防回归）', () => {
+describe('blockField 规范重建（EDIT-06 Option 1：组合 docChange 照常全文重建）', () => {
+  it('组合 userEvent 的 docChanged 照常全文重建 BlockState（不再保旧集 / 不再 map）', () => {
     view = bfView(TABLE_DOC);
     view.dispatch({ selection: EditorSelection.cursor(0) });
     const before = view.state.field(blockField);
-    const beforeRanges = blockRanges(before.deco);
-    expect(beforeRanges.length).toBeGreaterThan(0); // 表格被替换装饰存在。
+    expect(before.deco.size).toBeGreaterThan(0); // 表格被替换装饰存在。
 
-    // 在表格**之前**（文首）的组合插入：插入点后表格替换装饰须整体右移，否则 atomicRanges 错位。
+    // 组合事务（input.type.compose）的 docChange 与普通输入一样走 buildBlockState 全文重建：
+    // 文首插入后表格整体右移，新 BlockState 是重建引用（非旧引用、非旧集 map）。
     dispatchComposition(view, { phase: 'compositionstart', data: '你' });
-    const changes = view.state.changes({ from: 0, insert: '你' });
-    const expectedDeco = blockRanges(before.deco.map(changes));
-    const expectedTables = before.tables.map((t) => ({
-      from: changes.mapPos(t.from),
-      to: changes.mapPos(t.to),
-    }));
     view.dispatch({ changes: { from: 0, insert: '你' }, userEvent: 'input.type.compose' });
 
     const after = view.state.field(blockField);
-    // deco 经映射跟随位移（值同、位移），非未映射旧集。
-    expect(blockRanges(after.deco)).toEqual(expectedDeco);
-    expect(blockRanges(after.deco)).not.toEqual(beforeRanges);
-    // 表格 range 同步映射，保持与 deco 对齐（atomicRanges 据 deco，tables 据此判边界跨越）。
-    expect(after.tables.map((t) => ({ from: t.from, to: t.to }))).toEqual(expectedTables);
+    expect(after).not.toBe(before); // 重建（新引用）。
+    expect(after.deco.size).toBe(before.deco.size); // 表格数不变。
+    // 表格 range 随插入右移（重建从最新 doc 扫描得，位置已更新）。
+    expect(after.tables[0]!.from).toBe(before.tables[0]!.from + 1);
   });
 
-  it('组合事务但 docChanged 为 false（纯组合更新无文档变）：原样复用 BlockState 引用', () => {
+  it('组合事务但 docChanged 为 false（纯组合 selection 无文档变）：走选区复用路径', () => {
     view = bfView(TABLE_DOC);
     view.dispatch({ selection: EditorSelection.cursor(0) });
     const before = view.state.field(blockField);
 
-    // 组合事务但仅带 selection 无 changes：不重算、原样复用。
+    // 无 changes 的组合 selection 事务：非 docChanged、未跨表格边界 → 原样复用（UAT #8 路径）。
     view.dispatch({
       selection: EditorSelection.cursor(1),
       userEvent: 'input.type.compose',
@@ -283,9 +264,8 @@ describe('blockField 源纪律', () => {
     expect(src).toContain('EditorView.atomicRanges');
   });
 
-  it('update 据 CM6 原生 input.type.compose userEvent 识别组合事务（不再自注入冻结态）', () => {
-    expect(src).toContain("isUserEvent('input.type.compose')");
-    // 已退役 setFrozen/frozenField/isFrozenState：源中不应再引用。
-    expect(src).not.toMatch(/isFrozenState|frozenField|setFrozen/);
+  it('不再自建 IME 冻结/映射闸门（无 input.type.compose 短路 / refreshLivePreview / frozen 残留，Option 1）', () => {
+    expect(src).not.toContain("isUserEvent('input.type.compose')");
+    expect(src).not.toMatch(/isFrozenState|frozenField|setFrozen|refreshLivePreview|composingGuard/);
   });
 });

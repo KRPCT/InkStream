@@ -3,25 +3,19 @@ import { resolve } from 'node:path';
 import { EditorSelection } from '@codemirror/state';
 import { afterEach, describe, expect, it } from 'vitest';
 import { EditorView } from '@codemirror/view';
-import { StateEffect } from '@codemirror/state';
-import {
-  destroyTestView,
-  dispatchComposition,
-  makeTestView,
-  mockComposing,
-} from '../../test/composition';
+import { destroyTestView, dispatchComposition, makeTestView } from '../../test/composition';
 import { extensionsForLanguage } from '../languages';
-import { composingGuard, refreshLivePreview } from './composingGuard';
 import { inlinePlugin } from './inlinePlugin';
 
 /**
- * 行内层 ViewPlugin 回归门（EDIT-03 / RESEARCH Pattern 1）。
+ * 行内层 ViewPlugin 回归门（EDIT-03 / RESEARCH Pattern 1，EDIT-06 Option 1）。
  *
- * 断言四件事：
+ * 断言：
  *   1. 渲染态：`# H1` 标记 `# ` 被隐藏装饰（cm-ink-hidden）+ 标题行得字号 class（cm-ink-h1）；
- *   2. 光标行还原：光标移入标题行后，该行标记不再被隐藏（return false 还原，D-07）；
- *   3. IME 短路：compositionstart 后一次 docChanged 不改变 plugin.decorations（保旧 RangeSet）；
- *   4. 性能纪律 + 无硬编码色：源文件含 visibleRanges/RangeSetBuilder/composing，无 # 十六进制色。
+ *   2. 光标行还原/淡显：光标移入标题行后，该行标记转淡显（FAINT，D-07）；
+ *   3. 规范重建：docChanged / selectionSet 时装饰无条件重建（不再有 IME 冻结/映射闸门——
+ *      CM6 6.43.1 内置合成保护，组合期 docChange 照常重建）；
+ *   4. 性能纪律 + 无硬编码色：源文件含 visibleRanges/RangeSetBuilder，无 # 十六进制色。
  */
 
 let view: EditorView | null = null;
@@ -277,90 +271,43 @@ describe('inlinePlugin 列表 / 引用逐行还原（D-06）', () => {
   });
 });
 
-describe('inlinePlugin IME 短路', () => {
-  /** 把某 DecorationSet 摊为 (from,to) 数组（位置契约比对用，忽略 spec 引用）。 */
-  function flatten(set: { iter: () => { from: number; to: number; value: unknown; next: () => void } }): Array<{ from: number; to: number }> {
-    const out: Array<{ from: number; to: number }> = [];
-    const it = set.iter();
-    while (it.value) {
-      out.push({ from: it.from, to: it.to });
-      it.next();
-    }
-    return out;
-  }
+describe('inlinePlugin 规范重建（EDIT-06 Option 1：信赖 CM6 合成保护，无自建闸门）', () => {
+  it('组合 userEvent 的 docChanged 照常无条件重建（不再保旧 RangeSet / 不再 map）', () => {
+    // Option 1 删除了 composition 冻结闸门：组合事务（input.type.compose）的 docChange 与普通输入
+    // 一样走 buildInlineDecorations 规范重建。此处文首插入新标题，插入后必产生其隐藏标记装饰，
+    // 证明装饰确实重建（而非冻结期保旧集 / 仅 map）。
+    view = lpView('正文\n\n正文二');
+    view.dispatch({ selection: EditorSelection.cursor(view.state.doc.length) });
+    expect(collectDecos(view).some((d) => d.class === 'cm-ink-h1')).toBe(false);
 
-  it('组合期 docChanged 不重算语法树，但把旧装饰经 changes 映射跟随位移（root cause B 防回归）', () => {
-    // 须含 composingGuard：compositionstart 经其置 isFrozen=true，inlinePlugin update 才走冻结分支。
-    // 在被装饰内容**之前**插入字符：若返回未映射旧集（旧 bug），装饰位置相对新文档错位 →
-    // CM6 findChangedDeco 伪重建合成中 DOM → 吞字。修复后装饰必须 == before.map(changes)（值同、位移）。
-    view = makeTestView('正文\n\n# H1', [
-      extensionsForLanguage('markdown'),
-      composingGuard,
-      inlinePlugin,
-    ]);
-    // 光标置于「正文」行内（非标题行），使标题处于渲染态、其标记被隐藏装饰。
-    view.dispatch({ selection: EditorSelection.cursor(0) });
-    const before = view.plugin(inlinePlugin)!.decorations;
-    const beforeRanges = flatten(before);
-    expect(beforeRanges.length).toBeGreaterThan(0); // 标题标记隐藏装饰存在。
-
-    // 期望：旧集经同一 changes 映射后的位置（标题行整体右移 1，标记装饰随之位移）。
-    const insertAt = 0; // 在文首插入，位于所有装饰之前 → 全部 +1。
     dispatchComposition(view, { phase: 'compositionstart', data: '你' });
-    const changes = view.state.changes({ from: insertAt, insert: '你' });
-    const expected = flatten(before.map(changes));
-    view.dispatch({ changes: { from: insertAt, insert: '你' }, userEvent: 'input.type.compose' });
-
-    const after = view.plugin(inlinePlugin)!.decorations;
-    const afterRanges = flatten(after);
-    // 装饰条数不变（未重算、未丢失），位置等于映射结果（跟随位移，非未映射旧集）。
-    expect(afterRanges).toEqual(expected);
-    // 关键反断言：未映射的旧集（旧 bug 行为）与新文档错位，afterRanges 不应等于 beforeRanges。
-    expect(afterRanges).not.toEqual(beforeRanges);
+    view.dispatch({ changes: { from: 0, insert: '# H1\n\n' }, userEvent: 'input.type.compose' });
+    // 重建后新标题行得 cm-ink-h1（若仍冻结保旧集则不会出现）。
+    expect(collectDecos(view).some((d) => d.class === 'cm-ink-h1')).toBe(true);
   });
 
-  it('compositionend 残留 composing 时 refreshLivePreview 仍强刷重建（CR-01）', () => {
-    // 回归 codemirror/dev#1069：compositionend 解冻派发 refreshLivePreview，
-    // 但 view.composing 可能残留 true，若先短路则强刷被吞、行内装饰留旧。
-    view = makeTestView('# H1\n\n正文', [
-      extensionsForLanguage('markdown'),
-      composingGuard,
-      inlinePlugin,
-    ]);
+  it('compositionend 后续 docChange 重建（新标题得 cm-ink-h2，无需 refresh effect 驱动）', () => {
+    view = lpView('# H1\n\n正文');
     view.dispatch({ selection: EditorSelection.cursor(view.state.doc.length) });
-
-    // 组合期插入一个新标题字符：闸门短路，装饰保旧（不含新行的隐藏标记）。
-    mockComposing(view, true);
-    dispatchComposition(view, { phase: 'compositionstart', data: '你' });
-    view.dispatch({ changes: { from: view.state.doc.length, insert: '\n\n## 二级' } });
-    const stale = collectDecos(view).filter((d) => d.class === 'cm-ink-h2');
-    expect(stale.length).toBe(0); // 组合期未重建：新标题尚无 h2 行级 class。
-
-    // compositionend 派发 refreshLivePreview，但 view.composing 仍残留 true：必须强刷。
-    view.dispatch({ effects: refreshLivePreview.of(null) });
-    const refreshed = collectDecos(view).filter((d) => d.class === 'cm-ink-h2');
-    expect(refreshed.length).toBeGreaterThan(0); // 强刷后新标题得 cm-ink-h2。
-  });
-
-  it('refreshLivePreview 越过 isFrozen 冻结态强刷重建（CR-01）', () => {
-    view = makeTestView('# H1\n\n正文', [
-      extensionsForLanguage('markdown'),
-      composingGuard,
-      inlinePlugin,
-    ]);
-    view.dispatch({ selection: EditorSelection.cursor(view.state.doc.length) });
-
-    // 冻结态（isFrozen=true）下插入新标题：短路保旧。
-    dispatchComposition(view, { phase: 'compositionstart', data: '你' });
-    view.dispatch({
-      changes: { from: view.state.doc.length, insert: '\n\n## 二级' },
-      effects: StateEffect.appendConfig.of([]),
-    });
     expect(collectDecos(view).filter((d) => d.class === 'cm-ink-h2').length).toBe(0);
 
-    // 仍处冻结态下派发 refreshLivePreview：必须越过 isFrozen 强刷。
-    view.dispatch({ effects: refreshLivePreview.of(null) });
+    dispatchComposition(view, { phase: 'compositionstart', data: '你' });
+    view.dispatch({ changes: { from: view.state.doc.length, insert: '\n\n## 二级' } });
+    dispatchComposition(view, { phase: 'compositionend', data: '你' });
+    // 规范重建：新二级标题得 cm-ink-h2 行级 class（不依赖任何强刷 effect）。
     expect(collectDecos(view).filter((d) => d.class === 'cm-ink-h2').length).toBeGreaterThan(0);
+  });
+
+  it('selectionSet 驱动光标行淡显重建（光标移入标题行 → 标记转 faint）', () => {
+    view = lpView('# H1\n\n正文');
+    view.dispatch({ selection: EditorSelection.cursor(view.state.doc.length) });
+    expect(collectDecos(view).some((d) => d.from === 0 && d.class === 'cm-ink-hidden')).toBe(true);
+
+    // 纯选区移动（无 docChange）：update 据 selectionSet 重建，标题行标记转淡显。
+    view.dispatch({ selection: EditorSelection.cursor(2) });
+    const revealed = collectDecos(view).filter((d) => d.from === 0);
+    expect(revealed.some((d) => d.class === 'cm-ink-mark-faint')).toBe(true);
+    expect(revealed.some((d) => d.class === 'cm-ink-hidden')).toBe(false);
   });
 });
 
@@ -372,8 +319,13 @@ describe('inlinePlugin 源纪律', () => {
     expect(src).toContain('RangeSetBuilder');
   });
 
-  it('update 含 composing 短路', () => {
-    expect(src).toMatch(/composing/);
+  it('不再自建 IME 冻结闸门（无 isFrozen / refreshLivePreview / composingGuard 残留，Option 1）', () => {
+    expect(src).not.toMatch(/isFrozen|refreshLivePreview|composingGuard/);
+  });
+
+  it('标记隐藏 CSS 用非退化盒几何（font-size:0.1px，非 font-size:0 反模式）', () => {
+    expect(src).toContain("fontSize: '0.1px'");
+    expect(src).not.toMatch(/fontSize:\s*'0'/);
   });
 
   it('无硬编码色值（var(--cm-*) 纪律，同 highlightTheme.test.ts:67）', () => {
