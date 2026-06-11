@@ -17,9 +17,12 @@ import { EditorView } from '@codemirror/view';
  *   2. 组合期文档变更由 CM6 原生打 userEvent `input.type.compose` 标记——块级 StateField（无 view、
  *      查不到 WeakMap）即据此 CM6-原生标记识别组合事务并 map 旧装饰，无需自注入冻结态。
  *   3. compositionend → 清同步标志，并把**恰好一次** refreshLivePreview 强刷推迟到一个微任务：
- *      它必须在 CM6 自身 compositionend 上屏 flush 之后、且 view.composing 归 false 之后才派发，
- *      否则会撞上 EditorView.update 内的 observer.clear() 丢弃尚未 flush 的上屏 mutation（root cause A，
- *      已上屏的字反被吞）。微任务 + `!view.composing` 守卫确保只在组合彻底结束后强刷一次。
+ *      它必须在 CM6 自身 compositionend 上屏 flush 之后、且组合彻底结束后才派发，否则会撞上
+ *      EditorView.update 内的 observer.clear() 丢弃尚未 flush 的上屏 mutation（root cause A，已上屏的
+ *      字反被吞）。微任务派发前以三重守卫确保只在组合彻底结束后强刷一次：(a) 代际未变（未被后续
+ *      compositionstart 取代）、(b) !view.composing（composing>0 时仍在合成）、(c) !isFrozen(view)
+ *      （composing===0 启动窗 view.composing 误为 false 的盲区）。跨组合竞态（重复同音节 咕咕咕）正是
+ *      (a)+(c) 才能堵住的：N 的微任务被压进 N+1 的 composing===0 启动窗时，仅 `!view.composing` 会误放行。
  *   4. 装饰层判定叠加 `view.composing || isFrozen(view)`——view.composing 在 compositionend 后
  *      可能残留 true（codemirror/dev#1069），单判任一都会漏；双判才精确。
  *
@@ -36,6 +39,20 @@ export const refreshLivePreview = StateEffect.define<null>();
 
 /** 每 view 的 IME 冻结标志（WeakMap 随 view 释放，不进 store）。 */
 const frozenFlags = new WeakMap<EditorView, boolean>();
+
+/**
+ * 每 view 的 compositionend 强刷代际计数（WeakMap 随 view 释放，仿 languages.ts switchGeneration）。
+ *
+ * 跨组合竞态根因（5c8f826 残留）：compositionend(N) 调度的微任务强刷仅守 `!view.composing`，
+ * 但 inputState.composing 有三态——compositionstart(N+1) 已触发、其首个 compositionupdate 尚未到达时
+ * composing===0，`view.composing`（getter 为 composing>0）此刻为 false，组合却真实在进行（docView 在
+ * composing>=0 即保护合成节点）。重复同音节（咕咕咕）快速上屏把 N 的微任务压进 N+1 的 composing===0
+ * 启动窗 → `!view.composing` 误放行 → 陈旧强刷 view.dispatch → EditorView.update → observer.clear()
+ * 丢弃 N+1 尚未 flush 的上屏 mutation → findCompositionRange 文本相等门失败 → 中止 IME（吞字）。
+ *
+ * 每次 compositionstart 递增本计数，作废任何在飞的上一组合强刷；微任务派发前再校验代际未变。
+ */
+const refreshGen = new WeakMap<EditorView, number>();
 
 /**
  * 查询某 view 是否处于 IME 冻结期（compositionstart 后、compositionend 前）。
@@ -56,15 +73,24 @@ export function isFrozen(view: EditorView): boolean {
 const compositionDomHandlers = EditorView.domEventHandlers({
   compositionstart(_event, view) {
     frozenFlags.set(view, true);
+    // 代际递增：作废任何上一组合在飞的 compositionend 强刷（跨组合竞态根因，咕咕咕重复同音节）。
+    refreshGen.set(view, (refreshGen.get(view) ?? 0) + 1);
     return false;
   },
   compositionend(_event, view) {
     frozenFlags.set(view, false);
+    // 调度时捕获当前代际，微任务派发前再校验——若期间又起了 compositionstart（代际已变）则放弃。
+    const gen = refreshGen.get(view) ?? 0;
     // 推迟一个微任务再强刷：必须在 CM6 自身 compositionend 上屏 flush 之后、view.composing 归 false
     // 之后才派发，否则会撞 observer.clear() 丢弃尚未 flush 的上屏 mutation（root cause A）。
-    // !view.composing 守卫 + 微任务确保只在组合彻底结束后强刷恰好一次（CR-01）。
     Promise.resolve().then(() => {
-      if (!view.composing) view.dispatch({ effects: refreshLivePreview.of(null) });
+      // 被后续 compositionstart 取代：N+1 在 N 的微任务排空前已完整 start→end（此时 isFrozen 已复位为
+      // false，但代际已前进），陈旧强刷必须撤销。
+      if ((refreshGen.get(view) ?? 0) !== gen) return;
+      // view.composing（composing>0）OR composing===0 启动窗（isFrozen 为 true）——任一为真都说明组合
+      // 仍在进行，绝不可强刷（撞 observer.clear 丢上屏 mutation）。双判才覆盖 composing===0 盲区。
+      if (view.composing || isFrozen(view)) return;
+      view.dispatch({ effects: refreshLivePreview.of(null) });
     });
     return false;
   },

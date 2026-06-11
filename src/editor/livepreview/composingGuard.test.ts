@@ -70,6 +70,43 @@ describe('composingGuard（IME 冻结闸门）', () => {
     expect(refreshCalls(spy)).toHaveLength(1);
   });
 
+  it('背靠背组合：N 微任务排空前 N+1 已 start，陈旧强刷被代际取代不派发（咕咕咕重复同音节根因）', async () => {
+    view = makeTestView('文档', [composingGuard]);
+    const spy = vi.spyOn(view, 'dispatch');
+
+    // 组合 N：start → end，调度 N 的强刷微任务。
+    dispatchComposition(view, { phase: 'compositionstart', data: '咕' });
+    dispatchComposition(view, { phase: 'compositionend', data: '咕' });
+    expect(refreshCalls(spy)).toHaveLength(0);
+
+    // 排空微任务前，组合 N+1 已 start——递增代际，作废 N 在飞的强刷，并重新冻结。
+    dispatchComposition(view, { phase: 'compositionstart', data: '咕' });
+
+    await Promise.resolve();
+    // N 的强刷因代际改变（被 N+1 取代）被撤销；N+1 仍在合成（isFrozen），绝不强刷。
+    expect(refreshCalls(spy)).toHaveLength(0);
+    expect(isFrozen(view)).toBe(true);
+  });
+
+  it('N+1 在 N 微任务排空前已完整 start→end：代际守卫使恰好一次强刷（证代际守卫不止于 isFrozen）', async () => {
+    view = makeTestView('文档', [composingGuard]);
+    const spy = vi.spyOn(view, 'dispatch');
+
+    // 组合 N：start → end，调度 N 的强刷微任务（gen=1）。
+    dispatchComposition(view, { phase: 'compositionstart', data: '咕' });
+    dispatchComposition(view, { phase: 'compositionend', data: '咕' });
+    // 排空前，组合 N+1 同步完整跑完 start→end（gen=2，调度 N+1 的强刷微任务）。
+    dispatchComposition(view, { phase: 'compositionstart', data: '咕' });
+    dispatchComposition(view, { phase: 'compositionend', data: '咕' });
+    expect(refreshCalls(spy)).toHaveLength(0);
+    // 此刻 isFrozen 已复位 false——仅 isFrozen 守卫无法区分 N（陈旧）与 N+1（应派发），唯代际可辨。
+    expect(isFrozen(view)).toBe(false);
+
+    await Promise.resolve();
+    // N 的强刷被代际取代（gen 已到 2）撤销；N+1 的强刷代际匹配且组合已结束 → 恰好一次。
+    expect(refreshCalls(spy)).toHaveLength(1);
+  });
+
   it('组合期内多次 compositionupdate 不解冻（仍冻结）', () => {
     view = makeTestView('文档', [composingGuard]);
 
