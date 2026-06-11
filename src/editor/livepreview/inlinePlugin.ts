@@ -48,8 +48,10 @@ const HEADING_LINE: Record<number, Decoration> = {
  * 两遍语义但单遍迭代：先按位置序把「标题行级装饰」与「标记隐藏装饰」按起点排好。
  * RangeSetBuilder 要求严格升序 add——标题行级装饰（point at line.from）须先于该行任何 mark add，
  * 故在进入 ATXHeadingN 节点时即时 add 行级装饰（line.from 必 ≤ 其内 HeaderMark.from）。
+ *
+ * 导出供 perf.test.ts 直接测量真实装饰构建耗时（替代 Wave 0 占位迭代）。
  */
-function buildDecorations(view: EditorView): DecorationSet {
+export function buildInlineDecorations(view: EditorView): DecorationSet {
   const builder = new RangeSetBuilder<Decoration>();
   const { state } = view;
   // 已 add 行级装饰的行号去重（同一标题行只 add 一次 line 装饰）。
@@ -106,7 +108,7 @@ class InlinePluginValue {
   decorations: DecorationSet;
 
   constructor(view: EditorView) {
-    this.decorations = buildDecorations(view);
+    this.decorations = buildInlineDecorations(view);
   }
 
   update(u: ViewUpdate): void {
@@ -117,7 +119,7 @@ class InlinePluginValue {
       tr.effects.some((e) => e.is(refreshLivePreview)),
     );
     if (u.docChanged || u.viewportChanged || u.selectionSet || refreshed) {
-      this.decorations = buildDecorations(u.view);
+      this.decorations = buildInlineDecorations(u.view);
     }
   }
 }

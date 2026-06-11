@@ -5,6 +5,7 @@ import { drawSelection, EditorView, highlightActiveLine, keymap } from '@codemir
 import type { Extension } from '@codemirror/state';
 import { inkstreamHighlightStyle } from './highlightTheme';
 import { extensionsForLanguage, langCompartment } from './languages';
+import { livePreviewExtensions, renderModeCompartment } from './livepreview/livePreview';
 
 /**
  * 基础扩展集（RESEARCH「基础扩展集」）：全 App 单内核的通用编辑能力。
@@ -14,6 +15,11 @@ import { extensionsForLanguage, langCompartment } from './languages';
  *
  * 每次 openFile 新建 EditorState 时调用——history() 等带状态的扩展必须每个 state 各持一份，
  * 以保证 undo 历史按文件独立（Pitfall 3）。可传 lang 决定初始语言（openFile 用 languageForPath 提供）。
+ *
+ * 装饰层（D-02 默认 Live Preview）：renderModeCompartment 默认装 livePreviewExtensions()——
+ * 新打开的 Markdown 文档即渲染（标题/加粗 + 光标行还原 + IME 安全）。compartment 独立于 langCompartment，
+ * Plan 04 经 setRenderMode reconfigure 切 Source('[]')/Live。非 Markdown 文档无 HIDE_MARK 节点，
+ * 装饰天然空操作（D-01）；指示器/命令的显隐由 Plan 04 处理。
  */
 export function baseExtensions(lang: string = 'markdown'): Extension[] {
   return [
@@ -24,6 +30,7 @@ export function baseExtensions(lang: string = 'markdown'): Extension[] {
     search(),
     syntaxHighlighting(inkstreamHighlightStyle),
     langCompartment.of(extensionsForLanguage(lang)),
+    renderModeCompartment.of(livePreviewExtensions()),
   ];
 }
 

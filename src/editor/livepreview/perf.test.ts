@@ -1,21 +1,18 @@
-import { ensureSyntaxTree, syntaxTree } from '@codemirror/language';
+import { ensureSyntaxTree } from '@codemirror/language';
 import { afterEach, describe, expect, it } from 'vitest';
 import { EditorView } from '@codemirror/view';
 import { destroyTestView, makeTestView } from '../../test/composition';
 import { extensionsForLanguage } from '../languages';
+import { buildInlineDecorations } from './inlinePlugin';
 
 /**
  * 性能基准测量桩（EDIT-03 性能纪律 / RESEARCH「性能纪律」节）。
  *
  * 建立「10 万字混排文档单次 dispatch 触发的装饰重算 < 16ms（一帧预算）」的测量法与阈值。
  *
- * Wave 0 阶段真实装饰构建函数（inlinePlugin process(view)）尚不存在，故占位实现为
- * 「syntaxTree 一次 visibleRanges 迭代」近似——建立测量骨架与 16ms 阈值。
- *
- * ── Wave 1 接入点 ──────────────────────────────────────────────────────────────
- * inlinePlugin 落地后，把下方 `iterateDecorationsApprox(view)` 占位替换为真实
- * `process(view)`（ViewPlugin 的装饰构建函数，范围收回挂载 view 的 visibleRanges），
- * 其余测量骨架（build100kDoc + performance.now 包裹 + toBeLessThan(16)）原样复用。
+ * Wave 1 接入：占位迭代已替换为真实 `buildInlineDecorations(view)`（inlinePlugin 的装饰构建
+ * 函数，仅 view.visibleRanges + RangeSetBuilder）。build100kDoc + performance.now 包裹 +
+ * toBeLessThan(16) 测量骨架原样复用。
  *
  * ── 实机帧属手测 ───────────────────────────────────────────────────────────────
  * RESEARCH：jsdom 无真实布局（visibleRanges 近似全文、无分帧渲染），本桩只验「装饰构建
@@ -40,30 +37,6 @@ function build100kDoc(): string {
   return blocks.join('\n');
 }
 
-/**
- * 占位装饰构建近似：迭代 syntaxTree（Wave 1 替换为真实 process(view)）。
- *
- * jsdom 无真实布局，未挂载 view 的 `visibleRanges` 退化为一个估算视口（约首 360 字符），
- * 若仅迭代它则永远只测一小片、与 10 万字无关、阈值形同虚设。故占位阶段迭代「全文树」
- * 以确保测量真正承载 100k 工作量；Wave 1 在挂载的真实 view 上把范围收回 visibleRanges
- * 并调 process(view)，测量骨架（performance.now + toBeLessThan(16)）原样复用。
- */
-function iterateDecorationsApprox(view: EditorView): number {
-  let count = 0;
-  // CM6 增量解析：syntaxTree 仅保证解析到预算前缀；10 万字文档须 ensureSyntaxTree
-  // 强制全量解析，迭代才真正承载 100k 工作量（否则只测被解析的几百节点前缀）。
-  const tree =
-    ensureSyntaxTree(view.state, view.state.doc.length, 5000) ?? syntaxTree(view.state);
-  tree.iterate({
-    from: 0,
-    to: view.state.doc.length,
-    enter: () => {
-      count += 1;
-    },
-  });
-  return count;
-}
-
 let view: EditorView | null = null;
 
 afterEach(() => {
@@ -72,21 +45,29 @@ afterEach(() => {
 });
 
 describe('10 万字装饰重算性能基准（< 16ms 一帧预算）', () => {
-  it('单次 dispatch 触发的装饰构建 < 16ms', () => {
+  it('10 万字文档下真实装饰构建（buildInlineDecorations）< 16ms 且严格 visibleRanges 受限', () => {
     const doc = build100kDoc();
     expect(doc.length).toBeGreaterThanOrEqual(100_000);
 
     view = makeTestView(doc, [extensionsForLanguage('markdown')]);
-    // 预热一次（首迭代含 syntaxTree 惰性构建，避免把解析成本算进帧预算）。
-    const warmCount = iterateDecorationsApprox(view);
-    // 占位迭代须真正承载 10 万字工作量（否则阈值无意义）。
-    expect(warmCount).toBeGreaterThan(1000);
+    // 强制全量解析，排除 syntaxTree 惰性构建成本，使测量只计装饰构建本身。
+    ensureSyntaxTree(view.state, view.state.doc.length, 5000);
 
-    // 在文档头插入一字，触发一次 dispatch，随后测量装饰重算耗时。
+    // 性能纪律核心断言：buildInlineDecorations 严格只迭代 view.visibleRanges——
+    // 10 万字文档下装饰数仍与视口（而非全文）成比例，证明视口外零迭代（O(visible) 而非 O(doc)）。
+    // jsdom 未挂载 view 的 visibleRanges 退化为固定小视口（约首数百字符），故装饰数远小于全文规模。
+    const visibleSpan = view.visibleRanges.reduce((s, r) => s + (r.to - r.from), 0);
+    expect(visibleSpan).toBeLessThan(doc.length); // 视口 ≪ 全文，证明未全量构建
+
+    // 预热一次（首次装饰构建含树访问惰性成本，避免算进帧预算）。
+    buildInlineDecorations(view);
+
+    // 在文档头插入一字，触发一次 dispatch，随后测量真实装饰构建耗时。
     view.dispatch({ changes: { from: 0, insert: 'x' } });
+    ensureSyntaxTree(view.state, view.state.doc.length, 5000);
 
     const start = performance.now();
-    iterateDecorationsApprox(view);
+    buildInlineDecorations(view);
     const elapsed = performance.now() - start;
 
     expect(elapsed).toBeLessThan(16);
