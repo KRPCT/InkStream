@@ -1,3 +1,4 @@
+import { requestOpenFolder } from '../editor/vaultFlow';
 import { windowControls } from '../ipc/window';
 import { useAboutStore } from '../stores/useAboutStore';
 import { usePaletteStore } from '../stores/usePaletteStore';
@@ -66,6 +67,11 @@ const BUILTINS: Command[] = [
     id: 'mode.switch-creative',
     title: '模式：切换到 Creative（长篇创作）',
     run: () => useWorkbenchStore.getState().setMode('creative'),
+  },
+  {
+    id: 'file.open-folder',
+    title: '文件：打开文件夹',
+    run: () => void requestOpenFolder(),
   },
   {
     id: 'app.exit',

@@ -19,6 +19,7 @@ const TITLES: Record<string, string> = {
   'view.toggle-right-panel': '视图：切换右侧面板',
   'view.reset-layout': '视图：重置当前模式布局',
   'view.command-palette': '视图：命令面板',
+  'file.open-folder': '文件：打开文件夹',
   'app.exit': '应用：退出',
   'mode.switch-standard': '模式：切换到 Standard（通用）',
   'mode.switch-academic': '模式：切换到 Academic（学术）',
@@ -48,9 +49,9 @@ describe('builtins', () => {
     disposeKeymap();
   });
 
-  it('注册 12 条命令，标题与 UI-SPEC 字面逐字一致', () => {
+  it('注册 13 条命令，标题与 UI-SPEC 字面逐字一致', () => {
     const all = getAll();
-    expect(all).toHaveLength(12);
+    expect(all).toHaveLength(13);
     for (const [id, title] of Object.entries(TITLES)) {
       expect(all.find((c) => c.id === id)?.title).toBe(title);
     }
@@ -67,7 +68,7 @@ describe('builtins', () => {
     expect(() => {
       disposeBuiltins = registerBuiltinCommands();
     }).not.toThrow();
-    expect(getAll()).toHaveLength(12);
+    expect(getAll()).toHaveLength(13);
   });
 
   it('execute mode.switch-academic 切换模式且不占用全局快捷键（D-08）', async () => {

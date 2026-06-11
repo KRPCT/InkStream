@@ -40,19 +40,17 @@ describe('WorkbenchLayout', () => {
     expect(screen.getByTestId('tab-pane-localGraph')).not.toBeVisible();
   });
 
-  it('EditorArea 欢迎页：应用名 + 三条 kbd 快捷键提示', () => {
+  it('EditorArea 无 vault：显示未打开工作区空态 + 打开文件夹按钮', () => {
     render(<WorkbenchLayout />);
     const editor = within(screen.getByTestId('editor-area'));
-    expect(editor.getByText('InkStream / 墨流')).toBeInTheDocument();
-    expect(editor.getByText('Ctrl+Shift+P')).toBeInTheDocument();
-    expect(editor.getByText('Ctrl+B')).toBeInTheDocument();
-    expect(editor.getByText('Ctrl+Alt+B')).toBeInTheDocument();
+    expect(editor.getByText('未打开工作区')).toBeInTheDocument();
+    expect(editor.getByRole('button', { name: '打开文件夹' })).toBeInTheDocument();
   });
 
   it('Sidebar 显示未打开工作区空态', () => {
     render(<WorkbenchLayout />);
     const sidebar = within(screen.getByTestId('sidebar'));
     expect(sidebar.getByText('未打开工作区')).toBeInTheDocument();
-    expect(sidebar.getByText('文件树会在打开文件夹后显示在这里。')).toBeInTheDocument();
+    expect(sidebar.getByText('打开一个文件夹作为工作区，开始写作。')).toBeInTheDocument();
   });
 });
