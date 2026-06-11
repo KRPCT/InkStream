@@ -15,10 +15,17 @@ crate-type = ["rlib"]
 tauri-build = { version = "=2.6.2", features = [] }
 
 [dependencies]
-tauri = { version = "=2.11.2", features = [] }
+# protocol-asset：assetProtocol enable 的编译期 feature 门，与 tauri.conf.json
+# app.security.assetProtocol 对齐（缺则 tauri-build allowlist 校验失败，本地图
+# 经 asset:// 协议加载所必需）。
+tauri = { version = "=2.11.2", features = ["protocol-asset"] }
 tauri-plugin-window-state = "=2.4.1"
 tauri-plugin-store = "=2.4.3"
 tauri-plugin-fs = "=2.5.1"
+# 外链打开窄通道（RESEARCH Q2）。Tauri 官方 plugins-workspace 一方插件，
+# 专责 open，capability 仅授 opener:allow-open-url，权限比 tauri-plugin-shell
+# 更窄。来源/版本经 Task 1 阻塞门人工核验通过（crates.io 官方 workspace，精确 pin）。
+tauri-plugin-opener = "=2.5.4"
 serde = { version = "=1.0.228", features = ["derive"] }
 serde_json = "=1.0.150"
 # 回收站删除（D-09）。Byron/trash-rs，跨平台。build.rs 审查见 02-03-SUMMARY。
