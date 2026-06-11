@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import type { RenderMode } from '../types/editor';
 
 /** tab 元数据（可序列化；EditorState 实例不在此，缓存于 editor/editorState.ts）。 */
 export interface TabMeta {
@@ -23,6 +24,12 @@ interface EditorStoreState {
   cursor: number;
   /** 活动文档是否为 richtext（frontmatter language: richtext）；richtext 工具条据此显隐（D-14）。 */
   isRichtext: boolean;
+  /**
+   * 活动文档当前渲染模式镜像（EDIT-02，单向自换装入口写入）。
+   * markdown/richtext 文档为 'source' | 'live'；非 markdown 文档为 null（指示器隐藏，D-01）。
+   * 权威 per-file 记忆在 editorState 的 renderModeCache（不可序列化态不进 store，T-03-10）。
+   */
+  activeRenderMode: RenderMode | null;
   openTab: (tab: TabMeta) => void;
   closeTab: (path: string) => void;
   setActive: (path: string) => void;
@@ -34,6 +41,7 @@ interface EditorStoreState {
   clearExternalChange: (path: string) => void;
   setCursor: (pos: number) => void;
   setRichtext: (on: boolean) => void;
+  setActiveRenderMode: (mode: RenderMode | null) => void;
 }
 
 /**
@@ -50,6 +58,7 @@ export const useEditorStore = create<EditorStoreState>((set) => ({
   externalChanged: {},
   cursor: 0,
   isRichtext: false,
+  activeRenderMode: 'live',
   openTab: (tab) =>
     set((s) => (s.tabs.some((t) => t.path === tab.path) ? s : { tabs: [...s.tabs, tab] })),
   closeTab: (path) =>
@@ -76,4 +85,5 @@ export const useEditorStore = create<EditorStoreState>((set) => ({
     set((s) => ({ externalChanged: { ...s.externalChanged, [path]: false } })),
   setCursor: (cursor) => set({ cursor }),
   setRichtext: (isRichtext) => set({ isRichtext }),
+  setActiveRenderMode: (activeRenderMode) => set({ activeRenderMode }),
 }));
