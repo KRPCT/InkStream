@@ -74,6 +74,20 @@ describe('TableWidget eq（source-slice 复用）', () => {
   });
 });
 
+describe('TableWidget ignoreEvent 点击穿透（UAT #1）', () => {
+  const widget = new TableWidget(TWO_BY_TWO);
+
+  it('mousedown 放行（返回 false）——使点击属于编辑器，tableGesture 得以接管置光标', () => {
+    expect(widget.ignoreEvent(new Event('mousedown'))).toBe(false);
+  });
+
+  it('非 mousedown 事件仍吞掉（返回 true，表格非交互避免误触）', () => {
+    expect(widget.ignoreEvent(new Event('click'))).toBe(true);
+    expect(widget.ignoreEvent(new Event('mouseup'))).toBe(true);
+    expect(widget.ignoreEvent(new Event('dblclick'))).toBe(true);
+  });
+});
+
 describe('TableWidget 源纪律', () => {
   const src = readFileSync(
     resolve(process.cwd(), 'src/editor/livepreview/widgets/TableWidget.ts'),

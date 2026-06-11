@@ -12,8 +12,13 @@ import { WidgetType } from '@codemirror/view';
  * **绝不用 HTML 字符串赋值拼用户内容**——`<img onerror=...>` 等只作纯文本，不解析为元素、不执行脚本。
  * （rich-markdoc 走 HTML 字符串赋值是因 markdoc 已 sanitize，本阶段不具该前提，必须 DOM 构建。）
  *
- * 性能（RESEARCH 性能纪律）：`eq(other)` 按 sourceText 比较——同源不重建 DOM（防闪烁）；
- * 表格非交互（`ignoreEvent` 返回 true），点击经 blockField 整块还原进编辑。
+ * 性能（RESEARCH 性能纪律）：`eq(other)` 按 sourceText 比较——同源不重建 DOM（防闪烁）。
+ *
+ * 点击穿透（UAT #1）：旧实现 `ignoreEvent()` 无条件返回 true——CM 的 `eventBelongsToEditor`
+ * 据此判定落在 widget 上的 mousedown「不属于编辑器」，于是 CM 的 MouseSelection/select() 永不运行，
+ * 点击表格单元格不置光标、无法进编辑。故 mousedown **必须**放行（返回 false），交由 tableGesture
+ * 的 domEventHandler 程序化派发光标进块（programmatic selection 不受 atomicRanges 约束，落进单元格
+ * 内、触发 blockField 整块还原源码 D-06）。其余事件仍吞掉（表格非交互，避免误触）。
  *
  * 样式经 class 消费 `var(--cm-table-border)` / `var(--cm-table-header-bg)` + 内边距 sm/sm2，
  * **永不硬编码色值**（同 highlightTheme.ts / inlinePlugin 纪律）。表格 CSS 由 tableTheme 提供。
@@ -28,9 +33,12 @@ export class TableWidget extends WidgetType {
     return other.sourceText === this.sourceText;
   }
 
-  /** 表格非交互：吞掉内部事件，光标定位/编辑经 blockField 整块还原承接（D-06）。 */
-  ignoreEvent(): boolean {
-    return true;
+  /**
+   * mousedown 放行（返回 false）——使落在表格上的点击「属于编辑器」，CM 的 select() 得以运行、
+   * tableGesture 程序化派发光标进块（UAT #1）；其余事件仍吞掉（表格非交互，避免误触）。
+   */
+  ignoreEvent(event: Event): boolean {
+    return event.type !== 'mousedown';
   }
 
   toDOM(): HTMLElement {

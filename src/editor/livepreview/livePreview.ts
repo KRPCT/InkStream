@@ -3,6 +3,7 @@ import { composingGuard } from './composingGuard';
 import { inlinePlugin } from './inlinePlugin';
 import { blockExtensions } from './blockField';
 import { linkGesture } from './linkGesture';
+import { tableGesture } from './tableGesture';
 
 /**
  * Live Preview 组合根（Pattern Map「livePreview.ts」/ RESEARCH Pattern 3+5）。
@@ -23,10 +24,13 @@ import { linkGesture } from './linkGesture';
  * 行内 ViewPlugin 与块级 StateField 共存（CM6 自动合并 decorations facet，Pattern 3）；
  * blockExtensions = [blockField（块级 replace provide）, tableAtomicRanges（光标跳过）, tableTheme]。
  * linkGesture 是 mousedown domEventHandler：Ctrl/Cmd+点击外链经 openExternal 跳转 / 普通点击置光标（D-10）。
+ * tableGesture 紧随其后：截获落在表格 widget 上的点击，程序化派发光标进块 → 整块还原源码可编辑（UAT #1）。
+ *   顺序关键——linkGesture 在前：Ctrl/Cmd+外链点击它返回 true 短路，tableGesture 不劫持导航；
+ *   普通点击命中表格时 linkGesture 无链接返回 false，轮到 tableGesture（CM6 按注册序短路 domEventHandlers）。
  * composingGuard 是全局护栏：后续装饰只要走同一 isFrozen / view.composing / frozenField 短路即自动受保护（D-13）。
  */
 export function livePreviewExtensions(): Extension[] {
-  return [inlinePlugin, blockExtensions, linkGesture, composingGuard];
+  return [inlinePlugin, blockExtensions, linkGesture, tableGesture, composingGuard];
 }
 
 /**
