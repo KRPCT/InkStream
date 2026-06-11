@@ -40,8 +40,13 @@ pub fn canonicalize_in_root(root: &Path, rel: &str) -> Result<PathBuf, String> {
 /// canonicalize 要求目标存在，故对写路径改为：规范化目标**父目录**（须已存在）后拼文件名，
 /// 再断言父目录落在 vault 根内。文件名段不得为 `..`/`.`/空（防经文件名段逃逸）。
 ///
+/// 叶子段的符号链接逃逸防护（WR-02）：父目录已 canonicalize（解析了路径中段的 symlink），
+/// 但叶子文件名为原样拼接、不经 canonicalize（目标可不存在）。若拼出的叶子**已存在**且是
+/// symlink，则 `std::fs::write` 会跟随该 symlink 写到其真实目标——若指向 root 外即逃逸。
+/// 故此处显式拒绝既有 symlink 叶子（无论指向何处，新建/写入语义本就不应落到 symlink 上）。
+///
 /// 返回的路径未经 canonicalize（目标本不存在），但其父目录已 canonicalize 且在 root 内，
-/// 故整体不越界。调用方据此 path 做 write/rename/create。
+/// 叶子非 symlink，故整体不越界。调用方据此 path 做 write/rename/create。
 pub fn resolve_new_target_in_root(root: &Path, rel: &str) -> Result<PathBuf, String> {
     let canon_root = root
         .canonicalize()
@@ -50,6 +55,10 @@ pub fn resolve_new_target_in_root(root: &Path, rel: &str) -> Result<PathBuf, Str
     let file_name = rel_path
         .file_name()
         .ok_or_else(|| "目标路径缺少文件名".to_string())?;
+    // 显式拒绝 `..`/`.` 叶子段（不仅依赖 file_name() 的隐式 None 行为）。
+    if file_name == ".." || file_name == "." {
+        return Err("路径越出工作区根目录".to_string());
+    }
     let parent_rel = rel_path.parent().unwrap_or_else(|| Path::new(""));
     let canon_parent = canon_root
         .join(parent_rel)
@@ -58,7 +67,14 @@ pub fn resolve_new_target_in_root(root: &Path, rel: &str) -> Result<PathBuf, Str
     if !is_within_root(&canon_root, &canon_parent) {
         return Err("路径越出工作区根目录".to_string());
     }
-    Ok(canon_parent.join(file_name))
+    let result = canon_parent.join(file_name);
+    // WR-02：叶子若已存在且为 symlink，拒绝（写入会跟随 symlink 逃逸 root）。
+    if let Ok(meta) = std::fs::symlink_metadata(&result) {
+        if meta.file_type().is_symlink() {
+            return Err("路径越出工作区根目录（叶子为符号链接）".to_string());
+        }
+    }
+    Ok(result)
 }
 
 #[cfg(test)]
