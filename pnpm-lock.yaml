@@ -65,6 +65,9 @@ importers:
       '@lezer/lr':
         specifier: 1.4.10
         version: 1.4.10
+      '@lezer/markdown':
+        specifier: 1.6.4
+        version: 1.6.4
       '@tauri-apps/api':
         specifier: 2.11.0
         version: 2.11.0
