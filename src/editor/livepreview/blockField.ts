@@ -118,6 +118,22 @@ function selectionCrossesBoundary(prev: BlockState, tr: { startState: EditorStat
 }
 
 /**
+ * 主选区 head 所在行当前是否落有任一块级替换装饰（EDIT-06 诊断）。
+ *
+ * 与行内层 activeLineHasDeco 同义：组合行若仍被表格 widget 替换（活动行未还原源码），即破
+ * Option 2 纯源码契约——合成相等闸门失败的现行证据。无装饰区间返回 false（契约保住）。
+ */
+function activeLineHasBlockDeco(deco: DecorationSet, state: EditorState): boolean {
+  const line = state.doc.lineAt(state.selection.main.head);
+  let has = false;
+  deco.between(line.from, line.to, () => {
+    has = true;
+    return false; // 命中即短路。
+  });
+  return has;
+}
+
+/**
  * 块级层 StateField：持 BlockState（替换 DecorationSet + 全表 range），经 provide 提供其装饰子集。
  *
  * update 重建判据（按代价升序短路）：
@@ -135,20 +151,33 @@ export const blockField = StateField.define<BlockState>({
     //    atomicRanges 错位，CM6 据此重建合成中的 DOM（同样吞字）。映射为 O(blocks) 位移，不扫语法树。
     if (tr.isUserEvent('input.type.compose')) {
       if (!tr.docChanged) return prev; // 纯组合 selection 无文档变：保旧态不动。
-      imeTrace('blockField', { path: 'MAP', userEvent: 'input.type.compose', docLen: tr.state.doc.length });
-      return {
+      const mapped = {
         deco: prev.deco.map(tr.changes),
         tables: prev.tables.map((t) => ({
           from: tr.changes.mapPos(t.from),
           to: tr.changes.mapPos(t.to),
         })),
       };
+      imeTrace('blockField', {
+        path: 'MAP',
+        userEvent: 'input.type.compose',
+        activeLineHasDeco: activeLineHasBlockDeco(mapped.deco, tr.state),
+        docLen: tr.state.doc.length,
+      });
+      return mapped;
     }
     // 1. doc 变 / compositionend 强刷：全文扫描重建（refreshLivePreview 解冻后还原渲染态，CR-01）。
     const refreshed = tr.effects.some((e) => e.is(refreshLivePreview));
     if (tr.docChanged || refreshed) {
-      imeTrace('blockField', { path: 'REBUILD', docChanged: tr.docChanged, refreshed, docLen: tr.state.doc.length });
-      return buildBlockState(tr.state);
+      const rebuilt = buildBlockState(tr.state);
+      imeTrace('blockField', {
+        path: 'REBUILD',
+        docChanged: tr.docChanged,
+        refreshed,
+        activeLineHasDeco: activeLineHasBlockDeco(rebuilt.deco, tr.state),
+        docLen: tr.state.doc.length,
+      });
+      return rebuilt;
     }
     // 2. 选区变化：仅跨越表格块边界才重建（O(blocks)），否则复用——不做全树 O(doc) 重算（UAT #8）。
     if (tr.selection && selectionCrossesBoundary(prev, tr)) {

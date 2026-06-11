@@ -94,6 +94,14 @@
 
 > **真机诊断（DEV-ONLY [IME-TRACE]）**：要定位 IME 吞字，开 devtools Console、过滤 `[IME-TRACE]`、输入「咕咕咕」——
 > 即可看到每个组合事务的 MAP / REBUILD 路径与任何组合期 setState/reload 冒烟枪（仅 DEV 构建有，生产零成本）。
+>
+> **离线 trace 文件（WebView2 Console 不可靠时的主通道）**：DEV 构建同时把每条 `[IME-TRACE]` 以**扁平单行**
+> 结构化文本写入 `%TEMP%/inkstream-ime-trace.log`（Rust `ime_trace_append` 落盘；启动时清空、每会话从干净文件起，
+> 绝对路径在 App 启动时打到 Rust stdout）。WebView2 的 Console 偶发抓不到组合期输出（缓冲 / 焦点切走 / 重绘竞态）时，
+> 直接 `Get-Content -Wait $env:TEMP\inkstream-ime-trace.log` 即可离线实时读。每行含毫秒时间戳（`performance.now()`）、
+> 事件 tag、`activeEl=`（document.activeElement 摘要为 `TAG#id.class`——验证首次合成是否落到游离 input 而非编辑器
+> contentEditable 的关键证据）、`composing`、`docLen`、`path=MAP|REBUILD`、`activeLineHasDeco`、组合事件的 `data`。
+> 落盘 fire-and-forget，永不抛、永不阻塞输入。生产构建（非 `debug_assertions` / 非 `import.meta.env.DEV`）整体 no-op。
 
 > **⚠️ 真机为 EDIT-06 唯一验收门（jsdom 无法复现 composition，这正是本 bug 曾经带病上线的原因）。**
 > jsdom 的 `CompositionEvent` 桩**不驱动**浏览器真实 IME 组合状态机：它无法复现「合成中文本节点」、

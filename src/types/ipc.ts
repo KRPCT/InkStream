@@ -28,4 +28,6 @@ export interface IpcCommands {
   // watcher 生命周期（切 vault 时 stop 旧 start 新）。
   start_watch: { args: { root: string }; result: null };
   stop_watch: { args: undefined; result: null };
+  // DEV-only IME 诊断落盘：单行 trace 追加到 %TEMP%/inkstream-ime-trace.log（EDIT-06）。
+  ime_trace_append: { args: { line: string }; result: null };
 }

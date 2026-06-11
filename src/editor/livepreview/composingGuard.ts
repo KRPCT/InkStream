@@ -83,16 +83,28 @@ const compositionDomHandlers = EditorView.domEventHandlers({
     // 代际递增：作废任何上一组合在飞的 compositionend 强刷（跨组合竞态根因，咕咕咕重复同音节）。
     refreshGen.set(view, (refreshGen.get(view) ?? 0) + 1);
     imeTraceComposingStart();
-    imeTrace('compositionstart', { data: event.data, docLen: view.state.doc.length });
+    imeTrace('compositionstart', {
+      data: event.data ?? '',
+      composing: view.composing,
+      docLen: view.state.doc.length,
+    });
     return false;
   },
-  compositionupdate(event) {
-    imeTrace('compositionupdate', { data: event.data });
+  compositionupdate(event, view) {
+    imeTrace('compositionupdate', {
+      data: event.data ?? '',
+      composing: view.composing,
+      docLen: view.state.doc.length,
+    });
     return false;
   },
   compositionend(event, view) {
     frozenFlags.set(view, false);
-    imeTrace('compositionend', { committed: event.data, docLen: view.state.doc.length });
+    imeTrace('compositionend', {
+      data: event.data ?? '',
+      composing: view.composing,
+      docLen: view.state.doc.length,
+    });
     imeTraceComposingEnd();
     // 调度时捕获当前代际，微任务派发前再校验——若期间又起了 compositionstart（代际已变）则放弃。
     const gen = refreshGen.get(view) ?? 0;
@@ -102,16 +114,19 @@ const compositionDomHandlers = EditorView.domEventHandlers({
       // 被后续 compositionstart 取代：N+1 在 N 的微任务排空前已完整 start→end（此时 isFrozen 已复位为
       // false，但代际已前进），陈旧强刷必须撤销。
       if ((refreshGen.get(view) ?? 0) !== gen) {
-        imeTrace('refresh-superseded', { gen });
+        imeTrace('refresh-superseded', { gen, composing: view.composing });
         return;
       }
       // view.composing（composing>0）OR composing===0 启动窗（isFrozen 为 true）——任一为真都说明组合
       // 仍在进行，绝不可强刷（撞 observer.clear 丢上屏 mutation）。双判才覆盖 composing===0 盲区。
       if (view.composing || isFrozen(view)) {
-        imeTrace('refresh-skipped-still-composing', { composing: view.composing });
+        imeTrace('refresh-skipped-still-composing', {
+          composing: view.composing,
+          frozen: isFrozen(view),
+        });
         return;
       }
-      imeTrace('refresh-rebuild-once', { gen });
+      imeTrace('refresh-rebuild-once', { gen, composing: view.composing });
       view.dispatch({ effects: refreshLivePreview.of(null) });
     });
     return false;
