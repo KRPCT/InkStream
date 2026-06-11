@@ -6,6 +6,7 @@ import { useEditorStore } from '../stores/useEditorStore';
 import { useVaultStore } from '../stores/useVaultStore';
 import type { TreeEntry, TreeNode } from '../types/vault';
 import { baseExtensions } from './extensions';
+import { languageForPath } from './languages';
 import { openFile, snapshotBeforeSwitch } from './editorState';
 
 /**
@@ -66,7 +67,8 @@ export async function openFileInEditor(view: EditorView, node: TreeNode): Promis
   if (active) snapshotBeforeSwitch(view, active);
   try {
     const doc = await readFile(vault.root, node.id);
-    openFile(view, node.id, doc, baseExtensions());
+    // 按扩展名解析初始语言，使打开 .py/.rs/.css 等文件即得对应高亮（EDIT-04）。
+    openFile(view, node.id, doc, baseExtensions(languageForPath(node.id)));
     useEditorStore.getState().openTab({ path: node.id, name: node.name });
     useEditorStore.getState().setActive(node.id);
   } catch {
