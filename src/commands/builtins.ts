@@ -7,6 +7,7 @@ import {
 import { createFileTreeOps } from '../components/workbench/fileTreeOps';
 import { requestOpenFolder, requestOpenRecent } from '../editor/vaultFlow';
 import { cycleDocumentLanguage } from '../editor/richtext/switchLanguage';
+import { toggleRenderMode } from '../editor/livepreview/renderMode';
 import { flushActiveFile } from '../editor/saveFlow';
 import { windowControls } from '../ipc/window';
 import { useAboutStore } from '../stores/useAboutStore';
@@ -147,6 +148,13 @@ const BUILTINS: Command[] = [
     run: () => cycleDocumentLanguage(),
   },
   {
+    id: 'view.toggle-render-mode',
+    title: '视图：切换渲染模式',
+    shortcut: 'Ctrl+E',
+    // Source ↔ Live Preview 热切（Compartment.reconfigure）；非 markdown 文档静默 no-op（D-01）。
+    run: () => void toggleRenderMode(),
+  },
+  {
     id: 'app.exit',
     title: '应用：退出',
     run: () => void windowControls.close(),
@@ -174,6 +182,7 @@ export function registerBuiltinCommands(): () => void {
     bind('Ctrl+Alt+B', 'view.toggle-right-panel'),
     bind('Ctrl+N', 'file.new-file'),
     bind('Ctrl+S', 'file.save'),
+    bind('Ctrl+E', 'view.toggle-render-mode'),
   ];
   const dispose = (): void => {
     disposers.forEach((d) => d());

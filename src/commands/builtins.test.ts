@@ -6,9 +6,14 @@ import { useSettingsStore } from '../stores/useSettingsStore';
 import { useWorkbenchStore } from '../stores/useWorkbenchStore';
 import { DEFAULT_LAYOUT } from '../types/workbench';
 import { registerBuiltinCommands } from './builtins';
-import { dispose as disposeKeymap, init as initKeymap } from './keymap';
+import { dispose as disposeKeymap, init as initKeymap, normalizeEvent } from './keymap';
 import { hydrate } from './mru';
 import { execute, getAll } from './registry';
+import { toggleRenderMode } from '../editor/livepreview/renderMode';
+
+vi.mock('../editor/livepreview/renderMode', () => ({
+  toggleRenderMode: vi.fn(() => null),
+}));
 
 /** UI-SPEC 命令注册表文案表字面（含 TitleBar 菜单条目的命令面板/退出）。 */
 const TITLES: Record<string, string> = {
@@ -29,6 +34,7 @@ const TITLES: Record<string, string> = {
   'view.collapse-tree': '视图：折叠文件树',
   'go.quick-open': '转到：快速打开文件',
   'doc.toggle-language': '文档：切换文档语言',
+  'view.toggle-render-mode': '视图：切换渲染模式',
   'app.exit': '应用：退出',
   'mode.switch-standard': '模式：切换到 Standard（通用）',
   'mode.switch-academic': '模式：切换到 Academic（学术）',
@@ -60,7 +66,7 @@ describe('builtins', () => {
 
   it('注册 22 条命令，标题与 UI-SPEC 字面逐字一致', () => {
     const all = getAll();
-    expect(all).toHaveLength(22);
+    expect(all).toHaveLength(23);
     for (const [id, title] of Object.entries(TITLES)) {
       expect(all.find((c) => c.id === id)?.title).toBe(title);
     }
@@ -78,7 +84,7 @@ describe('builtins', () => {
     expect(() => {
       disposeBuiltins = registerBuiltinCommands();
     }).not.toThrow();
-    expect(getAll()).toHaveLength(22);
+    expect(getAll()).toHaveLength(23);
   });
 
   it('合成 Ctrl+P 经 keymap 打开无前缀快速打开', () => {
@@ -139,6 +145,27 @@ describe('builtins', () => {
     useAboutStore.setState(useAboutStore.getInitialState(), true);
     await execute('app.about');
     expect(useAboutStore.getState().open).toBe(true);
+  });
+
+  it('view.toggle-render-mode 注册：title/shortcut 与 UI-SPEC 一致', () => {
+    const byId = new Map(getAll().map((c) => [c.id, c]));
+    const cmd = byId.get('view.toggle-render-mode');
+    expect(cmd?.title).toBe('视图：切换渲染模式');
+    expect(cmd?.shortcut).toBe('Ctrl+E');
+  });
+
+  it('execute view.toggle-render-mode 调 toggleRenderMode', async () => {
+    vi.mocked(toggleRenderMode).mockClear();
+    await execute('view.toggle-render-mode');
+    expect(toggleRenderMode).toHaveBeenCalledTimes(1);
+  });
+
+  it('合成 Ctrl+E 经 keymap 归一映射并触发渲染模式切换', () => {
+    initKeymap();
+    vi.mocked(toggleRenderMode).mockClear();
+    expect(normalizeEvent(key({ key: 'e', ctrlKey: true }))).toBe('Ctrl+E');
+    window.dispatchEvent(key({ key: 'e', ctrlKey: true }));
+    expect(toggleRenderMode).toHaveBeenCalledTimes(1);
   });
 
   it('execute app.exit 经 ipc 收口调 close', async () => {
