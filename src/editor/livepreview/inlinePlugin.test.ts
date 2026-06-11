@@ -92,22 +92,46 @@ describe('inlinePlugin 渲染态', () => {
   });
 });
 
-describe('inlinePlugin 光标行还原（D-07）', () => {
-  it('光标在标题行内时该行标记不再被隐藏（还原）', () => {
+describe('inlinePlugin 光标行淡显（D-07 / UAT #4）', () => {
+  it('光标在标题行内时该行标记由隐藏转淡显（cm-ink-mark-faint，非 hidden、非裸）', () => {
     view = lpView('# H1\n\n正文');
-    // 光标移到末行：标题被渲染（标记隐藏）。
+    // 光标移到末行：标题被渲染（标记隐藏 cm-ink-hidden）。
     view.dispatch({ selection: EditorSelection.cursor(view.state.doc.length) });
-    const renderedHidden = collectDecos(view).filter(
-      (d) => d.class === 'cm-ink-hidden' && d.from === 0,
-    );
-    expect(renderedHidden.length).toBeGreaterThan(0);
+    const rendered = collectDecos(view).filter((d) => d.from === 0);
+    expect(rendered.some((d) => d.class === 'cm-ink-hidden')).toBe(true);
+    expect(rendered.some((d) => d.class === 'cm-ink-mark-faint')).toBe(false);
 
-    // 光标移回标题行内：标记还原（不再隐藏）。
+    // 光标移回标题行内：标记淡显（cm-ink-mark-faint），不再硬隐藏，也非无装饰裸还原。
     view.dispatch({ selection: EditorSelection.cursor(2) });
-    const revealedHidden = collectDecos(view).filter(
-      (d) => d.class === 'cm-ink-hidden' && d.from === 0,
-    );
-    expect(revealedHidden.length).toBe(0);
+    const revealed = collectDecos(view).filter((d) => d.from === 0);
+    expect(revealed.some((d) => d.class === 'cm-ink-hidden')).toBe(false);
+    expect(revealed.some((d) => d.class === 'cm-ink-mark-faint')).toBe(true);
+  });
+
+  it('光标在 `**b**` 行内：两侧 `**` 由隐藏转淡显（满宽淡显，非消失）', () => {
+    view = lpView('**b**\n\n尾');
+    // 光标在末行：渲染态两个 EmphasisMark 隐藏。
+    view.dispatch({ selection: EditorSelection.cursor(view.state.doc.length) });
+    expect(collectDecos(view).filter((d) => d.class === 'cm-ink-hidden').length).toBeGreaterThanOrEqual(2);
+
+    // 光标移入加粗元素内（pos 2）：两侧 `**` 转淡显。
+    view.dispatch({ selection: EditorSelection.cursor(2) });
+    const onLine = collectDecos(view);
+    const faint = onLine.filter((d) => d.class === 'cm-ink-mark-faint');
+    expect(faint.length).toBeGreaterThanOrEqual(2);
+    expect(onLine.some((d) => d.class === 'cm-ink-hidden' && d.from < 5)).toBe(false);
+  });
+
+  it('嵌套：光标在 `[**x**](u)` 内 → 链接括号 + URL + 内层 `**` 全部淡显（深度栈正确）', () => {
+    view = lpView('[**x**](https://x.com)\n\n尾');
+    // 光标移入链接内（pos 3，落在内层加粗）：嵌套各层标记均应淡显，无一硬隐藏。
+    view.dispatch({ selection: EditorSelection.cursor(3) });
+    const decos = collectDecos(view);
+    // LinkMark `[`(0-1) + 内层 EmphasisMark `**` + URL 等标记全部 faint。
+    expect(decos.some((d) => d.class === 'cm-ink-mark-faint' && d.from === 0)).toBe(true);
+    expect(decos.filter((d) => d.class === 'cm-ink-mark-faint').length).toBeGreaterThanOrEqual(4);
+    // 该元素内无任何标记仍走 cm-ink-hidden（嵌套全层淡显，无遗漏）。
+    expect(decos.some((d) => d.class === 'cm-ink-hidden')).toBe(false);
   });
 });
 
@@ -223,28 +247,33 @@ describe('inlinePlugin 列表 / 引用逐行还原（D-06）', () => {
     );
     expect(firstMarkHidden).toBe(true);
 
-    // 光标移到第一行（pos 1）：该行 QuoteMark 还原（不隐藏），第二行仍渲染。
+    // 光标移到第一行（pos 1）：该行 QuoteMark 转淡显（非硬隐藏、非裸还原），第二行仍渲染。
     view.dispatch({ selection: EditorSelection.cursor(1) });
     decos = collectDecos(view);
-    const firstMarkRevealed = !decos.some(
-      (d) => d.from === 0 && (d.class === 'cm-ink-hidden' || d.class === 'cm-ink-quote-mark'),
-    );
-    expect(firstMarkRevealed).toBe(true);
+    // 不再 cm-ink-hidden / cm-ink-quote-mark（隐藏类）。
+    expect(
+      decos.some(
+        (d) => d.from === 0 && (d.class === 'cm-ink-hidden' || d.class === 'cm-ink-quote-mark'),
+      ),
+    ).toBe(false);
+    // 改走 cm-ink-mark-faint 淡显。
+    expect(decos.some((d) => d.from === 0 && d.class === 'cm-ink-mark-faint')).toBe(true);
   });
 
-  it('列表：光标所在项还原标记，其余项保渲染', () => {
+  it('列表：光标所在项标记淡显（cm-ink-mark-faint），其余项保渲染', () => {
     view = lpView('- a\n- b');
-    // 光标在第一行（pos 0）：第一项还原，第二项（4-5）保渲染。
+    // 光标在第一行（pos 0）：第一项淡显，第二项（4-5）保渲染。
     view.dispatch({ selection: EditorSelection.cursor(0) });
     const decos = collectDecos(view);
-    // 第二行 ListMark（4-5）仍被处理（渲染）。
+    // 第二行 ListMark（4-5）仍被处理（渲染隐藏）。
     expect(
       decos.some((d) => (d.class === 'cm-ink-list-mark' || d.widget) && d.from === 4),
     ).toBe(true);
-    // 第一行 ListMark（0-1）未被处理（还原）。
+    // 第一行 ListMark（0-1）不再走 list-mark 隐藏类，改走淡显。
     expect(
-      decos.some((d) => (d.class === 'cm-ink-list-mark' || d.widget) && d.from === 0),
+      decos.some((d) => d.class === 'cm-ink-list-mark' && d.from === 0),
     ).toBe(false);
+    expect(decos.some((d) => d.class === 'cm-ink-mark-faint' && d.from === 0)).toBe(true);
   });
 });
 

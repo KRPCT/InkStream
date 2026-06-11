@@ -35,8 +35,10 @@ import { useEditorStore } from '../../stores/useEditorStore';
  *     Decoration.mark({class:'cm-ink-hidden'}) 隐藏字符——**绝不改 doc**（真相源不变 T-03-06）；
  *     删除线 line-through / 行内代码等宽底纹 / 链接色 / `<u>` underline 用 Decoration.mark 加内容样式；
  *     水平线 HorizontalRule 经 Decoration.replace 换 `<hr>` widget。
- *   - 光标行还原（D-07 / D-06）：光标落在 REVEALABLE 元素 range 内 → 跳过其内部标记隐藏（return false），
- *     标记字符显出但排版不变；列表项 / 引用块按「光标所在行」逐行还原（LINE_REVEAL_MARK）。
+ *   - 光标行淡显（D-07 / D-06 / UAT #4，Typora 风）：光标落在 REVEALABLE 元素 range 内 → 不再硬还原
+ *     （旧 return false 跳子树满字号满不透明），改为压入还原深度栈并继续迭代子树，内部标记走 FAINT_MARK
+ *     淡显（满字形宽 + 仅降不透明度，光标进出该行不跳位）；列表项 / 引用块按「光标所在行」逐行淡显
+ *     （LINE_REVEAL_MARK）。嵌套元素（如链接内加粗）用深度栈兜底，全层标记一致淡显。
  *   - IME 闸门：update() 首行 `if (u.view.composing || isFrozen(u.view)) return;`——组合期保旧 RangeSet，
  *     绝不重算（接 composingGuard，EDIT-06 最高风险件）；compositionend 后由 refreshLivePreview 触发一次重建。
  *   - 性能纪律：仅 view.visibleRanges 内迭代 + 构建，视口外不迭代（10 万字 < 16ms）。
@@ -46,6 +48,13 @@ import { useEditorStore } from '../../stores/useEditorStore';
 
 /** 标记字符隐藏装饰：CSS 收宽到 0 并不可见（盒模型保旧，切换可见性零位移；非删除 doc）。 */
 const HIDDEN_MARK = Decoration.mark({ class: 'cm-ink-hidden' });
+
+/**
+ * 标记字符淡显装饰（D-07 Typora 风「显标记保排版」软化版，UAT #4）：光标所在元素/行的标记
+ * 不再硬还原（满字号满不透明），而是保留满字形宽度、仅降不透明度（var(--cm-mark-faint-opacity)）。
+ * 仅改 opacity 不收宽，故光标进出该行字号/行高不跳（布局稳定，非删除 doc）。
+ */
+const FAINT_MARK = Decoration.mark({ class: 'cm-ink-mark-faint' });
 
 /** `<u>` 中间文本下划线装饰（D-15，跨开闭 HTMLTag 自配对区间）。 */
 const UNDERLINE_MARK = Decoration.mark({ class: 'cm-ink-underline' });
@@ -107,15 +116,26 @@ export function buildInlineDecorations(view: EditorView): DecorationSet {
   const quotedLines = new Set<number>();
   // `<u>` 开标签栈：遇闭标签时弹出配对，给中间文本加 underline（A2 自配对）。
   let openUTag: { from: number; to: number } | null = null;
+  // 「光标所在可还原元素」深度栈（UAT #4）：用栈而非单布尔，正确处理嵌套（如链接内加粗
+  // `[**x**](u)`）——任一层为活动还原元素时其内部标记走淡显（FAINT）而非隐藏（HIDDEN）。
+  // 栈存元素 to 边界；enter 时若命中 REVEALABLE 且光标在内则压栈，leave 越过栈顶 to 时弹出。
+  const revealStack: number[] = [];
+  const markDeco = (): Decoration => (revealStack.length > 0 ? FAINT_MARK : HIDDEN_MARK);
 
   for (const { from, to } of view.visibleRanges) {
     syntaxTree(state).iterate({
       from,
       to,
       enter: (node) => {
-        // 光标落在可还原元素内 → 整个子树跳过（return false）：显标记保排版（D-07）。
+        // 出栈：离开上一活动还原元素 range 后（当前节点起点越过栈顶 to）弹出失效层。
+        while (revealStack.length > 0 && node.from >= revealStack[revealStack.length - 1]) {
+          revealStack.pop();
+        }
+        // 光标落在可还原元素内 → 压栈并继续迭代子树：其内部标记改走淡显（FAINT）保排版（D-07）。
+        // 不再 return false 跳子树——标记需淡显而非消失，故须迭代到内部 mark 节点逐个上 FAINT。
         if (REVEALABLE.has(node.name) && cursorInRange(state, node.from, node.to)) {
-          return false;
+          revealStack.push(node.to);
+          // 标题元素仍需补行级字号 class（落入下方 headingLevel 分支）；继续迭代。
         }
 
         // 标题元素：给所在行加字号 class（行级，保字号字重；不替换文本）。
@@ -189,9 +209,21 @@ export function buildInlineDecorations(view: EditorView): DecorationSet {
           return undefined;
         }
 
-        // 逐行还原标记（列表 ListMark / 引用 QuoteMark）：光标所在行还原（不处理），其余行渲染。
+        // 逐行还原标记（列表 ListMark / 引用 QuoteMark）：光标所在行标记淡显（FAINT 保排版），其余行渲染。
         if (LINE_REVEAL_MARK.has(node.name)) {
-          if (isCursorOnLineOf(state, node.from)) return undefined; // 该行还原源码。
+          // 光标所在行：标记不收宽隐藏，改淡显（满字形宽 + 降不透明度），进出该行不跳位（UAT #4）。
+          if (isCursorOnLineOf(state, node.from)) {
+            if (node.name === 'QuoteMark') {
+              // 引用块左竖条仍逐行呈现（行级装饰非标记隐藏，不影响淡显契约）。
+              const line = state.doc.lineAt(node.from);
+              if (!quotedLines.has(line.number)) {
+                quotedLines.add(line.number);
+                ranges.push(QUOTE_LINE.range(line.from, line.from));
+              }
+            }
+            if (node.to > node.from) ranges.push(FAINT_MARK.range(node.from, node.to));
+            return undefined;
+          }
           if (node.name === 'QuoteMark') {
             const line = state.doc.lineAt(node.from);
             if (!quotedLines.has(line.number)) {
@@ -206,13 +238,13 @@ export function buildInlineDecorations(view: EditorView): DecorationSet {
           return undefined;
         }
 
-        // 标记字符节点：隐藏其字符（装饰，不改 doc）。
+        // 标记字符节点：隐藏其字符（装饰，不改 doc）；若处于活动还原元素内则淡显（FAINT）。
         if (HIDE_MARK.has(node.name) && node.to > node.from) {
-          ranges.push(HIDDEN_MARK.range(node.from, node.to));
+          ranges.push(markDeco().range(node.from, node.to));
         }
-        // URL 节点（链接 [text](url) 的 url 部分）：隐藏（仅显 text）。
+        // URL 节点（链接 [text](url) 的 url 部分）：隐藏（仅显 text）；活动还原元素内淡显。
         if (node.name === 'URL' && node.to > node.from) {
-          ranges.push(HIDDEN_MARK.range(node.from, node.to));
+          ranges.push(markDeco().range(node.from, node.to));
         }
         return undefined;
       },
@@ -234,6 +266,8 @@ export function buildInlineDecorations(view: EditorView): DecorationSet {
  */
 const inlineTheme = EditorView.theme({
   '.cm-ink-hidden': { fontSize: '0', letterSpacing: '0' },
+  // 光标行标记淡显（UAT #4，Typora 风）：仅降不透明度、保满字形宽——光标进出该行字号/行高不跳。
+  '.cm-ink-mark-faint': { opacity: 'var(--cm-mark-faint-opacity)' },
   '.cm-ink-h1': { fontSize: '1.802em', fontWeight: '600', color: 'var(--cm-heading)' },
   '.cm-ink-h2': { fontSize: '1.602em', fontWeight: '600', color: 'var(--cm-heading)' },
   '.cm-ink-h3': { fontSize: '1.424em', fontWeight: '600', color: 'var(--cm-heading)' },

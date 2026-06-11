@@ -55,6 +55,8 @@ html[data-theme='light'] {
   --cm-invalid: hsl(344, 84%, 43%);
 
   /* Live Preview 装饰专用 token（Phase 3，UI-SPEC §Color 新增表，取色同源既有中性层/accent）。 */
+  /* 光标行标记淡显不透明度（UAT #4，Typora 风「显标记保排版」软化版，单 token 便于调参）。 */
+  --cm-mark-faint-opacity: 0.45;
   --cm-inline-code-bg: hsl(230, 1%, 92%);
   --cm-blockquote-border: hsl(230, 4%, 86%);
   --cm-table-border: hsl(230, 4%, 86%);
@@ -99,6 +101,8 @@ html[data-theme='dark'] {
   --cm-invalid: hsl(355, 65%, 65%);
 
   /* Live Preview 装饰专用 token（Phase 3，UI-SPEC §Color 新增表，dark 镜像同源 Atom one-dark）。 */
+  /* 光标行标记淡显不透明度（UAT #4）：dark 下略提一档保暗背景上仍可辨。 */
+  --cm-mark-faint-opacity: 0.5;
   --cm-inline-code-bg: hsl(220, 13%, 13%);
   --cm-blockquote-border: hsl(222, 13%, 11%);
   --cm-table-border: hsl(222, 13%, 11%);
