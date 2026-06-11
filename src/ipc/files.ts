@@ -14,3 +14,36 @@ import { invoke } from './invoke';
 export function readFile(root: string, path: string): Promise<string> {
   return invoke('read_file', { root, path });
 }
+
+/**
+ * 原子写（temp + rename，T-02-07）：写中途崩溃只丢 temp，原文件不动。
+ * 自动保存防抖落盘与 Ctrl+S 立即落盘均经此。
+ */
+export function writeFileAtomic(root: string, path: string, content: string): Promise<null> {
+  return invoke('write_file_atomic', { root, path, content });
+}
+
+/** 新建空文件：同名已存在则 Rust 侧返回错误，绝不覆盖（D-12）。 */
+export function createFile(root: string, path: string): Promise<null> {
+  return invoke('create_file', { root, path });
+}
+
+/** 新建目录：同名已存在则 Rust 侧返回错误。 */
+export function createDir(root: string, path: string): Promise<null> {
+  return invoke('create_dir', { root, path });
+}
+
+/** 重命名：目的地已存在则 Rust 侧返回错误（绝不覆盖）。 */
+export function renamePath(root: string, from: string, to: string): Promise<null> {
+  return invoke('rename_path', { root, from, to });
+}
+
+/** 移动：目的地已存在同名项则 Rust 侧返回错误。 */
+export function movePath(root: string, from: string, to: string): Promise<null> {
+  return invoke('move_path', { root, from, to });
+}
+
+/** 删除到系统回收站（D-09）。 */
+export function trashPath(root: string, path: string): Promise<null> {
+  return invoke('trash_path', { root, path });
+}

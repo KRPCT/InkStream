@@ -15,6 +15,8 @@ interface EditorStoreState {
   activePath: string | null;
   /** 每文件脏标记（未落盘防抖窗口，D-02）。 */
   dirty: Record<string, boolean>;
+  /** 每文件自动保存冻结标志（02-04 外部变更冲突期防误覆盖；本任务建开关）。 */
+  frozen: Record<string, boolean>;
   /** 当前光标位置镜像（StatusBar 消费，单向自 CM updateListener 写入）。 */
   cursor: number;
   openTab: (tab: TabMeta) => void;
@@ -22,6 +24,8 @@ interface EditorStoreState {
   setActive: (path: string) => void;
   markDirty: (path: string) => void;
   clearDirty: (path: string) => void;
+  freezeAutosave: (path: string) => void;
+  unfreezeAutosave: (path: string) => void;
   setCursor: (pos: number) => void;
 }
 
@@ -35,6 +39,7 @@ export const useEditorStore = create<EditorStoreState>((set) => ({
   tabs: [],
   activePath: null,
   dirty: {},
+  frozen: {},
   cursor: 0,
   openTab: (tab) =>
     set((s) => (s.tabs.some((t) => t.path === tab.path) ? s : { tabs: [...s.tabs, tab] })),
@@ -43,12 +48,16 @@ export const useEditorStore = create<EditorStoreState>((set) => ({
       const tabs = s.tabs.filter((t) => t.path !== path);
       const dirty = { ...s.dirty };
       delete dirty[path];
+      const frozen = { ...s.frozen };
+      delete frozen[path];
       // 关掉的是活动 tab：活动切到剩余首个 tab，无则 null
       const activePath = s.activePath === path ? (tabs[0]?.path ?? null) : s.activePath;
-      return { tabs, dirty, activePath };
+      return { tabs, dirty, frozen, activePath };
     }),
   setActive: (activePath) => set({ activePath }),
   markDirty: (path) => set((s) => ({ dirty: { ...s.dirty, [path]: true } })),
   clearDirty: (path) => set((s) => ({ dirty: { ...s.dirty, [path]: false } })),
+  freezeAutosave: (path) => set((s) => ({ frozen: { ...s.frozen, [path]: true } })),
+  unfreezeAutosave: (path) => set((s) => ({ frozen: { ...s.frozen, [path]: false } })),
   setCursor: (cursor) => set({ cursor }),
 }));

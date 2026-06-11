@@ -16,4 +16,14 @@ export interface IpcCommands {
   list_dir: { args: { root: string; rel: string }; result: TreeEntry[] };
   find_repo_root: { args: { path: string }; result: string | null };
   read_file: { args: { root: string; path: string }; result: string };
+  // 写侧 command（02-03）。均经 path_guard 校验落在 vault 根内；同名拒绝绝不覆盖（D-12）。
+  write_file_atomic: { args: { root: string; path: string; content: string }; result: null };
+  create_file: { args: { root: string; path: string }; result: null };
+  create_dir: { args: { root: string; path: string }; result: null };
+  rename_path: { args: { root: string; from: string; to: string }; result: null };
+  move_path: { args: { root: string; from: string; to: string }; result: null };
+  trash_path: { args: { root: string; path: string }; result: null };
+  // watcher 生命周期（切 vault 时 stop 旧 start 新）。
+  start_watch: { args: { root: string }; result: null };
+  stop_watch: { args: undefined; result: null };
 }

@@ -3,6 +3,7 @@ import { useRef } from 'react';
 import { EditorState } from '@codemirror/state';
 import { EditorView } from '@codemirror/view';
 import { useEditorStore } from '../stores/useEditorStore';
+import { scheduleAutosave } from '../stores/autosave';
 import { baseExtensions } from './extensions';
 import { setView } from './viewHandle';
 
@@ -28,6 +29,8 @@ export function useCodeMirror(parentRef: RefObject<HTMLElement | null>): RefObje
       const activePath = useEditorStore.getState().activePath;
       if (u.docChanged && activePath) {
         useEditorStore.getState().markDirty(activePath);
+        // 编辑触发防抖自动落盘（D-02 原子写，500ms 防抖合并）
+        scheduleAutosave(activePath);
       }
       if (u.selectionSet || u.docChanged) {
         useEditorStore.getState().setCursor(u.state.selection.main.head);
