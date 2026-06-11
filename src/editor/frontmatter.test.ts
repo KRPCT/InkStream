@@ -37,6 +37,28 @@ describe('readLanguage', () => {
     // 含引号/注释的复杂 YAML 不做完整解析，仅扫单字段裸值
     expect(readLanguage('---\nlanguage: markdown # 注释\n---\n')).toBe('markdown');
   });
+
+  it('WR-09 正文内的 --- 水平线不被误判为闭合栅栏', () => {
+    // 头部真正闭合在第三行，正文有 markdown 水平线 ---；闭合界定须整行锚定，
+    // 否则 indexOf('\n---') 会命中正文 `---` 致截断/丢失 language。
+    const doc = '---\nlanguage: typst\n---\n正文上段\n---\n正文下段';
+    expect(readLanguage(doc)).toBe('typst');
+  });
+
+  it('WR-09 正文内 ---- 多破折号不被误判为闭合栅栏', () => {
+    const doc = '---\nlanguage: latex\n---\n标题\n----\n下段';
+    expect(readLanguage(doc)).toBe('latex');
+  });
+
+  it('WR-09 闭合行后可跟尾随空白（--- 后空格仍闭合）', () => {
+    const doc = '---\nlanguage: rust\n---  \n正文';
+    expect(readLanguage(doc)).toBe('rust');
+  });
+
+  it('WR-09 闭合 --- 后立刻有非空白文字则非闭合栅栏', () => {
+    // `---foo` 不是 frontmatter 闭合（行非纯 ---），故整篇未闭合 → null。
+    expect(readLanguage('---\nlanguage: rust\n---foo\n正文')).toBeNull();
+  });
 });
 
 describe('writeLanguage', () => {
@@ -73,6 +95,16 @@ describe('writeLanguage', () => {
   it('幂等：写入相同语言不损坏文档', () => {
     const doc = '---\nlanguage: markdown\n---\n正文';
     expect(writeLanguage(doc, 'markdown')).toBe(doc);
+  });
+
+  it('WR-09 writeLanguage 不被正文 --- 水平线误截', () => {
+    // 正文含水平线 ---：写语言只应改头部，正文（含 --- 行）原样保留。
+    const doc = '---\nlanguage: markdown\n---\n上段\n---\n下段';
+    const out = writeLanguage(doc, 'latex');
+    expect(readLanguage(out)).toBe('latex');
+    // 正文两段与中间水平线均保留（未被吞入头部或截断）。
+    expect(out).toContain('上段\n---\n下段');
+    expect(out).not.toContain('language: markdown');
   });
 });
 
