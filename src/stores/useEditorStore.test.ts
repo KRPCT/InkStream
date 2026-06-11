@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import { useEditorStore } from './useEditorStore';
 
 function reset(): void {
-  useEditorStore.setState({ tabs: [], activePath: null, dirty: {}, cursor: 0 });
+  useEditorStore.setState({ tabs: [], activePath: null, dirty: {}, cursor: 0, frozen: {} });
 }
 
 describe('useEditorStore', () => {
@@ -45,6 +45,20 @@ describe('useEditorStore', () => {
     expect(s.dirty['a.md']).toBeUndefined();
     // 关掉活动 tab 后活动切到剩余 tab
     expect(s.activePath).toBe('b.md');
+  });
+
+  it('freezeAutosave / unfreezeAutosave 切换 frozen 标志（02-04 冲突期防误覆盖）', () => {
+    useEditorStore.getState().freezeAutosave('a.md');
+    expect(useEditorStore.getState().frozen['a.md']).toBe(true);
+    useEditorStore.getState().unfreezeAutosave('a.md');
+    expect(useEditorStore.getState().frozen['a.md']).toBe(false);
+  });
+
+  it('closeTab 同时清除 frozen 标志（释放）', () => {
+    useEditorStore.getState().openTab({ path: 'a.md', name: 'a.md' });
+    useEditorStore.getState().freezeAutosave('a.md');
+    useEditorStore.getState().closeTab('a.md');
+    expect(useEditorStore.getState().frozen['a.md']).toBeUndefined();
   });
 
   it('store holds no EditorView/EditorState instance fields', () => {
