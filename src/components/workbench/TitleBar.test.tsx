@@ -3,6 +3,8 @@ import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { isMacOS } from '../../ipc/platform';
 import { windowControls } from '../../ipc/window';
+import { useEditorStore } from '../../stores/useEditorStore';
+import { useVaultStore } from '../../stores/useVaultStore';
 import TitleBar from './TitleBar';
 
 vi.mock('../../ipc/window', () => ({
@@ -72,5 +74,33 @@ describe('TitleBar', () => {
   it('title prop 留 Phase 2 接口：传入即替换居中标题', () => {
     render(<TitleBar title="chapter-01.md - my-vault" />);
     expect(screen.getByText('chapter-01.md - my-vault')).toBeInTheDocument();
+  });
+
+  describe('三态标题（D-03/UI-SPEC，自 store 数据源）', () => {
+    beforeEach(() => {
+      useVaultStore.setState({ vault: null });
+      useEditorStore.setState({ tabs: [], activePath: null });
+    });
+
+    it('无 vault：标题为「InkStream / 墨流」', () => {
+      render(<TitleBar />);
+      expect(screen.getByText('InkStream / 墨流')).toBeInTheDocument();
+    });
+
+    it('有 vault 无活动文件：标题为 vault 名', () => {
+      useVaultStore.setState({ vault: { root: '/my-vault', repoRoot: null, name: 'my-vault' } });
+      render(<TitleBar />);
+      expect(screen.getByText('my-vault')).toBeInTheDocument();
+    });
+
+    it('有活动文件：标题为「{文件名} - {vault 名}」', () => {
+      useVaultStore.setState({ vault: { root: '/my-vault', repoRoot: null, name: 'my-vault' } });
+      useEditorStore.setState({
+        tabs: [{ path: 'notes/chapter-01.md', name: 'chapter-01.md' }],
+        activePath: 'notes/chapter-01.md',
+      });
+      render(<TitleBar />);
+      expect(screen.getByText('chapter-01.md - my-vault')).toBeInTheDocument();
+    });
   });
 });
