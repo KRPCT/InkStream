@@ -70,7 +70,15 @@ export function resolveVaultImage(url: string, vault: ImageVaultContext | null):
     stack.push(seg);
   }
 
-  const rootClean = vault.root.replace(/\/+$/, '');
+  // vault.root 规范化（UAT 图片，Windows verbatim 根）：open_vault 在 Windows 返回
+  // Path::canonicalize 的 verbatim 路径 `\\?\D:\...\vault`（反斜杠 + `\\?\` 前缀）。verbatim 前缀会
+  // 禁用 asset 协议侧 `/`→`\` 翻译 → File::open 404 → 错误占位。镜像 externalChange.ts:toRelative
+  // 的剥前缀 + 反斜杠转正斜杠，产出 `D:/.../vault`，asset 协议在 Windows 可解析。
+  const rootClean = vault.root
+    .replace(/^\\\\\?\\UNC\\/, '\\\\') // \\?\UNC\server\share -> \\server\share
+    .replace(/^\\\\\?\\/, '') // \\?\D:\... -> D:\...
+    .replace(/\\/g, '/') // 反斜杠 -> 正斜杠
+    .replace(/\/+$/, ''); // 去尾随斜杠
   const absPath = stack.length > 0 ? `${rootClean}/${stack.join('/')}` : rootClean;
   return { kind: 'local', absPath };
 }

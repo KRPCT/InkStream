@@ -83,6 +83,18 @@ describe('resolveVaultImage（vault 内路径解析 + 越界守门 T-03-19）', 
   it('无 vault 上下文时本地路径不解析（invalid）', () => {
     expect(resolveVaultImage('img.png', null).kind).toBe('invalid');
   });
+
+  it('Windows verbatim 根（\\\\?\\D:\\vault）规范化为正斜杠绝对路径，asset 协议可解析（UAT 图片）', () => {
+    // open_vault 在 Windows 返回 canonicalize 的 verbatim 路径（反斜杠 + `\\?\` 前缀）。
+    // POSIX `/vault` fixture 抓不到此回归——须用真实 Windows 根。
+    expect(
+      resolveVaultImage('img.png', { root: '\\\\?\\D:\\vault', docPath: 'notes/post.md' }),
+    ).toEqual({ kind: 'local', absPath: 'D:/vault/notes/img.png' });
+    // UNC verbatim 根同样规范化。
+    expect(
+      resolveVaultImage('img.png', { root: '\\\\?\\UNC\\server\\share\\vault', docPath: 'post.md' }),
+    ).toEqual({ kind: 'local', absPath: '//server/share/vault/img.png' });
+  });
 });
 
 describe('ImageWidget.toDOM', () => {
