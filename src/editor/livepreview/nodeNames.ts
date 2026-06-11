@@ -44,6 +44,17 @@ export const REVEALABLE: ReadonlySet<string> = new Set([
   'Link', // [文本](url)（Plan 06 渲染）
 ]);
 
+/**
+ * 块级原子节点：blockField 用 Decoration.replace({ block: true }) 整块替换，光标进块整还原（D-06）。
+ * 这些是「半渲染会错乱」的多行原子块（RESEARCH「元素识别」表 / UI-SPEC GFM 表格）。
+ *
+ * 前向兼容扩展点（RESEARCH）：Phase 5 的 math/typst/latex 块、HTML 块（HTMLBlock）按同范式追加表项。
+ * 当前 plan 仅落地 GFM 表格（Table），证明块级范式（StateField provide + atomicRanges + 整块还原）。
+ */
+export const BLOCK_REPLACE: ReadonlySet<string> = new Set([
+  'Table', // GFM 表格（TableHeader/TableRow/TableCell/TableDelimiter 为其子节点）
+]);
+
 /** 由 ATXHeadingN 节点名取标题级别（1-6）；非标题节点返回 0。 */
 export function headingLevel(nodeName: string): number {
   const m = /^ATXHeading([1-6])$/.exec(nodeName);
