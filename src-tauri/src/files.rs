@@ -229,6 +229,19 @@ mod tests {
     }
 
     #[test]
+    fn create_file_never_truncates_existing_content() {
+        // WR-05 TOCTOU：对已有内容的文件再 create_file 须 Err 且绝不清空既有内容
+        // （create_new 原子创建，AlreadyExists 直接拒绝，无 exists()→write 竞态窗口）。
+        let root = temp_dir("create-toctou");
+        let root_str = root.to_string_lossy().into_owned();
+        fs::write(root.join("a.md"), "重要内容").unwrap();
+        assert!(create_file(root_str, "a.md".to_string()).is_err());
+        // 既有内容必须原样保留（不得被空 write 覆盖）。
+        assert_eq!(fs::read_to_string(root.join("a.md")).unwrap(), "重要内容");
+        fs::remove_dir_all(&root).ok();
+    }
+
+    #[test]
     fn create_dir_rejects_same_name() {
         let root = temp_dir("createdir-dup");
         let root_str = root.to_string_lossy().into_owned();
