@@ -3,6 +3,7 @@ import { startWatch, stopWatch } from '../ipc/events';
 import { readFile } from '../ipc/files';
 import { listDir, listFiles, openVault } from '../ipc/vault';
 import { getView } from './viewHandle';
+import { openFolderDialog } from '../stores/useOpenFolderStore';
 import { showToast } from '../stores/useToastStore';
 import { useEditorStore } from '../stores/useEditorStore';
 import { useGitGuidanceStore } from '../stores/useGitGuidanceStore';
@@ -148,14 +149,22 @@ export async function openFileByPath(path: string): Promise<void> {
 }
 
 /**
- * 「打开文件夹」命令入口（命令面板 / 空态按钮触发）。
+ * 「打开文件夹」命令入口（命令面板 / 空态按钮 / EditorArea 按钮 / file.open-folder 触发）。
  *
- * 原生文件夹选择对话框尚未接入（拒引未审计 tauri-plugin-dialog，记为 02-03 待办）。
- * 本阶段端到端路径经 openVaultByPath（测试注入 / 后续原生 picker 回填）驱动；
- * 此入口在原生 picker 落地前给出明确提示，不静默吞掉用户操作。
+ * 拒引未审计 tauri-plugin-dialog（Phase 1 取向），改自绘路径输入对话框（openFolderDialog）：
+ * 用户粘贴/输入绝对路径 → switchVault（与 RecentVaults 同链路，停旧 watcher → 开新 vault →
+ * 启用文件监听）。取消 / 空路径静默 no-op；打开失败的提示由 openVaultByPath 内的 toast 兜底。
  */
 export async function requestOpenFolder(): Promise<void> {
-  showToast('warning', '原生文件夹选择将在后续切片接入；当前可经测试或编程入口打开工作区。');
+  const path = await openFolderDialog();
+  if (path === null) return;
+  const trimmed = path.trim();
+  if (trimmed.length === 0) return;
+  try {
+    await switchVault(trimmed);
+  } catch {
+    /* openVaultByPath 已弹错误 toast，此处吞掉避免未处理拒绝 */
+  }
 }
 
 /** 点击文件树文件：快照当前 → readFile → openFile 换装 → openTab/setActive。 */

@@ -15,6 +15,12 @@ vi.mock('../editor/livepreview/renderMode', () => ({
   toggleRenderMode: vi.fn(() => null),
 }));
 
+const requestOpenFolder = vi.fn(() => Promise.resolve());
+vi.mock('../editor/vaultFlow', () => ({
+  requestOpenFolder: () => requestOpenFolder(),
+  requestOpenRecent: vi.fn(() => Promise.resolve()),
+}));
+
 /** UI-SPEC 命令注册表文案表字面（含 TitleBar 菜单条目的命令面板/退出）。 */
 const TITLES: Record<string, string> = {
   'theme.light': '主题：亮色',
@@ -56,6 +62,7 @@ describe('builtins', () => {
     usePaletteStore.setState(usePaletteStore.getInitialState(), true);
     delete document.documentElement.dataset.theme;
     delete document.documentElement.dataset.mode;
+    requestOpenFolder.mockClear();
     disposeBuiltins = registerBuiltinCommands();
   });
 
@@ -78,6 +85,14 @@ describe('builtins', () => {
     expect(byId.get('view.toggle-right-panel')?.shortcut).toBe('Ctrl+Alt+B');
     expect(byId.get('view.command-palette')?.shortcut).toBe('Ctrl+Shift+P');
     expect(byId.get('go.quick-open')?.shortcut).toBe('Ctrl+P');
+    expect(byId.get('file.open-folder')?.shortcut).toBe('Ctrl+O');
+  });
+
+  it('合成 Ctrl+O 经 keymap 归一映射并触发打开文件夹', () => {
+    initKeymap();
+    expect(normalizeEvent(key({ key: 'o', ctrlKey: true }))).toBe('Ctrl+O');
+    window.dispatchEvent(key({ key: 'o', ctrlKey: true }));
+    expect(requestOpenFolder).toHaveBeenCalledTimes(1);
   });
 
   it('重复调用安全（StrictMode）：先清旧注册再登记', () => {

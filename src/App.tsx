@@ -3,6 +3,7 @@ import AboutDialog from './components/common/AboutDialog';
 import ConfirmDialog from './components/common/ConfirmDialog';
 import Toast from './components/common/Toast';
 import CommandPalette from './components/palette/CommandPalette';
+import OpenFolderDialog from './components/workbench/OpenFolderDialog';
 import WorkbenchLayout from './components/workbench/WorkbenchLayout';
 import { initExternalChangeArbiter, stopExternalChangeArbiter } from './editor/externalChange';
 import { restoreLastVault } from './editor/startupFlow';
@@ -33,6 +34,8 @@ export default function App() {
       <AboutDialog />
       {/* 破坏性确认模态：删除 / 覆盖磁盘二次确认（useConfirmStore，confirmDestructive 弹出） */}
       <ConfirmDialog />
+      {/* 打开文件夹路径输入模态：requestOpenFolder 经 openFolderDialog 弹出（useOpenFolderStore） */}
+      <OpenFolderDialog />
       {/* Toast 通知宿主：错误/警告（useToastStore，持久化读写失败路径消费） */}
       <Toast />
     </>

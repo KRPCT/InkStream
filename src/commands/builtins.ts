@@ -90,6 +90,7 @@ const BUILTINS: Command[] = [
   {
     id: 'file.open-folder',
     title: '文件：打开文件夹',
+    shortcut: 'Ctrl+O',
     run: () => void requestOpenFolder(),
   },
   {
@@ -181,6 +182,7 @@ export function registerBuiltinCommands(): () => void {
     bind('Ctrl+B', 'view.toggle-sidebar'),
     bind('Ctrl+Alt+B', 'view.toggle-right-panel'),
     bind('Ctrl+N', 'file.new-file'),
+    bind('Ctrl+O', 'file.open-folder'),
     bind('Ctrl+S', 'file.save'),
     bind('Ctrl+E', 'view.toggle-render-mode'),
   ];

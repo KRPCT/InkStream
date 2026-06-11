@@ -21,7 +21,13 @@ interface GroupConfig {
  * Phase 6 挂 Git Graph 入口 = 注册命令 + 在此加一行。
  */
 const MENUS: GroupConfig[] = [
-  { label: '文件', items: [{ commandId: 'app.exit', label: '退出' }] },
+  {
+    label: '文件',
+    items: [
+      { commandId: 'file.open-folder', label: '打开文件夹…' },
+      { commandId: 'app.exit', label: '退出' },
+    ],
+  },
   {
     label: '视图',
     items: [
