@@ -1,4 +1,4 @@
-import type { TreeEntry, VaultInfo } from './vault';
+import type { FileEntry, TreeEntry, VaultInfo } from './vault';
 
 /** 单条 IPC command 的形状：参数与返回值。 */
 export interface IpcCommandEntry {
@@ -14,6 +14,8 @@ export interface IpcCommandEntry {
 export interface IpcCommands {
   open_vault: { args: { path: string }; result: VaultInfo };
   list_dir: { args: { root: string; rel: string }; result: TreeEntry[] };
+  // 快速打开（Ctrl+P）vault 文件清单递归枚举（FILE-03）。
+  list_files: { args: { root: string }; result: FileEntry[] };
   find_repo_root: { args: { path: string }; result: string | null };
   read_file: { args: { root: string; path: string }; result: string };
   // 写侧 command（02-03）。均经 path_guard 校验落在 vault 根内；同名拒绝绝不覆盖（D-12）。

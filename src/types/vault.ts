@@ -22,6 +22,14 @@ export interface TreeEntry {
   isDir: boolean;
 }
 
+/** 快速打开（Ctrl+P）单条文件项（Rust list_files → camelCase；FILE-03）。 */
+export interface FileEntry {
+  /** 文件名（不含路径）。 */
+  name: string;
+  /** 相对 vault 根的路径（`/` 分隔）。 */
+  path: string;
+}
+
 /**
  * react-arborist 受控 `data` 的树节点形状（A2/Pitfall 5）。
  * id 用相对路径（唯一）；目录有 children（懒填充时可为空数组），文件 children 省略。

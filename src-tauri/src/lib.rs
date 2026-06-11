@@ -14,6 +14,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             vault::open_vault,
             vault::list_dir,
+            vault::list_files,
             vault::find_repo_root,
             files::read_file,
             files::write_file_atomic,

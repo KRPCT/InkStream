@@ -99,6 +99,67 @@ pub fn list_dir(root: String, rel: String) -> Result<Vec<TreeEntry>, String> {
     Ok(entries)
 }
 
+/// 快速打开（Ctrl+P）单条文件项（前端 fileProvider 消费，FILE-03）。
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FileEntry {
+    /// 文件名（不含路径）。
+    pub name: String,
+    /// 相对 vault 根的路径（`/` 分隔，跨平台前端键值统一）。
+    pub path: String,
+}
+
+/// 递归枚举 `dir` 下全部文件（非目录）为 FileEntry，路径相对 `root`（纯逻辑，配单测）。
+///
+/// 跳过点开头目录（.git 等，D-11，与文件树隐藏一致）；点开头文件照常收录（隐藏交前端）。
+/// 每项相对路径以 vault 根为基、`/` 分隔；递归限定在 vault 根内，绝不越界（T-02-19）。
+fn collect_files(root: &Path, dir: &Path, out: &mut Vec<FileEntry>) -> Result<(), String> {
+    for dirent in std::fs::read_dir(dir).map_err(|e| format!("无法读取目录: {e}"))? {
+        let dirent = dirent.map_err(|e| format!("读取目录项失败: {e}"))?;
+        let name = dirent.file_name().to_string_lossy().into_owned();
+        let is_dir = dirent.file_type().map(|t| t.is_dir()).unwrap_or(false);
+        if is_dir {
+            // 点开头目录整目录跳过（D-11）；其余目录递归。
+            if name.starts_with('.') {
+                continue;
+            }
+            collect_files(root, &dirent.path(), out)?;
+        } else {
+            let entry_path = dirent.path();
+            let rel_path = entry_path
+                .strip_prefix(root)
+                .map(|p| p.to_string_lossy().replace('\\', "/"))
+                .unwrap_or_else(|_| name.clone());
+            out.push(FileEntry {
+                name,
+                path: rel_path,
+            });
+        }
+    }
+    Ok(())
+}
+
+/// 递归枚举 vault 内全部文件清单（快速打开 Ctrl+P 数据源，FILE-03）。
+///
+/// `root` 为 vault 根绝对路径。返回每个文件的 { name, path（相对 root，`/` 分隔）}；
+/// 跳过 .git 等点开头目录（D-11）。path_guard 校验 root 落盘有效后递归限定其内。
+///
+/// 红线（DoS T-02-20，accept）：超大 vault 清单理论上可能越 1MB 单次 invoke 桥红线。
+/// 本阶段普通 invoke 返回（与 02-01 list_dir / 02-03 read_file 同策略）；真实大 vault
+/// 出现卡顿时改走 Channel 流式分块（invoke.ts 的 invokeStreamed 骨架已就位）。
+#[tauri::command]
+pub fn list_files(root: String) -> Result<Vec<FileEntry>, String> {
+    let canon_root = Path::new(&root)
+        .canonicalize()
+        .map_err(|e| format!("无法解析工作区根: {e}"))?;
+    if !canon_root.is_dir() {
+        return Err("工作区根不是文件夹".to_string());
+    }
+    let mut out: Vec<FileEntry> = Vec::new();
+    collect_files(&canon_root, &canon_root, &mut out)?;
+    Ok(out)
+}
+
 /// 从任意路径向上找仓库根（D-06 子目录场景；纯 fs，不引 git2）。
 #[tauri::command]
 pub fn find_repo_root(path: String) -> Result<Option<String>, String> {
