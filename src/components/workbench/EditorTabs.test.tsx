@@ -9,8 +9,8 @@ let releaseFlush: (() => void) | null = null;
 
 const flushAutosave = vi.fn().mockResolvedValue(undefined);
 const switchTab = vi.fn();
-const disposeStateSpy = vi.fn((_path: string) => {
-  closeOrder.push('dispose');
+const disposeStateSpy = vi.fn((path: string) => {
+  closeOrder.push(`dispose:${path}`);
 });
 
 vi.mock('../../stores/autosave', () => ({
@@ -85,8 +85,8 @@ describe('EditorTabs', () => {
 
   it('CR-02：closeTabFlow 在 disposeState/closeTab 之前 await flushAutosave', async () => {
     // 让 flush 解析受控：record 「flush-start」立即、「flush-end」在 release 时。
-    flushAutosave.mockImplementation((_path: string) => {
-      closeOrder.push('flush-start');
+    flushAutosave.mockImplementation((path: string) => {
+      closeOrder.push(`flush-start:${path}`);
       return new Promise<void>((resolve) => {
         releaseFlush = () => {
           closeOrder.push('flush-end');
@@ -98,7 +98,7 @@ describe('EditorTabs', () => {
     fireEvent.click(screen.getByTestId('close-tab-a.md'));
     // flush 已开始但未解析：dispose / 移除 tab 绝不能先发生（否则 flush 落错内容）。
     await Promise.resolve();
-    expect(closeOrder).toEqual(['flush-start']);
+    expect(closeOrder).toEqual(['flush-start:a.md']);
     expect(disposeStateSpy).not.toHaveBeenCalled();
     expect(useEditorStore.getState().tabs.map((t) => t.path)).toEqual(['a.md', 'b.md']);
 
@@ -106,7 +106,7 @@ describe('EditorTabs', () => {
     releaseFlush?.();
     await Promise.resolve();
     await Promise.resolve();
-    expect(closeOrder).toEqual(['flush-start', 'flush-end', 'dispose']);
+    expect(closeOrder).toEqual(['flush-start:a.md', 'flush-end', 'dispose:a.md']);
     expect(disposeStateSpy).toHaveBeenCalledWith('a.md');
     expect(useEditorStore.getState().tabs.map((t) => t.path)).toEqual(['b.md']);
   });
