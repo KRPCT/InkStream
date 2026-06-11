@@ -166,6 +166,33 @@ describe('inlinePlugin D-08 元素集（删除线 / 行内代码 / 链接 / <u> 
   });
 });
 
+describe('inlinePlugin 重型 widget（图片 / 任务复选框，D-09）', () => {
+  it('图片 `![](url)`：整节点 replace 为 widget', () => {
+    view = lpView('![](https://x.com/a.png)\n\n尾');
+    cursorToEnd(view);
+    const decos = collectDecos(view);
+    // Image 节点（0-24）被 replace widget。
+    expect(decos.some((d) => d.widget && d.from === 0 && d.to === 24)).toBe(true);
+  });
+
+  it('光标在图片行内时还原（不 replace）', () => {
+    view = lpView('![](https://x.com/a.png)\n\n尾');
+    cursorToEnd(view);
+    expect(collectDecos(view).some((d) => d.widget && d.from === 0)).toBe(true);
+    // 光标移入图片行（pos 2）：还原源码，不 replace。
+    view.dispatch({ selection: EditorSelection.cursor(2) });
+    expect(collectDecos(view).some((d) => d.widget && d.from === 0)).toBe(false);
+  });
+
+  it('任务复选框 `- [ ]`：TaskMarker replace 为 widget', () => {
+    view = lpView('- [ ] todo\n- [x] done');
+    cursorToEnd(view);
+    const decos = collectDecos(view);
+    // 第一行 TaskMarker（2-5）被 replace widget。
+    expect(decos.some((d) => d.widget && d.from === 2 && d.to === 5)).toBe(true);
+  });
+});
+
 describe('inlinePlugin 列表 / 引用逐行还原（D-06）', () => {
   it('无序列表：ListMark 隐藏 + 渲染项目符号', () => {
     view = lpView('- a\n- b');

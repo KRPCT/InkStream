@@ -11,14 +11,20 @@ import {
   HIDE_MARK,
   HR_NODE,
   HTML_TAG_NODE,
+  IMAGE_NODE,
   INLINE_STYLE,
   LINE_REVEAL_MARK,
   REVEALABLE,
+  TASK_MARKER_NODE,
   headingLevel,
 } from './nodeNames';
 import { isFrozen, refreshLivePreview } from './composingGuard';
 import { cursorInRange, isCursorOnLineOf } from './revealLine';
 import { HrWidget } from './widgets/HrWidget';
+import { type ImageVaultContext, ImageWidget } from './widgets/ImageWidget';
+import { TaskCheckboxWidget } from './widgets/TaskCheckboxWidget';
+import { useVaultStore } from '../../stores/useVaultStore';
+import { useEditorStore } from '../../stores/useEditorStore';
 
 /**
  * 行内层 ViewPlugin（EDIT-03 / RESEARCH Pattern 1，三层范式的行内脊柱）。
@@ -70,6 +76,19 @@ const QUOTE_MARK = Decoration.mark({ class: 'cm-ink-quote-mark' });
 const QUOTE_LINE = Decoration.line({ class: 'cm-ink-quote' });
 
 /**
+ * 取当前图片 widget 的 vault 上下文（vault 根 + 活动文档相对路径），无 vault / 无活动文档时返回 null。
+ *
+ * 本地图相对路径据「活动文档目录」解析并断言在 vault 根内（ImageWidget.resolveVaultImage，T-03-19）。
+ * 经 store getState() 惰性读取（同 editorState.ts 纪律，store 不进装饰构建闭包外的 React 渲染路径）。
+ */
+function currentImageVault(): ImageVaultContext | null {
+  const root = useVaultStore.getState().vault?.root ?? null;
+  const docPath = useEditorStore.getState().activePath;
+  if (!root || !docPath) return null;
+  return { root, docPath };
+}
+
+/**
  * 构建可视区行内装饰（仅 view.visibleRanges）。
  *
  * 收集到数组后排序再喂 RangeSetBuilder：D-08 元素的「整节点内容样式 mark」与其内部「标记隐藏 mark」
@@ -81,6 +100,8 @@ const QUOTE_LINE = Decoration.line({ class: 'cm-ink-quote' });
 export function buildInlineDecorations(view: EditorView): DecorationSet {
   const { state } = view;
   const ranges: Range<Decoration>[] = [];
+  // 图片 vault 上下文一次取（构建期常量）：本地图相对路径据此解析并断言 vault 内（T-03-19）。
+  const imageVault = currentImageVault();
   // 已 add 行级装饰的行号去重（同一标题/引用行只 add 一次 line 装饰）。
   const headedLines = new Set<number>();
   const quotedLines = new Set<number>();
@@ -112,6 +133,33 @@ export function buildInlineDecorations(view: EditorView): DecorationSet {
         if (node.name === HR_NODE) {
           if (!isCursorOnLineOf(state, node.from)) {
             ranges.push(HR_REPLACE.range(node.from, node.to));
+          }
+          return false;
+        }
+
+        // 图片 `![](url)`：整节点 replace 为 ImageWidget（本地 asset / 远程 https:）。
+        // 光标在该行时还原源码（D-07，复用 isCursorOnLineOf）；整节点替换故 return false（子 URL 不再单隐）。
+        if (node.name === IMAGE_NODE) {
+          if (!isCursorOnLineOf(state, node.from)) {
+            const url = state.doc.sliceString(node.from, node.to).replace(/^!\[[^\]]*]\(/, '').replace(/\)$/, '');
+            ranges.push(
+              Decoration.replace({ widget: new ImageWidget(url, imageVault) }).range(node.from, node.to),
+            );
+          }
+          return false;
+        }
+
+        // 任务复选框 `[ ]`/`[x]`（TaskMarker）：replace 为可点 TaskCheckboxWidget。
+        // 光标在该行时还原源码（D-07）；checked 据中间字符（from+1）非空格判定。
+        if (node.name === TASK_MARKER_NODE) {
+          if (!isCursorOnLineOf(state, node.from)) {
+            const checked = state.doc.sliceString(node.from + 1, node.from + 2).toLowerCase() === 'x';
+            ranges.push(
+              Decoration.replace({ widget: new TaskCheckboxWidget(checked, node.from) }).range(
+                node.from,
+                node.to,
+              ),
+            );
           }
           return false;
         }
@@ -218,6 +266,29 @@ const inlineTheme = EditorView.theme({
     border: 'none',
     borderTop: '1px solid var(--cm-hr)',
     margin: '1em 0',
+  },
+  // 图片 widget：内容区宽等比缩放（max-width 100%）+ max-height ~60vh，块状呈现。
+  '.cm-ink-image': { display: 'inline-block', maxWidth: '100%', verticalAlign: 'top' },
+  '.cm-ink-image-img': { maxWidth: '100%', maxHeight: '60vh', display: 'block' },
+  // 加载中占位：var(--cm-image-loading-bg) 底纹保占位高（减跳动）。
+  '.cm-ink-image-loading': {
+    minWidth: '120px',
+    minHeight: '80px',
+    backgroundColor: 'var(--cm-image-loading-bg)',
+  },
+  // 失败态：「无法加载图片」+ var(--color-error) 1px 描边。
+  '.cm-ink-image-error': {
+    border: '1px solid var(--color-error)',
+    borderRadius: '4px',
+    padding: '0.4em 0.6em',
+    color: 'var(--color-error)',
+  },
+  '.cm-ink-image-error-label': { fontSize: '0.9em' },
+  // 任务复选框：可点 input，未勾 var(--cm-table-border) 描边、已勾 var(--cm-checkbox-checked) 填充。
+  '.cm-ink-task-checkbox': {
+    cursor: 'pointer',
+    margin: '0 0.3em 0 0',
+    accentColor: 'var(--cm-checkbox-checked)',
   },
 });
 

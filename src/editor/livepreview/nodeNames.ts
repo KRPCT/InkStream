@@ -73,6 +73,19 @@ export const HR_NODE = 'HorizontalRule';
 export const HTML_TAG_NODE = 'HTMLTag';
 
 /**
+ * 图片节点（D-09）：`![alt](url)` 整节点 → Decoration.replace 为 ImageWidget（行内 replace，block:false）。
+ * 子节点为 LinkMark + URL（03-07 lezerNodes dump 固化），整节点替换故子 URL 不再单独隐藏。
+ */
+export const IMAGE_NODE = 'Image';
+
+/**
+ * 任务标记节点（D-09）：GFM `- [ ] x` 的 `[ ]`/`[x]`（TaskMarker，长 3，中间状态字符在 from+1）
+ * → Decoration.replace 为 TaskCheckboxWidget（行内 replace）。点击改写中间字符走 history 可撤销。
+ * 结构据 03-01/03-07 lezerNodes dump：ListItem > ListMark + Task > TaskMarker。
+ */
+export const TASK_MARKER_NODE = 'TaskMarker';
+
+/**
  * 块级原子节点：blockField 用 Decoration.replace({ block: true }) 整块替换，光标进块整还原（D-06）。
  * 这些是「半渲染会错乱」的多行原子块（RESEARCH「元素识别」表 / UI-SPEC GFM 表格）。
  *
