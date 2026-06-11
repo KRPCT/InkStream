@@ -3,6 +3,7 @@ import { RangeSetBuilder, StateField, type EditorState } from '@codemirror/state
 import { Decoration, type DecorationSet, EditorView } from '@codemirror/view';
 import { BLOCK_REPLACE } from './nodeNames';
 import { TableWidget } from './widgets/TableWidget';
+import { refreshLivePreview } from './composingGuard';
 
 /**
  * 块级层 StateField（EDIT-03 / RESEARCH Pattern 2 + 4 / Pitfall 3，三层范式块级支柱）。
@@ -127,8 +128,23 @@ function selectionCrossesBoundary(prev: BlockState, tr: { startState: EditorStat
 export const blockField = StateField.define<BlockState>({
   create: (state) => buildBlockState(state),
   update(prev, tr) {
-    // 1. doc 变：全文扫描重建（组合期 docChange 同走此路，CM6 自身保护合成节点）。
-    if (tr.docChanged) return buildBlockState(tr.state);
+    // 0. IME 冻结闸门（EDIT-06，root cause B）：块级 StateField 无 view，据 CM6 原生 userEvent
+    //    `input.type.compose` 识别组合事务。组合期绝不全文扫描重建（撕表格 widget DOM → 吞字）；
+    //    docChanged 时 map 旧 deco + 表格 range 跟随位移——返回未映射的旧集会让插入点后的替换装饰 /
+    //    atomicRanges 错位，CM6 据此重建合成中的 DOM（同样吞字）。映射为 O(blocks) 位移，不扫语法树。
+    if (tr.isUserEvent('input.type.compose')) {
+      if (!tr.docChanged) return prev; // 纯组合 selection 无文档变：保旧态不动。
+      return {
+        deco: prev.deco.map(tr.changes),
+        tables: prev.tables.map((t) => ({
+          from: tr.changes.mapPos(t.from),
+          to: tr.changes.mapPos(t.to),
+        })),
+      };
+    }
+    // 1. doc 变 / compositionend 强刷：全文扫描重建（refreshLivePreview 解冻后还原渲染态，CR-01）。
+    const refreshed = tr.effects.some((e) => e.is(refreshLivePreview));
+    if (tr.docChanged || refreshed) return buildBlockState(tr.state);
     // 2. 选区变化：仅跨越表格块边界才重建（O(blocks)），否则复用——不做全树 O(doc) 重算（UAT #8）。
     if (tr.selection && selectionCrossesBoundary(prev, tr)) {
       return buildBlockState(tr.state);

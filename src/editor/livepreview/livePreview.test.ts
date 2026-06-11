@@ -14,10 +14,11 @@ vi.mock('../../ipc/opener', () => ({
 const { livePreviewExtensions, renderModeCompartment } = await import('./livePreview');
 
 /**
- * 组合根接线回归门（Pattern 3：行内层 + 块级层经一个 Extension[] 共存生效，EDIT-06 Option 1）。
+ * 组合根接线回归门（Pattern 3：行内层 + 块级层 + composingGuard 经一个 Extension[] 共存，EDIT-06 freeze/map）。
  *
- * 断言 livePreviewExtensions() 挂上 inlinePlugin（标题渲染），组合期 docChange 照常规范重建
- * （不再有自建 IME 闸门——CM6 6.43.1 内置合成保护），且 baseExtensions 默认装入 renderModeCompartment。
+ * 断言 livePreviewExtensions() 挂上 inlinePlugin（标题渲染）+ composingGuard（IME 闸门），组合期
+ * docChange 经闸门 map 装饰而非重建，compositionend 后强刷恰好重建一次；且 baseExtensions 默认
+ * 装入 renderModeCompartment。
  */
 
 let view: EditorView | null = null;
@@ -28,7 +29,7 @@ afterEach(() => {
 });
 
 describe('livePreviewExtensions 组合根', () => {
-  it('含 inlinePlugin（标题渲染）且组合 docChange 照常规范重建（Option 1：无自建 IME 闸门）', () => {
+  it('含 inlinePlugin（标题渲染）且组合期经 composingGuard 闸门 map（不重建），compositionend 后强刷重建', async () => {
     view = makeTestView('# H1\n\n正文', [
       extensionsForLanguage('markdown'),
       livePreviewExtensions(),
@@ -47,8 +48,6 @@ describe('livePreviewExtensions 组合根', () => {
     }
     expect(hiddenAtStart).toBe(true);
 
-    // Option 1：组合 userEvent 的 docChange 与普通输入一样规范重建——文首插入新二级标题后，
-    // 装饰层立即产出其 cm-ink-h2 行级 class（若仍有冻结闸门则不会出现）。
     const hasH2 = (): boolean => {
       const set = view!.plugin(inlinePlugin)!.decorations;
       const it = set.iter();
@@ -58,9 +57,19 @@ describe('livePreviewExtensions 组合根', () => {
       }
       return false;
     };
+
+    // 组合期文首插入新二级标题：composingGuard 冻结 → inlinePlugin map 旧集（不重建），
+    // 故 cm-ink-h2 尚未出现（旧装饰仅位移，新结构未被扫描）。
     expect(hasH2()).toBe(false);
     dispatchComposition(view, { phase: 'compositionstart', data: '你' });
     view.dispatch({ changes: { from: 0, insert: '## 二级\n\n' }, userEvent: 'input.type.compose' });
+    expect(hasH2()).toBe(false);
+
+    // compositionend → 推迟的 refreshLivePreview 强刷 → flush 微任务后重建一次，新二级标题得 cm-ink-h2。
+    dispatchComposition(view, { phase: 'compositionend', data: '你' });
+    await Promise.resolve();
+    // 光标移到末行让新二级标题行非活动 → 渲染其字号 class。
+    view.dispatch({ selection: EditorSelection.cursor(view.state.doc.length) });
     expect(hasH2()).toBe(true);
   });
 });

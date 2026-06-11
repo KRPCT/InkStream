@@ -1,6 +1,7 @@
 import { Compartment, type Extension } from '@codemirror/state';
 import { inlinePlugin } from './inlinePlugin';
 import { blockExtensions } from './blockField';
+import { composingGuard } from './composingGuard';
 import { linkGesture } from './linkGesture';
 import { tableGesture } from './tableGesture';
 
@@ -26,11 +27,14 @@ import { tableGesture } from './tableGesture';
  * tableGesture 紧随其后：截获落在表格 widget 上的点击，程序化派发光标进块 → 整块还原源码可编辑（UAT #1）。
  *   顺序关键——linkGesture 在前：Ctrl/Cmd+外链点击它返回 true 短路，tableGesture 不劫持导航；
  *   普通点击命中表格时 linkGesture 无链接返回 false，轮到 tableGesture（CM6 按注册序短路 domEventHandlers）。
- * IME（EDIT-06，Option 1）：不再挂自建 composition 闸门——CM6 6.43.1 内置合成范围保护，装饰层照常
- * 规范重建即可（codemirror-rich-markdoc / SilverBullet / Obsidian 同此范式，零 composition 代码）。
+ * IME（EDIT-06，规范 freeze/map）：composingGuard 是全局护栏——compositionstart 置同步冻结标志、
+ * compositionend 推迟一次 refreshLivePreview 强刷（代际守卫防跨组合竞态）。行内层据 isFrozen /
+ * view.composing、块级层据 CM6 原生 `input.type.compose` userEvent 在组合期 map 装饰而非重建语法树，
+ * 保住正在合成的文本节点 DOM（不撕 → 不吞字）；组合结束后强刷恰好重建一次还原渲染态（CR-01）。
+ * Option 2 的「活动行整行纯源码」build 路径不变，作为重建路径的文本相等闸门不变量与本闸门叠加。
  */
 export function livePreviewExtensions(): Extension[] {
-  return [inlinePlugin, blockExtensions, linkGesture, tableGesture];
+  return [inlinePlugin, blockExtensions, linkGesture, tableGesture, composingGuard];
 }
 
 /**

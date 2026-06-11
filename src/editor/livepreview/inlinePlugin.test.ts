@@ -6,6 +6,7 @@ import { EditorView } from '@codemirror/view';
 import { destroyTestView, dispatchComposition, makeTestView } from '../../test/composition';
 import { extensionsForLanguage } from '../languages';
 import { inlinePlugin } from './inlinePlugin';
+import { composingGuard, refreshLivePreview } from './composingGuard';
 
 /**
  * 行内层 ViewPlugin 回归门（EDIT-03 / RESEARCH Pattern 1，EDIT-06 Option 2）。
@@ -30,9 +31,9 @@ afterEach(() => {
   view = null;
 });
 
-/** 用 markdown(GFM) + inlinePlugin 构建 view。 */
+/** 用 markdown(GFM) + inlinePlugin + composingGuard 构建 view（IME 冻结闸门随附，组合断言依赖）。 */
 function lpView(doc: string): EditorView {
-  return makeTestView(doc, [extensionsForLanguage('markdown'), inlinePlugin]);
+  return makeTestView(doc, [extensionsForLanguage('markdown'), inlinePlugin, composingGuard]);
 }
 
 /** 收集装饰集合的 (from,to,spec) 序列。 */
@@ -303,35 +304,94 @@ describe('inlinePlugin 列表 / 引用逐行还原（D-06）', () => {
   });
 });
 
-describe('inlinePlugin 规范重建（EDIT-06 Option 2：信赖 CM6 合成保护，活动行随选区重建）', () => {
-  it('组合 userEvent 的 docChanged 照常无条件重建（不再保旧 RangeSet / 不再 map）', () => {
-    // Option 1 删除了 composition 冻结闸门：组合事务（input.type.compose）的 docChange 与普通输入
-    // 一样走 buildInlineDecorations 规范重建。此处文首插入新标题，插入后必产生其隐藏标记装饰，
-    // 证明装饰确实重建（而非冻结期保旧集 / 仅 map）。
+describe('inlinePlugin IME freeze/map（EDIT-06：组合期 map 不重建，compositionend 恰好重建一次）', () => {
+  it('组合期 docChanged → 装饰被 MAP（positions 跟随位移，values 不变），绝不重建语法树', () => {
+    // 非活动标题行先渲染：把光标移到末行，第一行 `# H1` 得隐藏标记 + cm-ink-h1。
+    view = lpView('# H1\n\n正文二');
+    view.dispatch({ selection: EditorSelection.cursor(view.state.doc.length) });
+    const before = collectDecos(view);
+    const beforeH1 = before.filter((d) => d.class === 'cm-ink-h1');
+    const beforeHidden = before.filter((d) => d.class === 'cm-ink-hidden');
+    expect(beforeH1.length).toBeGreaterThan(0);
+    expect(beforeHidden.length).toBeGreaterThan(0);
+
+    // 组合期在**文末**（非第一行）插入 2 字：第一行装饰不应重建，只应整体保持（文末插入对其位置无影响）。
+    dispatchComposition(view, { phase: 'compositionstart', data: '你好' });
+    view.dispatch({
+      changes: { from: view.state.doc.length, insert: '你好' },
+      userEvent: 'input.type.compose',
+    });
+    const after = collectDecos(view);
+
+    // 契约：map（非重建）——装饰条目数与每条 (from,to,class) 与 before 完全一致（文末插入不移动前缀装饰）。
+    expect(after.length).toBe(before.length);
+    for (let i = 0; i < before.length; i += 1) {
+      expect(after[i]!.from).toBe(before[i]!.from);
+      expect(after[i]!.to).toBe(before[i]!.to);
+      expect(after[i]!.class).toBe(before[i]!.class);
+      expect(after[i]!.widget).toBe(before[i]!.widget);
+    }
+  });
+
+  it('组合期文首插入 → 装饰 == before.map(changes)（值同、位置经 map 位移），不重建', () => {
+    view = lpView('# H1\n\n正文二');
+    view.dispatch({ selection: EditorSelection.cursor(view.state.doc.length) });
+    const before = collectDecos(view);
+    const insertLen = 2;
+
+    dispatchComposition(view, { phase: 'compositionstart', data: '甲乙' });
+    view.dispatch({ changes: { from: 0, insert: '甲乙' }, userEvent: 'input.type.compose' });
+    const after = collectDecos(view);
+
+    // 契约：map（非重建）——条目数不变、每条 class/widget 身份不变。位置经 changes 映射（非裸 +insertLen：
+    // 行级 line 装饰锚在 line.from 且 side 使其留在行首，故只断言 from ≥ before，且 hidden mark 确实右移）。
+    expect(after.length).toBe(before.length); // 重建会因新非活动行增条目 → 条目数不变即证非重建。
+    for (let i = 0; i < before.length; i += 1) {
+      expect(after[i]!.class).toBe(before[i]!.class); // values 不变。
+      expect(after[i]!.widget).toBe(before[i]!.widget);
+      expect(after[i]!.from).toBeGreaterThanOrEqual(before[i]!.from); // 经 map 位移，不会前移。
+    }
+    // 至少一条内容 mark（如 HeaderMark 隐藏区）右移了 insertLen（证发生了 map 位移而非原地不动）。
+    expect(after.some((d, i) => d.from === before[i]!.from + insertLen)).toBe(true);
+  });
+
+  it('compositionend 后 refreshLivePreview 强刷恰好重建一次（组合期累积的新结构此刻渲染）', async () => {
     view = lpView('正文\n\n正文二');
     view.dispatch({ selection: EditorSelection.cursor(view.state.doc.length) });
     expect(collectDecos(view).some((d) => d.class === 'cm-ink-h1')).toBe(false);
 
+    // 组合期文首插入一个新标题：map 期间不重建，故 cm-ink-h1 尚未出现（旧集只是位移）。
     dispatchComposition(view, { phase: 'compositionstart', data: '你' });
     view.dispatch({ changes: { from: 0, insert: '# H1\n\n' }, userEvent: 'input.type.compose' });
-    // 重建后新标题行得 cm-ink-h1（若仍冻结保旧集则不会出现）。
+    expect(collectDecos(view).some((d) => d.class === 'cm-ink-h1')).toBe(false);
+
+    // compositionend 触发推迟的强刷：flush 微任务后装饰重建一次，新标题得 cm-ink-h1。
+    dispatchComposition(view, { phase: 'compositionend', data: '你' });
+    await Promise.resolve();
+    // 光标移到末行让新标题行非活动 → 渲染其字号 class。
+    view.dispatch({ selection: EditorSelection.cursor(view.state.doc.length) });
     expect(collectDecos(view).some((d) => d.class === 'cm-ink-h1')).toBe(true);
   });
 
-  it('compositionend 后续 docChange 重建（新标题得 cm-ink-h2，无需 refresh effect 驱动）', () => {
+  it('refreshLivePreview effect 直接驱动重建（即便无 docChange，绕过组合短路）', () => {
     view = lpView('# H1\n\n正文');
     view.dispatch({ selection: EditorSelection.cursor(view.state.doc.length) });
-    expect(collectDecos(view).filter((d) => d.class === 'cm-ink-h2').length).toBe(0);
-
-    dispatchComposition(view, { phase: 'compositionstart', data: '你' });
-    view.dispatch({ changes: { from: view.state.doc.length, insert: '\n\n## 二级' } });
-    dispatchComposition(view, { phase: 'compositionend', data: '你' });
-    // 光标移回首行（让新二级标题行成为非活动行，Option 2 下活动行不渲染）。
-    view.dispatch({ selection: EditorSelection.cursor(0) });
-    // 规范重建：新二级标题得 cm-ink-h2 行级 class（不依赖任何强刷 effect）。
-    expect(collectDecos(view).filter((d) => d.class === 'cm-ink-h2').length).toBeGreaterThan(0);
+    // 模拟组合残留态：手动派发 refresh effect，装饰层应据此重建（refreshed 先于组合短路判定）。
+    view.dispatch({ effects: refreshLivePreview.of(null) });
+    expect(collectDecos(view).some((d) => d.class === 'cm-ink-h1')).toBe(true);
   });
 
+  it('非组合期 docChange 照常规范重建（active-line 纯源码契约不变）', () => {
+    view = lpView('# H1\n\n正文');
+    view.dispatch({ selection: EditorSelection.cursor(view.state.doc.length) });
+    // 普通（非组合）输入：走 buildInlineDecorations 重建，新二级标题得 cm-ink-h2。
+    view.dispatch({ changes: { from: view.state.doc.length, insert: '\n\n## 二级' } });
+    view.dispatch({ selection: EditorSelection.cursor(0) });
+    expect(collectDecos(view).filter((d) => d.class === 'cm-ink-h2').length).toBeGreaterThan(0);
+  });
+});
+
+describe('inlinePlugin 规范重建（非组合期：活动行随选区重建）', () => {
   it('selectionSet 驱动活动行集随光标移动（光标移入标题行 → 该行转纯源码，零装饰）', () => {
     view = lpView('# H1\n\n正文');
     view.dispatch({ selection: EditorSelection.cursor(view.state.doc.length) });
@@ -355,8 +415,12 @@ describe('inlinePlugin 源纪律', () => {
     expect(src).toContain('RangeSetBuilder');
   });
 
-  it('不再自建 IME 冻结闸门（无 isFrozen / refreshLivePreview / composingGuard 残留，Option 1）', () => {
-    expect(src).not.toMatch(/isFrozen|refreshLivePreview|composingGuard/);
+  it('接入 IME 冻结闸门（isFrozen 短路 + refreshLivePreview 强刷重建，EDIT-06 freeze/map）', () => {
+    // 组合期短路据 isFrozen / view.composing；compositionend 后 refreshLivePreview effect 触发重建。
+    expect(src).toMatch(/isFrozen/);
+    expect(src).toMatch(/refreshLivePreview/);
+    // 组合期 docChanged 时 map 旧集（this.decorations.map(u.changes)）而非重建。
+    expect(src).toContain('this.decorations.map(u.changes)');
   });
 
   it('活动行整行硬跳过存在且 FAINT_MARK 已删（Option 2：活动行纯源码，无淡显死码）', () => {

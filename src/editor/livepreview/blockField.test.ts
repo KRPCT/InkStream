@@ -7,6 +7,7 @@ import { EditorView } from '@codemirror/view';
 import { destroyTestView, dispatchComposition, makeTestView } from '../../test/composition';
 import { extensionsForLanguage } from '../languages';
 import { blockField, tableAtomicRanges } from './blockField';
+import { refreshLivePreview } from './composingGuard';
 import { TableWidget } from './widgets/TableWidget';
 
 /**
@@ -224,36 +225,62 @@ describe('blockField atomicRanges（Pattern 4）', () => {
   });
 });
 
-describe('blockField 规范重建（EDIT-06 Option 1：组合 docChange 照常全文重建）', () => {
-  it('组合 userEvent 的 docChanged 照常全文重建 BlockState（不再保旧集 / 不再 map）', () => {
+describe('blockField IME freeze/map（EDIT-06：组合 docChange MAP 不重建，compositionend 强刷重建）', () => {
+  it('组合 userEvent 的 docChanged → MAP 旧 deco + 表格 range 跟随位移（绝不全文扫描重建）', () => {
     view = bfView(TABLE_DOC);
     view.dispatch({ selection: EditorSelection.cursor(0) });
     const before = view.state.field(blockField);
     expect(before.deco.size).toBeGreaterThan(0); // 表格被替换装饰存在。
+    const beforeDeco = before.deco;
+    const beforeFrom = before.tables[0]!.from;
+    const beforeTo = before.tables[0]!.to;
 
-    // 组合事务（input.type.compose）的 docChange 与普通输入一样走 buildBlockState 全文重建：
-    // 文首插入后表格整体右移，新 BlockState 是重建引用（非旧引用、非旧集 map）。
+    // 组合事务（input.type.compose）的 docChange：map 旧 deco（值同、位移随 changes），不重建。
+    // 文首插入 1 字 → 表格 range 右移 1（经 changes.mapPos，非重新扫描语法树得来）。
     dispatchComposition(view, { phase: 'compositionstart', data: '你' });
     view.dispatch({ changes: { from: 0, insert: '你' }, userEvent: 'input.type.compose' });
 
     const after = view.state.field(blockField);
-    expect(after).not.toBe(before); // 重建（新引用）。
-    expect(after.deco.size).toBe(before.deco.size); // 表格数不变。
-    // 表格 range 随插入右移（重建从最新 doc 扫描得，位置已更新）。
-    expect(after.tables[0]!.from).toBe(before.tables[0]!.from + 1);
+    expect(after).not.toBe(before); // 新 BlockState（map 后的不可变对象）。
+    expect(after.deco.size).toBe(beforeDeco.size); // 表格替换装饰数不变（map 不增删条目）。
+    // 表格 range 经 mapPos 右移 1（与重建从最新 doc 扫描所得位置一致，但路径是 map 而非 scan）。
+    expect(after.tables[0]!.from).toBe(beforeFrom + 1);
+    expect(after.tables[0]!.to).toBe(beforeTo + 1);
+    // 替换装饰区间亦随 map 右移（与表格 range 对齐，保 atomicRanges 不错位）。
+    void beforeDeco; // before 快照仅作存在性见证。
+    const tableBlock = collectBlocks(view).find((b) => b.widget instanceof TableWidget);
+    expect(tableBlock!.from).toBe(beforeFrom + 1);
   });
 
-  it('组合事务但 docChanged 为 false（纯组合 selection 无文档变）：走选区复用路径', () => {
+  it('组合事务但 docChanged 为 false（纯组合 selection 无文档变）：保旧态不动（不重建）', () => {
     view = bfView(TABLE_DOC);
     view.dispatch({ selection: EditorSelection.cursor(0) });
     const before = view.state.field(blockField);
 
-    // 无 changes 的组合 selection 事务：非 docChanged、未跨表格边界 → 原样复用（UAT #8 路径）。
+    // 无 changes 的组合 selection 事务：组合短路据 input.type.compose 直接保旧态（prev 引用不变）。
     view.dispatch({
       selection: EditorSelection.cursor(1),
       userEvent: 'input.type.compose',
     });
     expect(view.state.field(blockField)).toBe(before);
+  });
+
+  it('refreshLivePreview 强刷（compositionend 后）→ 全文扫描重建（组合期 map 累积的态此刻校正）', () => {
+    view = bfView(TABLE_DOC);
+    view.dispatch({ selection: EditorSelection.cursor(0) });
+    const before = view.state.field(blockField);
+
+    // 组合期文首插入（map）。
+    dispatchComposition(view, { phase: 'compositionstart', data: '你' });
+    view.dispatch({ changes: { from: 0, insert: '你' }, userEvent: 'input.type.compose' });
+    const mapped = view.state.field(blockField);
+
+    // refreshLivePreview effect：走 buildBlockState 全文重建（新引用，表格仍被替换）。
+    view.dispatch({ effects: refreshLivePreview.of(null) });
+    const rebuilt = view.state.field(blockField);
+    expect(rebuilt).not.toBe(mapped);
+    expect(rebuilt).not.toBe(before);
+    expect(rebuilt.deco.size).toBeGreaterThan(0); // 表格（光标在文首、表格外）重新被替换。
   });
 });
 
@@ -276,8 +303,13 @@ describe('blockField 源纪律', () => {
     expect(src).toContain('EditorView.atomicRanges');
   });
 
-  it('不再自建 IME 冻结/映射闸门（无 input.type.compose 短路 / refreshLivePreview / frozen 残留，Option 1）', () => {
-    expect(src).not.toContain("isUserEvent('input.type.compose')");
-    expect(src).not.toMatch(/isFrozenState|frozenField|setFrozen|refreshLivePreview|composingGuard/);
+  it('接入 IME 冻结/映射闸门（input.type.compose 短路 map + refreshLivePreview 强刷重建，EDIT-06 freeze/map）', () => {
+    // 块级层无 view，据 CM6 原生 input.type.compose userEvent 识别组合事务并 map 旧装饰。
+    expect(src).toContain("isUserEvent('input.type.compose')");
+    // 组合期 docChanged 时 map deco + 表格 range（mapPos），非全文扫描重建。
+    expect(src).toContain('prev.deco.map(tr.changes)');
+    expect(src).toContain('tr.changes.mapPos');
+    // compositionend 后 refreshLivePreview effect 触发全文重建（还原渲染态）。
+    expect(src).toMatch(/refreshLivePreview/);
   });
 });

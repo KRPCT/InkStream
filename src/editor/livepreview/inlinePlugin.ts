@@ -22,6 +22,7 @@ import { type ImageVaultContext, ImageWidget } from './widgets/ImageWidget';
 import { TaskCheckboxWidget } from './widgets/TaskCheckboxWidget';
 import { useVaultStore } from '../../stores/useVaultStore';
 import { useEditorStore } from '../../stores/useEditorStore';
+import { isFrozen, refreshLivePreview } from './composingGuard';
 
 /**
  * 行内层 ViewPlugin（EDIT-03 / RESEARCH Pattern 1，三层范式的行内脊柱）。
@@ -308,7 +309,7 @@ const inlineTheme = EditorView.theme({
   },
 });
 
-/** 行内层 ViewPlugin 类：持 decorations，仅文档/视口/选区变化时无条件重算（信赖 CM6 合成保护）。 */
+/** 行内层 ViewPlugin 类：持 decorations，组合期 freeze+map、非组合期重建（active-line 纯源码契约不变）。 */
 class InlinePluginValue {
   decorations: DecorationSet;
 
@@ -317,10 +318,27 @@ class InlinePluginValue {
   }
 
   update(u: ViewUpdate): void {
-    // 规范重建（EDIT-06，Option 2 在 Option 1 之上）：不再为 IME 自建冻结/映射闸门——CM6 6.43.1 内置
-    // 合成范围保护，组合期 docChange 照常无条件重建。selectionSet 触发重建使活动行集随主选区移动
-    // （新活动行整行还原为纯源码 / 旧活动行恢复渲染），保住正在合成行的文本相等闸门。
-    if (u.docChanged || u.viewportChanged || u.selectionSet) {
+    // refreshLivePreview（compositionend 解冻后推迟派发的一次强刷）必须**先于** IME 短路判定：
+    // compositionend 时 u.view.composing 可能残留 true（codemirror/dev#1069），若先短路则强刷被吞、
+    // 装饰停在组合期 map 后的旧集——组合结束须恰好重建一次还原渲染态（CR-01）。
+    const refreshed = u.transactions.some((tr) =>
+      tr.effects.some((e) => e.is(refreshLivePreview)),
+    );
+
+    // IME 冻结闸门（EDIT-06，root cause B）：组合期（compositionstart→compositionend）绝不调
+    // buildInlineDecorations 重建语法树——重建会撕掉正在合成的文本节点 DOM → Chromium 中止 IME（吞字）。
+    // 但 docChanged 时**必须把旧 RangeSet 经 changes 映射跟随位移**：返回未映射的旧集会让 CM6 的
+    // findChangedDeco 把插入点后所有 chunk 判为未共享 → 伪 changedRanges → 在合成节点上重建 DOM（同样吞字）。
+    // map 仅 O(chunks) 位移，不重算语法树（性能守恒）；refreshed 例外（解冻后的安全强刷，放行重建）。
+    if (!refreshed && (u.view.composing || isFrozen(u.view))) {
+      if (u.docChanged) this.decorations = this.decorations.map(u.changes);
+      // 纯选区变化的组合事务：保持当前装饰不动（不重建、无可 map 的 changes）。
+      return;
+    }
+
+    // 非组合期：规范重建（Option 2 active-line 纯源码契约由 buildInlineDecorations 内部保证不变）。
+    // selectionSet 触发重建使活动行集随主选区移动；refreshLivePreview 强刷亦在此重建一次。
+    if (u.docChanged || u.viewportChanged || u.selectionSet || refreshed) {
       this.decorations = buildInlineDecorations(u.view);
     }
   }
