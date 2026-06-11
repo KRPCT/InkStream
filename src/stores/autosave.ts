@@ -1,4 +1,4 @@
-import { getView } from '../editor/viewHandle';
+import { getDocForPath } from '../editor/editorState';
 import { writeFileAtomic } from '../ipc/files';
 import { useEditorStore } from './useEditorStore';
 import { useToastStore } from './useToastStore';
@@ -13,7 +13,8 @@ import { useVaultStore } from './useVaultStore';
  * - 落盘前 suppressNextWatch：自己的原子写不触发自身 watcher 误判（Pitfall 2 自激抑制）。
  * - 落盘失败保留 dirty + 错误 toast，绝不清脏标记（UI-SPEC 错误态）。
  *
- * 文档真相源是 CM view（state.doc.toString()）；store 永不持文档内容。默认经 getView() 读 doc，
+ * 文档真相源是 CM（state.doc.toString()）；store 永不持文档内容。默认经 getDocForPath(path)
+ * 按 path 取（活动文件读 live view、非活动文件读其缓存 state，CR-01）；
  * 测试经 configureAutosave 注入 getDoc/getRoot 桩（不依赖真实 CM/vault）。
  */
 
@@ -33,7 +34,9 @@ interface AutosaveDeps {
 function defaultDeps(): AutosaveDeps {
   return {
     getRoot: () => useVaultStore.getState().vault?.root ?? null,
-    getDoc: () => getView()?.state.doc.toString() ?? '',
+    // CR-01：按 path 取真相源——活动文件读 live view，非活动文件读其缓存 state，
+    // 绝不恒读当前活动 view（否则切 tab 后 A 的在途写会落 B 的内容到 A）。
+    getDoc: (path) => getDocForPath(path) ?? '',
   };
 }
 
@@ -41,6 +44,11 @@ let deps: AutosaveDeps = defaultDeps();
 const timers = new Map<string, ReturnType<typeof setTimeout>>();
 /** 自激抑制集合：写盘前置入，watcher 下一个该路径事件消费一次即清（Pitfall 2）。 */
 const suppressed = new Set<string>();
+/**
+ * 每 path 在途写串行链（WR-08）：scheduleAutosave 与 flushAutosave 的写都挂到同一 path 的
+ * 链尾，保证 temp+rename 顺序执行，杜绝两个 rename 竞态导致旧内容覆盖新存。
+ */
+const inflight = new Map<string, Promise<void>>();
 
 /** 测试注入 getDoc/getRoot 桩。 */
 export function configureAutosave(next: Partial<AutosaveDeps>): void {
@@ -52,8 +60,23 @@ function displayName(path: string): string {
   return seg[seg.length - 1] || path;
 }
 
-/** 执行一次落盘（frozen 时跳过；落盘前自激抑制；失败保留脏态 + toast）。 */
-async function writeNow(path: string): Promise<void> {
+/**
+ * 串行执行某 path 的落盘：先 await 该 path 的在途写（WR-08），再排到链尾。
+ * 返回的 Promise 在本次写完成时解析；链上异常已被内部吞并，不会断链。
+ */
+function enqueueWrite(path: string): Promise<void> {
+  const prev = inflight.get(path) ?? Promise.resolve();
+  const next = prev.then(() => writeOnce(path));
+  inflight.set(path, next);
+  // 写完后若自己仍是链尾则清理（避免 Map 无界增长）。
+  void next.finally(() => {
+    if (inflight.get(path) === next) inflight.delete(path);
+  });
+  return next;
+}
+
+/** 执行一次落盘（frozen 时跳过；成功才自激抑制；失败保留脏态 + toast + 清抑制）。 */
+async function writeOnce(path: string): Promise<void> {
   const { frozen, clearDirty, markDirty } = useEditorStore.getState();
   if (frozen[path]) return; // 02-04 冲突期冻结，防误覆盖
   const root = deps.getRoot();
@@ -65,6 +88,9 @@ async function writeNow(path: string): Promise<void> {
     await writeFileAtomic(root, path, content);
     clearDirty(path);
   } catch {
+    // WR-01：写失败时无 watcher 事件落地，必须撤回抑制 token，否则它会吞掉
+    // 下一次该路径的真实外部变更（consumeSuppressedWatch 误返 true）。
+    suppressed.delete(path);
     // 落盘失败：保留脏态（不清脏标记）+ 错误 toast，不关 tab（UI-SPEC 错误态）
     markDirty(path);
     useToastStore.getState().showToast('error', errorMessage(displayName(path)));
@@ -79,19 +105,23 @@ export function scheduleAutosave(path: string): void {
     path,
     setTimeout(() => {
       timers.delete(path);
-      void writeNow(path);
+      void enqueueWrite(path);
     }, DEBOUNCE_MS),
   );
 }
 
-/** Ctrl+S / 关 tab 前：取消防抖定时器并立即落盘。 */
+/**
+ * Ctrl+S / 关 tab 前：取消防抖定时器并立即落盘。
+ * WR-08：经 enqueueWrite 串到该 path 在途写链尾——若已有写在飞，先等它完成再写本次，
+ * 保证落盘顺序、杜绝两个 rename 竞态。
+ */
 export async function flushAutosave(path: string): Promise<void> {
   const existing = timers.get(path);
   if (existing !== undefined) {
     clearTimeout(existing);
     timers.delete(path);
   }
-  await writeNow(path);
+  await enqueueWrite(path);
 }
 
 /** 冻结某文件自动保存（转发 store；02-04 仲裁接）。 */
@@ -118,5 +148,6 @@ export function resetAutosave(): void {
   timers.forEach((t) => clearTimeout(t));
   timers.clear();
   suppressed.clear();
+  inflight.clear();
   deps = defaultDeps();
 }

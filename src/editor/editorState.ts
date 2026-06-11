@@ -110,6 +110,24 @@ export function snapshotBeforeSwitch(view: EditorView, path: string): void {
   scrollCache.set(path, view.scrollDOM.scrollTop);
 }
 
+/**
+ * 取某 path 的文档真相源内容（CR-01 跨文件覆盖修复）。
+ *
+ * 单内核架构下活动文件的最新编辑只在 live view，未必已快照入缓存；非活动文件的最新编辑
+ * 在切走时已 snapshotBeforeSwitch 入缓存。故：活动路径读 live view，其余路径读缓存 state。
+ * 缓存/view 均缺失时返回 null（调用方落盘前据此跳过，绝不拿错文件内容覆盖）。
+ *
+ * 不导出原始 cache Map（封装纪律）——只提供按 path 的只读取值口。
+ */
+export function getDocForPath(path: string): string | null {
+  if (useEditorStore.getState().activePath === path) {
+    const view = getView();
+    if (view) return view.state.doc.toString();
+  }
+  const cached = cache.get(path);
+  return cached ? cached.doc.toString() : null;
+}
+
 /** 关 tab 时释放该文件 state 与滚动缓存（D-03 会话内，关 tab 即释放）。 */
 export function disposeState(path: string): void {
   cache.delete(path);
