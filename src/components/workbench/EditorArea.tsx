@@ -1,6 +1,7 @@
 import { FileText, FolderOpen } from 'lucide-react';
 import { useRef } from 'react';
 import EmptyState from '../common/EmptyState';
+import EditorTabs from './EditorTabs';
 import { useCodeMirror } from '../../editor/useCodeMirror';
 import { requestOpenFolder } from '../../editor/vaultFlow';
 import { useEditorStore } from '../../stores/useEditorStore';
@@ -31,29 +32,36 @@ export default function EditorArea() {
   useCodeMirror(parentRef);
   const vault = useVaultStore((s) => s.vault);
   const activePath = useEditorStore((s) => s.activePath);
+  const hasTabs = useEditorStore((s) => s.tabs.length > 0);
 
   return (
-    <div className="relative h-full bg-[var(--background-primary)]">
-      {/* 单内核 DOM 挂载点：始终存在；无活动文件时由空态覆盖层遮住 */}
-      <div ref={parentRef} className="h-full overflow-auto" data-testid="cm-mount" />
-      {!vault ? (
-        <div className="absolute inset-0 bg-[var(--background-primary)]">
-          <EmptyState
-            icon={FolderOpen}
-            heading="未打开工作区"
-            body="打开一个文件夹作为工作区，开始写作。"
-            action={<OpenFolderButton />}
-          />
-        </div>
-      ) : !activePath ? (
-        <div className="absolute inset-0 bg-[var(--background-primary)]">
-          <EmptyState
-            icon={FileText}
-            heading="未打开文件"
-            body="在左侧文件树中选择文件，或按 Ctrl+P 快速打开。"
-          />
-        </div>
-      ) : null}
+    <div className="flex h-full flex-col bg-[var(--background-primary)]">
+      {/* 垂直结构：[Tab 栏 36px] → [外部变更提示条槽位 02-04] → [richtext 工具条槽位 02-04/05] → [CM 内容区] */}
+      {vault && hasTabs ? <EditorTabs /> : null}
+      {/* 外部变更提示条槽位（02-04）：脏文档外部变更时插入 */}
+      {/* richtext 工具条槽位（02-04/05）：frontmatter 驱动 */}
+      <div className="relative min-h-0 flex-1">
+        {/* 单内核 DOM 挂载点：始终存在；无活动文件时由空态覆盖层遮住 */}
+        <div ref={parentRef} className="h-full overflow-auto" data-testid="cm-mount" />
+        {!vault ? (
+          <div className="absolute inset-0 bg-[var(--background-primary)]">
+            <EmptyState
+              icon={FolderOpen}
+              heading="未打开工作区"
+              body="打开一个文件夹作为工作区，开始写作。"
+              action={<OpenFolderButton />}
+            />
+          </div>
+        ) : !activePath ? (
+          <div className="absolute inset-0 bg-[var(--background-primary)]">
+            <EmptyState
+              icon={FileText}
+              heading="未打开文件"
+              body="在左侧文件树中选择文件，或按 Ctrl+P 快速打开。"
+            />
+          </div>
+        ) : null}
+      </div>
     </div>
   );
 }
