@@ -57,8 +57,14 @@ export interface TreeNode {
   name: string;
   /** 是否目录（react-arborist 据 children 是否存在判断 isLeaf，此字段供排序/图标）。 */
   isDir: boolean;
-  /** 子节点；目录可有（空数组表示已展开但为空 / 尚未加载用 undefined 区分由消费方定）。 */
+  /** 子节点；目录可有（空数组表示已加载但为空，与「尚未加载」用 loaded 标志区分）。 */
   children?: TreeNode[];
+  /**
+   * 目录子项是否已懒加载（02-03）。仅目录有意义：
+   * `false`/缺省 = 尚未加载（点击展开时才 listDir）；`true` = 已加载（空数组即真空目录，不再重取）。
+   * react-arborist 仅凭 children 是否存在判断可展开，无法区分「加载后为空」与「未加载」，故需此标志。
+   */
+  loaded?: boolean;
   /**
    * 临时新建占位节点的待提交元数据（WR-12）。仅 onCreate 产出的占位节点带此字段——
    * 父目录路径与新建类型从此结构读取，**不再**编码进 id 串（父目录含 ':' 时按 id 分割会错位）。

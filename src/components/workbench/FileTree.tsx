@@ -9,7 +9,7 @@ import {
   type NodeRendererProps,
   type RenameHandler,
 } from 'react-arborist';
-import { openFileInEditor } from '../../editor/vaultFlow';
+import { handleToggle, openFileInEditor } from '../../editor/vaultFlow';
 import { getView } from '../../editor/viewHandle';
 import { useEditorStore } from '../../stores/useEditorStore';
 import { showToast } from '../../stores/useToastStore';
@@ -123,6 +123,14 @@ export default function FileTree() {
   const data = visibleSorted(tree);
   const ops = useMemo(() => createFileTreeOps(), []);
 
+  // D-08 持久化展开态回喂：仅取挂载首帧的 expanded 作 react-arborist 初始开合态
+  // （后续开合由 onToggle → store 单向驱动；initialOpenState 是「初始」语义，不随渲染更新）。
+  const initialOpenState = useMemo(() => {
+    const map: Record<string, boolean> = {};
+    for (const id of useVaultStore.getState().expanded) map[id] = true;
+    return map;
+  }, []);
+
   // 新建：返回临时占位节点。父目录与类型挂在 node.data.pending（WR-12），
   // 不再编码进 id 串——父目录路径含 ':' 时按 id 分割会错位。
   const onCreate: CreateHandler<TreeNode> = ({ parentNode, type }) => {
@@ -174,6 +182,8 @@ export default function FileTree() {
       indent={16}
       rowHeight={28}
       width="100%"
+      initialOpenState={initialOpenState}
+      onToggle={(id) => void handleToggle(id)}
       onCreate={onCreate}
       onRename={onRename}
       onMove={onMove}
