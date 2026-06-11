@@ -20,6 +20,7 @@ const TITLES: Record<string, string> = {
   'view.reset-layout': '视图：重置当前模式布局',
   'view.command-palette': '视图：命令面板',
   'file.open-folder': '文件：打开文件夹',
+  'go.quick-open': '转到：快速打开文件',
   'app.exit': '应用：退出',
   'mode.switch-standard': '模式：切换到 Standard（通用）',
   'mode.switch-academic': '模式：切换到 Academic（学术）',
@@ -49,9 +50,9 @@ describe('builtins', () => {
     disposeKeymap();
   });
 
-  it('注册 13 条命令，标题与 UI-SPEC 字面逐字一致', () => {
+  it('注册 14 条命令，标题与 UI-SPEC 字面逐字一致', () => {
     const all = getAll();
-    expect(all).toHaveLength(13);
+    expect(all).toHaveLength(14);
     for (const [id, title] of Object.entries(TITLES)) {
       expect(all.find((c) => c.id === id)?.title).toBe(title);
     }
@@ -62,13 +63,21 @@ describe('builtins', () => {
     expect(byId.get('view.toggle-sidebar')?.shortcut).toBe('Ctrl+B');
     expect(byId.get('view.toggle-right-panel')?.shortcut).toBe('Ctrl+Alt+B');
     expect(byId.get('view.command-palette')?.shortcut).toBe('Ctrl+Shift+P');
+    expect(byId.get('go.quick-open')?.shortcut).toBe('Ctrl+P');
   });
 
   it('重复调用安全（StrictMode）：先清旧注册再登记', () => {
     expect(() => {
       disposeBuiltins = registerBuiltinCommands();
     }).not.toThrow();
-    expect(getAll()).toHaveLength(13);
+    expect(getAll()).toHaveLength(14);
+  });
+
+  it('合成 Ctrl+P 经 keymap 打开无前缀快速打开', () => {
+    initKeymap();
+    window.dispatchEvent(key({ key: 'p', ctrlKey: true }));
+    expect(usePaletteStore.getState().open).toBe(true);
+    expect(usePaletteStore.getState().query).toBe('');
   });
 
   it('execute mode.switch-academic 切换模式且不占用全局快捷键（D-08）', async () => {

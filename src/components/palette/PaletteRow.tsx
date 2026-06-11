@@ -32,7 +32,12 @@ export default function PaletteRow({ item, selected, onSelect }: PaletteRowProps
           : 'border-l-2 border-l-transparent hover:bg-[var(--background-modifier-hover)]'
       }`}
     >
-      <span className="min-w-0 flex-1 truncate">{item.title}</span>
+      <span className="min-w-0 flex-none truncate">{item.title}</span>
+      {item.subtitle !== undefined && (
+        <span className="min-w-0 flex-1 truncate text-right text-[12px] text-[var(--text-faint)]">
+          {item.subtitle}
+        </span>
+      )}
       {item.shortcut !== undefined && <Kbd tone="faint">{item.shortcut}</Kbd>}
     </li>
   );

@@ -18,6 +18,8 @@ export interface PaletteItem {
   id: string;
   title: string;
   shortcut?: string;
+  /** 次要文本（快速打开结果行右侧灰色相对路径，Label 12 `--text-faint`）。 */
+  subtitle?: string;
 }
 
 /**
@@ -27,4 +29,9 @@ export interface PaletteItem {
 export interface PaletteProvider {
   prefix: string;
   getItems(query: string): PaletteItem[];
+  /**
+   * 选中结果行的处理（可选）。缺省时由弹层壳走 registry.execute(item.id)（命令 provider）；
+   * 文件 provider 提供此回调以打开文件而非执行命令（id 为相对路径）。
+   */
+  onSelect?(id: string): void;
 }

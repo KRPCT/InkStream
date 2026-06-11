@@ -1,6 +1,7 @@
 import type { EditorView } from '@codemirror/view';
 import { readFile } from '../ipc/files';
-import { listDir, openVault } from '../ipc/vault';
+import { listDir, listFiles, openVault } from '../ipc/vault';
+import { getView } from './viewHandle';
 import { showToast } from '../stores/useToastStore';
 import { useEditorStore } from '../stores/useEditorStore';
 import { useVaultStore } from '../stores/useVaultStore';
@@ -42,10 +43,31 @@ export async function openVaultByPath(path: string): Promise<void> {
     const info = await openVault(path);
     const entries = await listDir(info.root, '');
     useVaultStore.getState().openVault(info, entriesToNodes(entries));
+    // 快速打开（Ctrl+P，FILE-03）文件清单快照：fileProvider 同步消费此 store 快照。
+    // 枚举失败不阻断打开 vault——快速打开仅暂无结果，文件树仍可用。
+    try {
+      const files = await listFiles(info.root);
+      useVaultStore.getState().setFiles(files);
+    } catch {
+      useVaultStore.getState().setFiles([]);
+    }
   } catch (e) {
     showToast('error', '无法打开这个文件夹，它可能已被移动或删除。');
     throw e instanceof Error ? e : new Error(String(e));
   }
+}
+
+/**
+ * 按相对路径在单内核打开文件（快速打开 Ctrl+P 选中入口，FILE-03）。
+ *
+ * 复用点击文件树的打开链路：快照当前 → readFile → openFile 换装 → openTab/setActive。
+ * 文件名取相对路径 basename（与文件树 node.name 同义）。无 vault / 无 view（未挂载）静默返回。
+ */
+export async function openFileByPath(path: string): Promise<void> {
+  const view = getView();
+  const name = path.split('/').pop() ?? path;
+  if (!view) return;
+  await openFileInEditor(view, { id: path, name, isDir: false });
 }
 
 /**

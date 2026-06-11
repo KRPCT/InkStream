@@ -74,6 +74,12 @@ const BUILTINS: Command[] = [
     run: () => void requestOpenFolder(),
   },
   {
+    id: 'go.quick-open',
+    title: '转到：快速打开文件',
+    shortcut: 'Ctrl+P',
+    run: () => usePaletteStore.getState().openQuickOpen(),
+  },
+  {
     id: 'app.exit',
     title: '应用：退出',
     run: () => void windowControls.close(),
@@ -96,6 +102,7 @@ export function registerBuiltinCommands(): () => void {
   const disposers = [
     ...BUILTINS.map(register),
     bind('Ctrl+Shift+P', 'view.command-palette'),
+    bind('Ctrl+P', 'go.quick-open'),
     bind('Ctrl+B', 'view.toggle-sidebar'),
     bind('Ctrl+Alt+B', 'view.toggle-right-panel'),
   ];

@@ -23,8 +23,9 @@ describe('rankFiles', () => {
   });
 
   it('英文文件名 fuzzy 命中', () => {
-    const hit = rankFiles('idx', FILES);
+    const hit = rankFiles('index', FILES);
     expect(hit.map((e) => e.path)).toContain('src/index.ts');
+    expect(hit.map((e) => e.path)).not.toContain('readme.md');
   });
 
   it('无匹配返回空', () => {

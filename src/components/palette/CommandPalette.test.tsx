@@ -148,11 +148,13 @@ describe('CommandPalette', () => {
     expect(screen.queryByText('readme.md')).not.toBeInTheDocument();
   });
 
-  it('无 vault 时无前缀输入提示「没有匹配的文件」', () => {
+  it('无 vault 时无前缀输入回退命令前缀提示（快速打开不可用）', () => {
     render(<CommandPalette />);
     openQuick();
     type('readme');
-    expect(screen.getByText('没有匹配的文件')).toBeInTheDocument();
+    // 无 workspace 时无前缀无可路由 provider，回退命令前缀提示而非文件 provider。
+    expect(screen.getByText('输入 “>” 以搜索并执行命令')).toBeInTheDocument();
+    expect(openFileByPath).not.toHaveBeenCalled();
   });
 
   it('选中快速打开结果调用 openFileByPath 并关闭面板', () => {

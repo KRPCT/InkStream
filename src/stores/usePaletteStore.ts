@@ -5,6 +5,8 @@ interface PaletteState {
   query: string;
   /** 打开并预填「>」（D-06：默认进入命令 provider）。 */
   openPalette: () => void;
+  /** 打开为无前缀快速打开模式（Ctrl+P，FILE-03：空 query 走 fileProvider）。 */
+  openQuickOpen: () => void;
   closePalette: () => void;
   toggle: () => void;
   setQuery: (query: string) => void;
@@ -18,6 +20,7 @@ export const usePaletteStore = create<PaletteState>((set, get) => ({
   open: false,
   query: '>',
   openPalette: () => set({ open: true, query: '>' }),
+  openQuickOpen: () => set({ open: true, query: '' }),
   closePalette: () => set({ open: false }),
   toggle: () => {
     if (get().open) set({ open: false });

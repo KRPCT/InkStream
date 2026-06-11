@@ -3,13 +3,16 @@ import { rankCommands } from '../../commands/match';
 import * as mru from '../../commands/mru';
 import { execute, getAll, subscribe } from '../../commands/registry';
 import { usePaletteStore } from '../../stores/usePaletteStore';
+import { useVaultStore } from '../../stores/useVaultStore';
 import type { PaletteProvider } from '../../types/commands';
+import { fileProvider } from './fileProvider';
 import PaletteInput from './PaletteInput';
 import PaletteList from './PaletteList';
 import './palette.css';
 
 const HINT_NO_PREFIX = '输入 “>” 以搜索并执行命令';
 const HINT_NO_RESULT = '没有匹配的命令';
+const HINT_QUICK_OPEN_NO_RESULT = '没有匹配的文件';
 
 /** 「>」命令 provider：rankCommands 过滤 + MRU 置顶（D-07，无分组标题）。 */
 const commandProvider: PaletteProvider = {
@@ -22,11 +25,18 @@ const commandProvider: PaletteProvider = {
     })),
 };
 
-/** 前缀路由表（D-06）：Phase 2 在此追加无前缀快速打开 provider，壳不改。 */
-const providers: PaletteProvider[] = [commandProvider];
+/** 前缀路由表（D-06）：Phase 2 追加无前缀快速打开 fileProvider，壳不改。 */
+const providers: PaletteProvider[] = [commandProvider, fileProvider];
 
+/**
+ * 前缀路由（D-06）：有前缀走匹配前缀的 provider；无前缀（快速打开 Ctrl+P）且已打开
+ * vault 时回退到无前缀 fileProvider（FILE-03）。无 vault 的无前缀输入仍回退命令提示。
+ */
 function routeProvider(query: string): PaletteProvider | undefined {
-  return providers.find((p) => p.prefix !== '' && query.startsWith(p.prefix));
+  const prefixed = providers.find((p) => p.prefix !== '' && query.startsWith(p.prefix));
+  if (prefixed) return prefixed;
+  if (useVaultStore.getState().vault) return fileProvider;
+  return undefined;
 }
 
 /** 统一弹层（SHELL-04）：App 永挂载，open 控制显隐；关闭即时卸载内容。 */
@@ -50,13 +60,17 @@ function PalettePanel() {
   const provider = routeProvider(query);
   const items = provider ? provider.getItems(query.slice(provider.prefix.length)) : [];
   const selected = Math.min(selectedIndex, Math.max(0, items.length - 1));
+  const noResultHint =
+    provider === fileProvider ? HINT_QUICK_OPEN_NO_RESULT : HINT_NO_RESULT;
   const placeholder =
-    provider === undefined ? HINT_NO_PREFIX : items.length === 0 ? HINT_NO_RESULT : null;
+    provider === undefined ? HINT_NO_PREFIX : items.length === 0 ? noResultHint : null;
 
   const runItem = (index: number) => {
     const item = items[index];
-    if (item === undefined) return;
-    void execute(item.id);
+    if (item === undefined || provider === undefined) return;
+    // 文件 provider 提供 onSelect（打开文件）；命令 provider 缺省走 registry.execute。
+    if (provider.onSelect) provider.onSelect(item.id);
+    else void execute(item.id);
     closePalette();
   };
 
