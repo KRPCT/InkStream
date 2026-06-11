@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { EditorState } from '@codemirror/state';
 import { EditorView } from '@codemirror/view';
 import { undo } from '@codemirror/commands';
@@ -70,6 +70,72 @@ describe('editorState cache', () => {
     // 释放后重开：回到磁盘内容（编辑丢失，因缓存已删）
     openFile(view, 'c.md', 'ccc', baseExtensions());
     expect(view.state.doc.toString()).toBe('ccc');
+    view.destroy();
+  });
+});
+
+describe('editorState 滚动位置缓存/还原（D-03）', () => {
+  beforeEach(() => {
+    __clearCacheForTest();
+    // jsdom 无真实布局：用可写桩替换 view.scrollDOM.scrollTop 的 getter/setter，
+    // 并同步刷新 requestAnimationFrame（openFile 推迟一帧设置滚动）。
+    vi.stubGlobal('requestAnimationFrame', (cb: FrameRequestCallback) => {
+      cb(0);
+      return 0;
+    });
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  /** 给 view.scrollDOM.scrollTop 装可读写桩。 */
+  function stubScrollTop(view: EditorView, initial: number): { get: () => number } {
+    let value = initial;
+    Object.defineProperty(view.scrollDOM, 'scrollTop', {
+      configurable: true,
+      get: () => value,
+      set: (v: number) => {
+        value = v;
+      },
+    });
+    return { get: () => value };
+  }
+
+  it('snapshotBeforeSwitch 记录当前 scrollTop，切回该路径时还原', () => {
+    const view = mountView();
+    openFile(view, 'long.md', 'x'.repeat(100), baseExtensions());
+    const scroll = stubScrollTop(view, 0);
+    // 用户在 long.md 滚动到 250
+    view.scrollDOM.scrollTop = 250;
+    snapshotBeforeSwitch(view, 'long.md');
+    // 切到另一文件（滚动重置为 0）
+    openFile(view, 'other.md', 'short', baseExtensions());
+    view.scrollDOM.scrollTop = 0;
+    // 切回 long.md：缓存命中 + scrollTop 被还原为离开时的 250（D-03 滚动位置恢复）
+    openFile(view, 'long.md', 'x'.repeat(100), baseExtensions());
+    expect(scroll.get()).toBe(250);
+    view.destroy();
+  });
+
+  it('首次打开无缓存则 scrollTop 置 0', () => {
+    const view = mountView();
+    const scroll = stubScrollTop(view, 999);
+    openFile(view, 'fresh.md', 'hi', baseExtensions());
+    expect(scroll.get()).toBe(0);
+    view.destroy();
+  });
+
+  it('disposeState 同时清除该 path 的滚动缓存（关 tab 后不残留）', () => {
+    const view = mountView();
+    openFile(view, 'd.md', 'ddd', baseExtensions());
+    const scroll = stubScrollTop(view, 0);
+    view.scrollDOM.scrollTop = 120;
+    snapshotBeforeSwitch(view, 'd.md');
+    disposeState('d.md');
+    // 释放后重开：滚动缓存已清，回到 0（不残留 120）
+    openFile(view, 'd.md', 'ddd', baseExtensions());
+    expect(scroll.get()).toBe(0);
     view.destroy();
   });
 });
