@@ -19,6 +19,8 @@ interface EditorStoreState {
   frozen: Record<string, boolean>;
   /** 当前光标位置镜像（StatusBar 消费，单向自 CM updateListener 写入）。 */
   cursor: number;
+  /** 活动文档是否为 richtext（frontmatter language: richtext）；richtext 工具条据此显隐（D-14）。 */
+  isRichtext: boolean;
   openTab: (tab: TabMeta) => void;
   closeTab: (path: string) => void;
   setActive: (path: string) => void;
@@ -27,6 +29,7 @@ interface EditorStoreState {
   freezeAutosave: (path: string) => void;
   unfreezeAutosave: (path: string) => void;
   setCursor: (pos: number) => void;
+  setRichtext: (on: boolean) => void;
 }
 
 /**
@@ -41,6 +44,7 @@ export const useEditorStore = create<EditorStoreState>((set) => ({
   dirty: {},
   frozen: {},
   cursor: 0,
+  isRichtext: false,
   openTab: (tab) =>
     set((s) => (s.tabs.some((t) => t.path === tab.path) ? s : { tabs: [...s.tabs, tab] })),
   closeTab: (path) =>
@@ -60,4 +64,5 @@ export const useEditorStore = create<EditorStoreState>((set) => ({
   freezeAutosave: (path) => set((s) => ({ frozen: { ...s.frozen, [path]: true } })),
   unfreezeAutosave: (path) => set((s) => ({ frozen: { ...s.frozen, [path]: false } })),
   setCursor: (cursor) => set({ cursor }),
+  setRichtext: (isRichtext) => set({ isRichtext }),
 }));

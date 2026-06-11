@@ -1,6 +1,7 @@
 import { EditorState, type Extension } from '@codemirror/state';
 import type { EditorView } from '@codemirror/view';
 import { useEditorStore } from '../stores/useEditorStore';
+import { readLanguage } from './frontmatter';
 import { getView } from './viewHandle';
 
 /**
@@ -31,6 +32,20 @@ function restoreScroll(view: EditorView, top: number): void {
 }
 
 /**
+ * 把当前 view 的 richtext 态镜像到 store（D-14 工具条显隐）。
+ *
+ * 单向：CM doc 头部 frontmatter language === 'richtext' → store.isRichtext。
+ * view.setState 换装不触发 updateListener，故切换文件由换装入口（openFile/switchToTab）
+ * 显式调用；docChanged 路径由 useCodeMirror 的 updateListener 调用。store 永不回写 CM。
+ */
+export function syncRichtext(view: EditorView): void {
+  const isRichtext = readLanguage(view.state.doc.toString()) === 'richtext';
+  if (useEditorStore.getState().isRichtext !== isRichtext) {
+    useEditorStore.getState().setRichtext(isRichtext);
+  }
+}
+
+/**
  * 打开文件：命中缓存则恢复其完整 state（含光标/选区/undo 历史）；
  * 未命中则用 doc + ext 新建 EditorState 后整体换装。
  *
@@ -41,6 +56,7 @@ export function openFile(view: EditorView, path: string, doc: string, ext: Exten
   const state = cached ?? EditorState.create({ doc, extensions: ext });
   view.setState(state);
   restoreScroll(view, scrollCache.get(path) ?? 0);
+  syncRichtext(view);
 }
 
 /**
@@ -59,6 +75,7 @@ export function switchToTab(path: string): void {
   if (cached) {
     view.setState(cached);
     restoreScroll(view, scrollCache.get(path) ?? 0);
+    syncRichtext(view);
   }
   useEditorStore.getState().setActive(path);
 }

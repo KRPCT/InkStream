@@ -4,6 +4,7 @@ import { EditorState } from '@codemirror/state';
 import { EditorView } from '@codemirror/view';
 import { useEditorStore } from '../stores/useEditorStore';
 import { scheduleAutosave } from '../stores/autosave';
+import { syncRichtext } from './editorState';
 import { baseExtensions } from './extensions';
 import { reconfigureLanguageFromDoc } from './languages';
 import { setView } from './viewHandle';
@@ -35,6 +36,8 @@ export function useCodeMirror(parentRef: RefObject<HTMLElement | null>): RefObje
         // 手动编辑 frontmatter language 行 → 头部语言变化即热切（D-13 文档单一真相源）。
         // reconfigure 只发 effect（非 docChange），不会自激 updateListener。
         reconfigureLanguageFromDoc(u.view, activePath);
+        // richtext 工具条显隐镜像（D-14）：单向自 CM 写入 store，与 dirty/cursor 同纪律。
+        syncRichtext(u.view);
       }
       if (u.selectionSet || u.docChanged) {
         useEditorStore.getState().setCursor(u.state.selection.main.head);

@@ -2,6 +2,7 @@ import { FileText, FolderOpen } from 'lucide-react';
 import { useRef } from 'react';
 import EmptyState from '../common/EmptyState';
 import EditorTabs from './EditorTabs';
+import Toolbar from '../../editor/richtext/Toolbar';
 import { useCodeMirror } from '../../editor/useCodeMirror';
 import { requestOpenFolder } from '../../editor/vaultFlow';
 import { useEditorStore } from '../../stores/useEditorStore';
@@ -39,7 +40,8 @@ export default function EditorArea() {
       {/* 垂直结构：[Tab 栏 36px] → [外部变更提示条槽位 02-04] → [richtext 工具条槽位 02-04/05] → [CM 内容区] */}
       {vault && hasTabs ? <EditorTabs /> : null}
       {/* 外部变更提示条槽位（02-04）：脏文档外部变更时插入 */}
-      {/* richtext 工具条槽位（02-04/05）：frontmatter 驱动 */}
+      {/* richtext 工具条（02-05）：frontmatter language=richtext 时显示（D-14，自身条件渲染） */}
+      <Toolbar />
       <div className="relative min-h-0 flex-1">
         {/* 单内核 DOM 挂载点：始终存在；无活动文件时由空态覆盖层遮住 */}
         <div ref={parentRef} className="h-full overflow-auto" data-testid="cm-mount" />

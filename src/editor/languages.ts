@@ -12,6 +12,7 @@ import { css } from '@codemirror/lang-css';
 import { stex } from '@codemirror/legacy-modes/mode/stex';
 import { shell } from '@codemirror/legacy-modes/mode/shell';
 import { readLanguage } from './frontmatter';
+import { richtextKeymap } from './richtext/keymap';
 
 /**
  * 语言注册表 + Compartment 热切（EDIT-04 / Pattern 5）。
@@ -100,8 +101,9 @@ export function languageForPath(path: string): LanguageId {
  */
 export function extensionsForLanguage(lang: string): Extension {
   if (lang === 'typst') return [];
-  // richtext 物理为 Markdown：高亮走 markdown，工具条/键位由上层按 frontmatter 感知（T-02-18）。
-  if (lang === 'richtext') return SYNC_FACTORY.markdown();
+  // richtext 物理为 Markdown：高亮走 markdown（T-02-18），并随语言注入 Ctrl+B/I/U/K 键位——
+  // 键位仅在 richtext 文档的 langCompartment 内激活，构成 Ctrl+B 冲突裁决（UI-SPEC 合约）。
+  if (lang === 'richtext') return [SYNC_FACTORY.markdown(), richtextKeymap()];
   const factory =
     SYNC_FACTORY[lang as Exclude<LanguageId, 'typst' | 'richtext'>] ?? SYNC_FACTORY.markdown;
   return factory();
