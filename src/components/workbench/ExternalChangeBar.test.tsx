@@ -182,4 +182,30 @@ describe('ExternalChangeBar', () => {
     expect(flushAutosave).not.toHaveBeenCalled();
     expect(useEditorStore.getState().frozen['a.md']).toBe(true);
   });
+
+  it('WR-11：「重载」失败时保持冻结 + 冲突标记（条不消失，可重试）', async () => {
+    reloadFromDisk.mockRejectedValueOnce(new Error('read failed'));
+    const user = userEvent.setup();
+    render(<ExternalChangeBar />);
+    await user.click(screen.getByRole('button', { name: '重载（丢弃我的修改）' }));
+    // 重载失败：绝不清冲突态，否则条消失、冲突未解、后续编辑覆盖外部变更。
+    expect(useEditorStore.getState().frozen['a.md']).toBe(true);
+    expect(useEditorStore.getState().externalChanged['a.md']).toBe(true);
+    // 错误 toast 提示，条仍在。
+    expect(useToastStore.getState().toasts.some((t) => t.message.includes('重载失败'))).toBe(true);
+  });
+
+  it('WR-11：「保留我的」flush 失败时保持冻结 + 冲突标记（条不消失，可重试）', async () => {
+    flushAutosave.mockRejectedValueOnce(new Error('disk full'));
+    const user = userEvent.setup();
+    render(<ExternalChangeBar />);
+    await user.click(screen.getByRole('button', { name: '保留我的（覆盖磁盘）' }));
+    useConfirmStore.getState().request?.resolve(true);
+    await Promise.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
+    // 覆盖落盘失败：保持冻结 + 冲突标记，绝不清状态。
+    expect(useEditorStore.getState().frozen['a.md']).toBe(true);
+    expect(useEditorStore.getState().externalChanged['a.md']).toBe(true);
+  });
 });
