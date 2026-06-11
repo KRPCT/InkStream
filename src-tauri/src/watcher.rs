@@ -27,6 +27,34 @@ pub struct VaultChange {
     pub kind: String,
 }
 
+/// 判定某变更路径是否应 emit 到前端（WR-06：与 vault.rs collect_files 的 dot 跳过对齐）。
+///
+/// 拒绝条件：
+/// - 路径不在 canonical watched root 内（starts_with(root) 失败）——绝不外泄越界事件；
+/// - 路径相对 root 的任一中间/末段为点开头目录段（.git 等），避免 git 操作 flood
+///   `vault://change`，且与 collect_files 枚举语义一致（点开头目录整目录跳过）。
+///
+/// 注意：仅跳过点开头的**目录段**与点开头文件本身的父链；点开头文件本身（如 .env）
+/// 与 collect_files 一致照常 emit（隐藏交前端 D-11）。这里以「相对 root 后除末段外
+/// 任一段以 . 开头」+「末段以 . 开头则其为点目录/点文件」判定——为与 collect_files 的
+/// 「点开头目录整目录跳过、点开头文件保留」严格对齐，仅当某祖先目录段点开头时跳过。
+fn should_emit(root: &Path, path: &Path) -> bool {
+    let rel = match path.strip_prefix(root) {
+        Ok(r) => r,
+        Err(_) => return false, // 越出 watched root：绝不 emit。
+    };
+    let comps: Vec<_> = rel.components().collect();
+    // 除最后一段（叶子，可能是点开头文件，照常保留）外，任一祖先目录段点开头即跳过。
+    for comp in comps.iter().take(comps.len().saturating_sub(1)) {
+        if let std::path::Component::Normal(seg) = comp {
+            if seg.to_string_lossy().starts_with('.') {
+                return false;
+            }
+        }
+    }
+    true
+}
+
 /// notify EventKind → 稳定字符串标签（前端只读语义，不依赖 notify 内部枚举布局）。
 fn kind_label(kind: &EventKind) -> &'static str {
     match kind {
@@ -52,6 +80,7 @@ pub fn start_watch(app: tauri::AppHandle, root: String) -> Result<(), String> {
     *state.debouncer.lock().map_err(|_| "watcher 锁中毒".to_string())? = None;
 
     let emit_app = app.clone();
+    let emit_root = canon.clone();
     let mut debouncer = new_debouncer(
         DEBOUNCE,
         None,
@@ -60,6 +89,11 @@ pub fn start_watch(app: tauri::AppHandle, root: String) -> Result<(), String> {
                 for event in events {
                     let kind = kind_label(&event.kind);
                     for path in &event.paths {
+                        // WR-06：跳过含点开头目录段的路径与越界路径（与 collect_files 对齐，
+                        // 避免 .git 等 flood vault://change）。
+                        if !should_emit(&emit_root, path) {
+                            continue;
+                        }
                         let _ = emit_app.emit(
                             "vault://change",
                             VaultChange {
@@ -97,11 +131,41 @@ pub fn init(app: &tauri::App) {
 
 #[cfg(test)]
 mod tests {
-    use super::kind_label;
+    use super::{kind_label, should_emit};
     use notify_debouncer_full::notify::event::{
         AccessKind, CreateKind, ModifyKind, RemoveKind,
     };
     use notify_debouncer_full::notify::EventKind;
+    use std::path::Path;
+
+    #[test]
+    fn should_emit_keeps_plain_vault_file() {
+        let root = Path::new("/vault");
+        assert!(should_emit(root, Path::new("/vault/notes/a.md")));
+    }
+
+    #[test]
+    fn should_emit_skips_dot_directory_segments() {
+        // .git 等点目录内的事件被过滤（与 collect_files 跳过对齐，避免事件风暴）。
+        let root = Path::new("/vault");
+        assert!(!should_emit(root, Path::new("/vault/.git/index")));
+        assert!(!should_emit(root, Path::new("/vault/sub/.cache/x")));
+    }
+
+    #[test]
+    fn should_emit_keeps_top_level_dot_file() {
+        // 点开头文件本身（叶子，无点祖先目录）照常 emit（隐藏交前端 D-11）。
+        let root = Path::new("/vault");
+        assert!(should_emit(root, Path::new("/vault/.env")));
+    }
+
+    #[test]
+    fn should_emit_rejects_paths_outside_root() {
+        // 越出 watched root 的路径绝不 emit（starts_with 断言）。
+        let root = Path::new("/vault");
+        assert!(!should_emit(root, Path::new("/etc/passwd")));
+        assert!(!should_emit(root, Path::new("/vault-secret/a.md")));
+    }
 
     #[test]
     fn kind_label_maps_known_variants() {
