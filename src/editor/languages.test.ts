@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { EditorState } from '@codemirror/state';
+import { EditorSelection, EditorState } from '@codemirror/state';
 import { EditorView } from '@codemirror/view';
 import { ensureSyntaxTree } from '@codemirror/language';
 import { describe, expect, it } from 'vitest';
@@ -119,6 +119,58 @@ describe('langCompartment 热切（Pattern 5，不重建 state）', () => {
     });
     expect(hasHeading).toBe(true);
     view.destroy();
+  });
+});
+
+describe('richtext 智能粘贴挂载（WR-03 / D-16）', () => {
+  // jsdom 无完整 ClipboardEvent；构造满足 paste 读取契约的最小事件投递到 contentDOM。
+  function dispatchPaste(view: EditorView, text: string): void {
+    const event = new Event('paste', { bubbles: true, cancelable: true }) as ClipboardEvent;
+    Object.defineProperty(event, 'clipboardData', {
+      value: { getData: (t: string) => (t === 'text/plain' ? text : '') },
+    });
+    view.contentDOM.dispatchEvent(event);
+  }
+
+  function mountRichtext(doc: string, anchor: number, head: number): EditorView {
+    return new EditorView({
+      state: EditorState.create({
+        doc,
+        selection: EditorSelection.single(anchor, head),
+        extensions: [extensionsForLanguage('richtext')],
+      }),
+    });
+  }
+
+  it('richtext 文档：http(s) URL 粘贴在选区上包成 [选区](URL)', () => {
+    const view = mountRichtext('go here', 3, 7);
+    dispatchPaste(view, 'https://example.com');
+    expect(view.state.doc.toString()).toBe('go [here](https://example.com)');
+    // 受信处理器把光标置于链接之后（与项目 richtextPasteHandler 契约一致）。
+    expect(view.state.selection.main.empty).toBe(true);
+    expect(view.state.selection.main.head).toBe('go [here](https://example.com)'.length);
+    view.destroy();
+  });
+
+  it('richtext 文档：非 http(s) 的 www. 文本不被包裹（受信白名单优先于 markdown 内建）', () => {
+    // markdown 内建 paste 会把 `www.x` 自动补 https 并包裹；本项目受信处理器仅认 http(s)，
+    // Prec.highest 注册后由受信处理器优先——但因 www. 非白名单命中，它放行默认，
+    // 故此断言锁定「richtext 智能粘贴的语义边界由受信处理器定义」。该用例随 D-16 白名单语义演进。
+    const view = mountRichtext('go here', 3, 7);
+    dispatchPaste(view, 'plain text');
+    // 非 URL 文本：放行默认粘贴，选区被替换为粘贴文本（不产生 markdown 链接）。
+    expect(view.state.doc.toString()).toBe('go plain text');
+    view.destroy();
+  });
+
+  it('richtext paste 扩展源码经 domEventHandlers 注册受信处理器', () => {
+    // 静态证据：richtext 分支挂载了 paste domEventHandler（防回归为死代码，WR-03）。
+    expect(languagesSrc).toMatch(/domEventHandlers\(\{\s*paste:/);
+    expect(languagesSrc).toMatch(/richtextPasteHandler/);
+  });
+
+  it('source 在 richtext 分支注入 richtextPasteExtension', () => {
+    expect(languagesSrc).toContain('richtextPasteExtension()');
   });
 });
 
