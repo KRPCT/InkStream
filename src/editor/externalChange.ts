@@ -9,10 +9,11 @@ import { refreshTree } from './vaultFlow';
 /**
  * 外部变更冲突仲裁（FILE-02 / D-04 双路径）。
  *
- * watcher（02-03）经 onVaultChange 推送 vault 内变更绝对路径，本模块按当前文件 isDirty 分三路：
- * - 非当前打开文件 → 刷新文件树（受控 data，与写操作同一刷新入口）
- * - 是打开文件 + 干净 → 静默重载磁盘 + Toast（D-04 干净路径）
- * - 是打开文件 + 脏 → freezeAutosave + 标记 externalChanged，由 ExternalChangeBar 显式仲裁
+ * watcher（02-03）经 onVaultChange 推送 vault 内变更绝对路径，本模块按**该 path 自身**是否打开/脏分三路
+ * （CR-03：按 per-path 脏标记仲裁，而非 active-vs-not，否则后台脏 tab 被静默覆盖）：
+ * - 任意打开 tab（活动或后台）且脏 → freezeAutosave + 标记 externalChanged，切回该 tab 时 ExternalChangeBar 显式仲裁
+ * - 当前活动文件且干净 → 静默重载磁盘 + Toast（D-04 干净路径）
+ * - 其余（非打开文件 / 干净的后台文件）→ 刷新文件树（受控 data，与写操作同一刷新入口）
  *
  * 自激抑制：自身原子写紧随的 watcher 事件被 consumeSuppressedWatch 吞，绝不误弹提示条（Pitfall 2）。
  */
@@ -43,29 +44,31 @@ export async function arbitrateVaultChange(payload: VaultChangePayload): Promise
   // 自激抑制：自己原子写触发的事件被吞一次，不进入任何仲裁分支
   if (consumeSuppressedWatch(rel)) return;
 
-  const { activePath, dirty } = useEditorStore.getState();
+  const { activePath, dirty, tabs } = useEditorStore.getState();
+  const isOpen = tabs.some((t) => t.path === rel);
 
-  // 非当前打开文件：仅刷新文件树（新增/删除/外部改非活动文件）
-  if (rel !== activePath) {
-    await refreshTree();
-    return;
-  }
-
-  // 当前打开文件：按脏标记分两路
-  if (dirty[rel]) {
-    // 脏文档：冻结自动保存 + 显式冲突条，绝不静默覆盖（D-04）
+  // 任意打开 tab（活动或后台）且脏：冻结 + 标记冲突，绝不静默覆盖（CR-03 / D-04 / FILE-02）。
+  // 后台脏 tab 的冲突在切回该 tab 时由 ExternalChangeBar 呈现（它按 activePath 渲染）。
+  if (isOpen && dirty[rel]) {
     freezeAutosave(rel);
     useEditorStore.getState().markExternalChange(rel);
     return;
   }
 
-  // 干净文档：静默重载 + 轻提示
-  try {
-    await reloadFromDisk(rel);
-    showToast('warning', `「${baseName(rel)}」已在外部被修改，已自动重载。`);
-  } catch {
-    showToast('error', `「${baseName(rel)}」外部变更后重载失败，请手动重新打开。`);
+  // 当前活动文件且干净：静默重载 + 轻提示（D-04 干净路径）。
+  if (rel === activePath) {
+    try {
+      await reloadFromDisk(rel);
+      showToast('warning', `「${baseName(rel)}」已在外部被修改，已自动重载。`);
+    } catch {
+      showToast('error', `「${baseName(rel)}」外部变更后重载失败，请手动重新打开。`);
+    }
+    return;
   }
+
+  // 其余（非打开文件 / 干净的后台文件）：仅刷新文件树。
+  // 干净的后台文件无需重载——下次打开自然读最新盘（reloadFromDisk 仅对活动文件换装）。
+  await refreshTree();
 }
 
 let unlisten: UnlistenFn | null = null;
