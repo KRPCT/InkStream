@@ -1,5 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
+import { ensureSyntaxTree } from '@codemirror/language';
 import { EditorSelection } from '@codemirror/state';
 import { afterEach, describe, expect, it } from 'vitest';
 import { EditorView } from '@codemirror/view';
@@ -46,9 +47,9 @@ function bfView(doc: string): EditorView {
   return makeTestView(doc, [extensionsForLanguage('markdown'), blockField, composingGuard]);
 }
 
-/** 收集 blockField DecorationSet 的 (from,to,widget) 序列。 */
+/** 收集 blockField 替换 DecorationSet 的 (from,to,widget) 序列。 */
 function collectBlocks(v: EditorView): Array<{ from: number; to: number; widget: unknown }> {
-  const set = v.state.field(blockField);
+  const set = v.state.field(blockField).deco;
   const out: Array<{ from: number; to: number; widget: unknown }> = [];
   const iter = set.iter();
   while (iter.value) {
@@ -88,6 +89,103 @@ describe('blockField 块级替换', () => {
   it('doc 不变（块级替换仅装饰，绝不改真相源）', () => {
     view = bfView(TABLE_DOC);
     expect(view.state.doc.toString()).toBe(TABLE_DOC);
+  });
+});
+
+describe('blockField 选区移动复用（UAT #8 性能根因）', () => {
+  it('普通选区移动（未跨表格边界）原样复用 BlockState，不重建（无 O(doc) 全树重算）', () => {
+    view = bfView(TABLE_DOC);
+    view.dispatch({ selection: EditorSelection.cursor(0) });
+    const before = view.state.field(blockField);
+
+    // 光标在表格外的两点间移动（始终不在任何表格内）：边界未跨越 → 引用不变。
+    view.dispatch({ selection: EditorSelection.cursor(1) });
+    expect(view.state.field(blockField)).toBe(before);
+
+    view.dispatch({ selection: EditorSelection.cursor(2) });
+    expect(view.state.field(blockField)).toBe(before);
+  });
+
+  it('表格内部移动（始终在同一表格块）原样复用 BlockState，不重建', () => {
+    view = bfView(TABLE_DOC);
+    // 先把光标移入表格内（一次跨越 → 重建为整块还原态）。
+    view.dispatch({ selection: EditorSelection.cursor(TABLE_FROM + 1) });
+    const revealed = view.state.field(blockField);
+    expect(revealed.deco.size).toBe(0); // 表格还原源码，无替换装饰。
+
+    // 在表格内部相邻单元格间移动：仍在同一块 → 不重建。
+    view.dispatch({ selection: EditorSelection.cursor(TABLE_FROM + 5) });
+    expect(view.state.field(blockField)).toBe(revealed);
+  });
+
+  it('光标跨入表格边界时重建（D-06 整块还原切换：进块 → 还原源码）', () => {
+    view = bfView(TABLE_DOC);
+    view.dispatch({ selection: EditorSelection.cursor(0) });
+    const outside = view.state.field(blockField);
+    expect(outside.deco.size).toBeGreaterThan(0); // 表格外：被替换为 widget。
+
+    // 跨入表格 → 重建（新引用），整块还原（无替换装饰）。
+    view.dispatch({ selection: EditorSelection.cursor(TABLE_FROM + 3) });
+    const inside = view.state.field(blockField);
+    expect(inside).not.toBe(outside);
+    expect(inside.deco.size).toBe(0);
+  });
+
+  it('光标移出表格边界时重建（D-06：出块 → 重渲染 widget）', () => {
+    view = bfView(TABLE_DOC);
+    view.dispatch({ selection: EditorSelection.cursor(TABLE_FROM + 3) });
+    expect(view.state.field(blockField).deco.size).toBe(0);
+
+    // 跨出表格 → 重建，表格重新渲染为 widget。
+    view.dispatch({ selection: EditorSelection.cursor(0) });
+    const out = view.state.field(blockField);
+    expect(out.deco.size).toBeGreaterThan(0);
+    expect(collectBlocks(view).some((b) => b.widget instanceof TableWidget)).toBe(true);
+  });
+});
+
+describe('blockField 选区移动性能基准（10 万字含表格，< 16ms 一帧预算）', () => {
+  /** 生成约 10 万字正文，中部嵌一张 GFM 表格。 */
+  function build100kDocWithTable(): { doc: string; tableFrom: number } {
+    const head: string[] = [];
+    let i = 0;
+    while (head.join('\n').length < 50_000) {
+      head.push(`## 章节 ${i}`, `含 **加粗${i}** 与 *斜体${i}* 的正文占位以撑足字符数。`, '');
+      i += 1;
+    }
+    const table = ['| a | b |', '| - | - |', '| 1 | 2 |'];
+    const tail: string[] = [];
+    while (tail.join('\n').length < 50_000) {
+      tail.push(`### 小节 ${i}`, `更多中文正文占位用于性能基准测量段落 ${i}。`, '');
+      i += 1;
+    }
+    const headStr = head.join('\n');
+    const doc = [headStr, '', table.join('\n'), '', tail.join('\n')].join('\n');
+    return { doc, tableFrom: doc.indexOf('| a | b |') };
+  }
+
+  it('表格外大量纯选区移动每次 dispatch < 16ms（不触发 O(doc) 全树重建）', () => {
+    const { doc } = build100kDocWithTable();
+    expect(doc.length).toBeGreaterThanOrEqual(100_000);
+
+    view = bfView(doc);
+    // 强制全量解析，排除惰性建树成本，使测量只计 update 路径本身。
+    ensureSyntaxTree(view.state, view.state.doc.length, 5000);
+    view.dispatch({ selection: EditorSelection.cursor(0) });
+
+    const before = view.state.field(blockField);
+    let worst = 0;
+    // 在文档头部连续移动光标（始终在表格外，绝不跨越表格边界）。
+    for (let pos = 1; pos <= 200; pos += 1) {
+      const start = performance.now();
+      view.dispatch({ selection: EditorSelection.cursor(pos) });
+      worst = Math.max(worst, performance.now() - start);
+    }
+
+    // 性能纪律：每次纯选区移动远低于一帧预算（无全文语法树访问）。
+    expect(worst).toBeLessThan(16);
+    // 复用证明：200 次非边界移动后仍是同一 BlockState 引用（零重建）。
+    expect(view.state.field(blockField)).toBe(before);
   });
 });
 

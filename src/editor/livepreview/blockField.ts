@@ -27,17 +27,37 @@ import { TableWidget } from './widgets/TableWidget';
  * （行内 mark/line 装饰 + 块级 replace 装饰 range 不重叠，无冲突，Pattern 3）。
  */
 
+/** 块级表格 range（from,to 闭区间起止）。 */
+export interface TableRange {
+  readonly from: number;
+  readonly to: number;
+}
+
+/** blockField 持有的内部态：替换装饰集 + 全部表格块 range（含光标当前还原的块）。 */
+interface BlockState {
+  /** 块级替换 DecorationSet（光标在块内的表格不在此集——整块还原源码 D-06）。 */
+  readonly deco: DecorationSet;
+  /** 全部表格块 range（无论是否被替换）：供选区移动时 O(blocks) 判定边界跨越。 */
+  readonly tables: readonly TableRange[];
+}
+
 /**
- * 构建块级替换装饰集（整文档迭代——块级原子块跨多行、非视口局部，须全文判定）。
+ * 全文扫描一次语法树，产出全部表格块 range + 据当前光标构建的替换装饰集。
  *
- * 对每个 BLOCK_REPLACE 节点：光标在块内则跳过（整块还原 D-06），否则加 block replace 装饰。
- * 同源 TableWidget eq 复用 DOM（防闪烁）。RangeSetBuilder 按位置序 O(n) 构建。
+ * 整文档迭代——块级原子块跨多行、非视口局部，须全文判定（D-06 整块还原依赖全表覆盖，
+ * 且 atomicRanges 须覆盖所有表格含视口外）。每次扫描只发生于 doc 变 / refresh，**绝不在
+ * 普通选区移动时触发**（那条路径走 selectionCrossesBoundary 的 O(blocks) 边界判定，见 update）。
+ *
+ * 对每个 BLOCK_REPLACE 节点：登记其 range；光标在块内则跳过替换（整块还原 D-06），否则加
+ * block replace 装饰。同源 TableWidget eq 复用 DOM（防闪烁）。RangeSetBuilder 按位置序 O(n) 构建。
  */
-function buildBlockDecorations(state: EditorState): DecorationSet {
+function buildBlockState(state: EditorState): BlockState {
   const builder = new RangeSetBuilder<Decoration>();
+  const tables: TableRange[] = [];
   syntaxTree(state).iterate({
     enter: (node) => {
       if (!BLOCK_REPLACE.has(node.name)) return undefined;
+      tables.push({ from: node.from, to: node.to });
       // 光标在块内 → 整块还原源码（不替换），并跳过子树。
       if (cursorInRange(state, node.from, node.to)) return false;
       const text = state.doc.sliceString(node.from, node.to);
@@ -49,27 +69,55 @@ function buildBlockDecorations(state: EditorState): DecorationSet {
       return false; // 块级节点子树无需再迭代。
     },
   });
-  return builder.finish();
+  return { deco: builder.finish(), tables };
+}
+
+/** 主光标 head 落入哪个表格块（闭区间，含端点）；不在任何块内返回 null。 */
+function tableAtHead(tables: readonly TableRange[], head: number): TableRange | null {
+  for (const t of tables) {
+    if (head >= t.from && head <= t.to) return t;
+  }
+  return null;
 }
 
 /**
- * 块级层 StateField：持块级替换 DecorationSet，经 provide(EditorView.decorations.from) 提供。
+ * 选区变化时的复用判据（性能核心：消除每次点击的 O(doc) 全树重算）。
  *
- * update：组合期（isFrozenState）保旧集；否则 doc 变 / 选区变 / refreshLivePreview effect 时重算。
- * 选区变化驱动「光标进块 ↔ 出块」的整块还原切换。
+ * 仅当主光标 head 实际跨越表格块边界（进块 ↔ 出块 ↔ 换块）才重建——驱动 D-06 整块还原切换；
+ * 否则（光标在同一表格内移动、或始终在所有表格外移动）原样复用，零语法树访问。
+ *
+ * 表格 range 取自上一次全文扫描固化的 `prev.tables`（doc 未变故仍准确）；旧/新 head 各 O(blocks) 查表。
  */
-export const blockField = StateField.define<DecorationSet>({
-  create: (state) => buildBlockDecorations(state),
-  update(deco, tr) {
-    // IME 闸门：组合期保旧 RangeSet（块级 StateField 无 view，查 state 级 frozenField）。
-    if (isFrozenState(tr.state)) return deco;
+function selectionCrossesBoundary(prev: BlockState, tr: { startState: EditorState; state: EditorState }): boolean {
+  const oldHead = tr.startState.selection.main.head;
+  const newHead = tr.state.selection.main.head;
+  return tableAtHead(prev.tables, oldHead) !== tableAtHead(prev.tables, newHead);
+}
+
+/**
+ * 块级层 StateField：持 BlockState（替换 DecorationSet + 全表 range），经 provide 提供其装饰子集。
+ *
+ * update 重建判据（按代价升序短路）：
+ *   1. IME 组合期（isFrozenState）：保旧态，绝不重算（最高优先级闸门）。
+ *   2. docChanged / refreshLivePreview：全文扫描重建（doc 结构可能变，表格 range 须刷新）。
+ *   3. 选区变化：仅当 head 跨越表格块边界才重建（O(blocks) 判定）；普通移动原样复用——
+ *      消除每次点击的 O(doc) 全树重算（UAT #8 卡顿根因）。
+ */
+export const blockField = StateField.define<BlockState>({
+  create: (state) => buildBlockState(state),
+  update(prev, tr) {
+    // 1. IME 闸门：组合期保旧态（块级 StateField 无 view，查 state 级 frozenField）。
+    if (isFrozenState(tr.state)) return prev;
+    // 2. doc 变 / compositionend 强刷：全文扫描重建。
     const refreshed = tr.effects.some((e) => e.is(refreshLivePreview));
-    if (tr.docChanged || tr.selection || refreshed) {
-      return buildBlockDecorations(tr.state);
+    if (tr.docChanged || refreshed) return buildBlockState(tr.state);
+    // 3. 选区变化：仅跨越表格块边界才重建（O(blocks)），否则复用——不做全树 O(doc) 重算。
+    if (tr.selection && selectionCrossesBoundary(prev, tr)) {
+      return buildBlockState(tr.state);
     }
-    return deco;
+    return prev;
   },
-  provide: (field) => EditorView.decorations.from(field),
+  provide: (field) => EditorView.decorations.from(field, (s) => s.deco),
 });
 
 /**
@@ -78,7 +126,9 @@ export const blockField = StateField.define<DecorationSet>({
  * 键盘光标移动（moveByChar/moveVertically/Backspace）把表格 widget range 当原子跳过；
  * programmatic selection（view.dispatch({selection})）不受约束（RESEARCH Pattern 4 注意）。
  */
-export const tableAtomicRanges = EditorView.atomicRanges.of((view) => view.state.field(blockField));
+export const tableAtomicRanges = EditorView.atomicRanges.of(
+  (view) => view.state.field(blockField).deco,
+);
 
 /**
  * 块级层样式（UI-SPEC GFM 表格）：真 <table> 边框 / 表头底色 / 单元格内边距。
