@@ -11,9 +11,13 @@ import { useEditorStore } from '../../stores/useEditorStore';
  * 高 36 / 内边距 12 / active 2px 底 accent 指示条 + 600 字重；脏态 6px 圆点 ↔ hover 变 x。
  */
 
-/** 关 tab：先 flush 落盘（不弹拦截，Ctrl+W 同路）→ 释放 state/滚动缓存 → store 移除。 */
-function closeTabFlow(path: string): void {
-  void flushAutosave(path);
+/**
+ * 关 tab：先 await flush 落盘（CR-02 必须等落盘完成再释放，否则在途写落到已 dispose 的
+ * state / 已切换的活动 tab，叠加 CR-01 会把错误内容写入本文件）→ 释放 state/滚动缓存 → store 移除。
+ * 不弹拦截（Ctrl+W 同路）。flush 失败由 autosave 内部保留脏态 + 错误 toast 兜底，仍继续关闭。
+ */
+async function closeTabFlow(path: string): Promise<void> {
+  await flushAutosave(path);
   disposeState(path);
   useEditorStore.getState().closeTab(path);
 }
@@ -65,7 +69,7 @@ export default function EditorTabs() {
               aria-label={`关闭 ${tab.name}`}
               onClick={(e) => {
                 e.stopPropagation();
-                closeTabFlow(tab.path);
+                void closeTabFlow(tab.path);
               }}
               className={
                 'flex h-4 w-4 items-center justify-center rounded-[3px] text-[var(--text-muted)] hover:bg-[var(--background-modifier-hover)] hover:text-[var(--text-normal)] ' +
