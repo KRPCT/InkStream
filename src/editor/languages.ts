@@ -1,5 +1,5 @@
-import { Compartment, type Extension } from '@codemirror/state';
-import type { EditorView } from '@codemirror/view';
+import { Compartment, Prec, type Extension } from '@codemirror/state';
+import { EditorView } from '@codemirror/view';
 import { StreamLanguage } from '@codemirror/language';
 import { markdown } from '@codemirror/lang-markdown';
 import { javascript } from '@codemirror/lang-javascript';
@@ -13,6 +13,22 @@ import { stex } from '@codemirror/legacy-modes/mode/stex';
 import { shell } from '@codemirror/legacy-modes/mode/shell';
 import { readLanguage } from './frontmatter';
 import { richtextKeymap } from './richtext/keymap';
+import { richtextPasteHandler } from './richtext/commands';
+
+/**
+ * richtext 智能粘贴扩展（WR-03 / D-16）：把受信的 richtextPasteHandler 挂为 paste
+ * domEventHandler。仅在 richtext 文档的 langCompartment 内激活（不影响普通 markdown）。
+ *
+ * Prec.highest + 返回 handler 结果：当处理器吞下 http(s) URL 粘贴时 `return true`，
+ * 抢在 @codemirror/lang-markdown 内建较宽松的 URL 粘贴之前裁决（T-02-17 白名单优先）。
+ */
+function richtextPasteExtension(): Extension {
+  return Prec.highest(
+    EditorView.domEventHandlers({
+      paste: (event, view) => richtextPasteHandler(event, view),
+    }),
+  );
+}
 
 /**
  * 语言注册表 + Compartment 热切（EDIT-04 / Pattern 5）。
@@ -103,7 +119,8 @@ export function extensionsForLanguage(lang: string): Extension {
   if (lang === 'typst') return [];
   // richtext 物理为 Markdown：高亮走 markdown（T-02-18），并随语言注入 Ctrl+B/I/U/K 键位——
   // 键位仅在 richtext 文档的 langCompartment 内激活，构成 Ctrl+B 冲突裁决（UI-SPEC 合约）。
-  if (lang === 'richtext') return [SYNC_FACTORY.markdown(), richtextKeymap()];
+  if (lang === 'richtext')
+    return [SYNC_FACTORY.markdown(), richtextKeymap(), richtextPasteExtension()];
   const factory =
     SYNC_FACTORY[lang as Exclude<LanguageId, 'typst' | 'richtext'>] ?? SYNC_FACTORY.markdown;
   return factory();

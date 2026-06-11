@@ -88,16 +88,21 @@ export function isUrl(text: string): boolean {
 }
 
 /**
- * 智能粘贴（D-16）：剪贴板为 URL 且当前有选区 → 阻止默认 + 把选区包成 `[选区](粘贴URL)`。
+ * 智能粘贴（D-16）：剪贴板为 http(s) URL 且当前有选区 → 阻止默认 + 把选区包成 `[选区](粘贴URL)`。
  * 其余情形（无选区 / 非 URL / 无剪贴板数据）放行默认粘贴。
  *
  * 仅处理主选区有选中文本的场景——纯插入式 URL（无选区）交默认粘贴，避免吞掉常规粘贴。
+ *
+ * 返回值（WR-03）：`true` 表示已处理并 preventDefault（调用方据此 `return true` 阻止 CM
+ * 其余 paste handler，含 @codemirror/lang-markdown 内建的较宽松 URL 粘贴——后者会把 `www.`
+ * 前缀自动补 https 等，绕过本项目 isUrl 的 http(s) 白名单，故须由本受信处理器优先裁决，T-02-17）。
+ * `false` 表示未处理，放行默认粘贴。
  */
-export function richtextPasteHandler(event: ClipboardEvent, view: EditorView): void {
+export function richtextPasteHandler(event: ClipboardEvent, view: EditorView): boolean {
   const text = event.clipboardData?.getData('text/plain') ?? '';
-  if (!isUrl(text)) return;
+  if (!isUrl(text)) return false;
   const range = view.state.selection.main;
-  if (range.empty) return;
+  if (range.empty) return false;
   event.preventDefault();
   const url = text.trim();
   view.dispatch(
@@ -110,4 +115,5 @@ export function richtextPasteHandler(event: ClipboardEvent, view: EditorView): v
       };
     }),
   );
+  return true;
 }
