@@ -72,29 +72,34 @@ export async function arbitrateVaultChange(payload: VaultChangePayload): Promise
 }
 
 let unlisten: UnlistenFn | null = null;
-let pending: Promise<void> | null = null;
+/**
+ * 订阅代际令牌（WR-07）：每次 init/stop 自增。订阅 Promise 解析时若 generation 已变（被
+ * 后续 stop/init 取消），立即解掉刚拿到的 unlisten，绝不存为当前订阅——杜绝快速切 vault 时
+ * 已解析的 unlisten 泄漏或误拆新订阅。
+ */
+let generation = 0;
 
 /** 启动外部变更仲裁订阅（切入 vault / App 启动时调）。幂等：重复调用先解订阅。 */
 export function initExternalChangeArbiter(): void {
   stopExternalChangeArbiter();
-  pending = onVaultChange((payload) => {
+  const myGen = generation;
+  void onVaultChange((payload) => {
     void arbitrateVaultChange(payload);
   }).then((fn) => {
+    if (generation !== myGen) {
+      // 本次订阅在解析前已被取消（stop 或又一次 init）：直接解掉，不泄漏、不覆盖。
+      fn();
+      return;
+    }
     unlisten = fn;
   });
 }
 
-/** 解订阅（切出 vault / 测试复位）。 */
+/** 解订阅（切出 vault / 测试复位）。自增代际令牌，使在途订阅解析后自解。 */
 export function stopExternalChangeArbiter(): void {
+  generation += 1;
   if (unlisten) {
     unlisten();
     unlisten = null;
   }
-  void pending?.then((): void => {
-    if (unlisten) {
-      unlisten();
-      unlisten = null;
-    }
-  });
-  pending = null;
 }
