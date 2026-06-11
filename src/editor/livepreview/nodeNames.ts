@@ -45,6 +45,34 @@ export const REVEALABLE: ReadonlySet<string> = new Set([
 ]);
 
 /**
+ * 行内「内容样式」节点：渲染态给「整个元素 range」加 Decoration.mark 视觉样式（line-through / 等宽底纹），
+ * 与 HIDE_MARK（隐藏其内部标记）正交叠加。光标行还原由 REVEALABLE 统一接管（return false 跳过子树）。
+ *
+ * - Strikethrough → 删除线 line-through；InlineCode → 等宽 + var(--cm-inline-code-bg) 底纹圆角。
+ */
+export const INLINE_STYLE: ReadonlyMap<string, string> = new Map([
+  ['Strikethrough', 'cm-ink-strike'],
+  ['InlineCode', 'cm-ink-code'],
+]);
+
+/**
+ * 逐行还原节点（D-06 行级）：列表项 / 引用块——光标所在行显标记保排版，其余行保渲染。
+ *
+ * 与 REVEALABLE（按 head ∈ [from,to] 整节点还原）不同：列表/引用是多行容器，须按「光标所在行」
+ * 粒度还原（cursorInLineRange），而非整个容器一并还原。判定经 isCursorOnLineOf（revealLine.ts）。
+ */
+export const LINE_REVEAL_MARK: ReadonlySet<string> = new Set([
+  'ListMark', // - / * / + / 1. 列表项标记（逐行还原）
+  'QuoteMark', // > 引用前缀（逐行还原 D-06）
+]);
+
+/** 水平线节点：Decoration.replace 为 <hr> widget（var(--cm-hr)）。 */
+export const HR_NODE = 'HorizontalRule';
+
+/** 行内 HTML 标签节点：`<u>` 开/闭各一，须跨开闭自配对加 underline（A2，03-01 固化结构）。 */
+export const HTML_TAG_NODE = 'HTMLTag';
+
+/**
  * 块级原子节点：blockField 用 Decoration.replace({ block: true }) 整块替换，光标进块整还原（D-06）。
  * 这些是「半渲染会错乱」的多行原子块（RESEARCH「元素识别」表 / UI-SPEC GFM 表格）。
  *
