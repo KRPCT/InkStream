@@ -17,6 +17,8 @@ interface EditorStoreState {
   dirty: Record<string, boolean>;
   /** 每文件自动保存冻结标志（02-04 外部变更冲突期防误覆盖；本任务建开关）。 */
   frozen: Record<string, boolean>;
+  /** 每文件外部变更冲突标志（D-04 脏文档冲突期，ExternalChangeBar 据此显隐）。 */
+  externalChanged: Record<string, boolean>;
   /** 当前光标位置镜像（StatusBar 消费，单向自 CM updateListener 写入）。 */
   cursor: number;
   /** 活动文档是否为 richtext（frontmatter language: richtext）；richtext 工具条据此显隐（D-14）。 */
@@ -28,6 +30,8 @@ interface EditorStoreState {
   clearDirty: (path: string) => void;
   freezeAutosave: (path: string) => void;
   unfreezeAutosave: (path: string) => void;
+  markExternalChange: (path: string) => void;
+  clearExternalChange: (path: string) => void;
   setCursor: (pos: number) => void;
   setRichtext: (on: boolean) => void;
 }
@@ -43,6 +47,7 @@ export const useEditorStore = create<EditorStoreState>((set) => ({
   activePath: null,
   dirty: {},
   frozen: {},
+  externalChanged: {},
   cursor: 0,
   isRichtext: false,
   openTab: (tab) =>
@@ -54,15 +59,21 @@ export const useEditorStore = create<EditorStoreState>((set) => ({
       delete dirty[path];
       const frozen = { ...s.frozen };
       delete frozen[path];
+      const externalChanged = { ...s.externalChanged };
+      delete externalChanged[path];
       // 关掉的是活动 tab：活动切到剩余首个 tab，无则 null
       const activePath = s.activePath === path ? (tabs[0]?.path ?? null) : s.activePath;
-      return { tabs, dirty, frozen, activePath };
+      return { tabs, dirty, frozen, externalChanged, activePath };
     }),
   setActive: (activePath) => set({ activePath }),
   markDirty: (path) => set((s) => ({ dirty: { ...s.dirty, [path]: true } })),
   clearDirty: (path) => set((s) => ({ dirty: { ...s.dirty, [path]: false } })),
   freezeAutosave: (path) => set((s) => ({ frozen: { ...s.frozen, [path]: true } })),
   unfreezeAutosave: (path) => set((s) => ({ frozen: { ...s.frozen, [path]: false } })),
+  markExternalChange: (path) =>
+    set((s) => ({ externalChanged: { ...s.externalChanged, [path]: true } })),
+  clearExternalChange: (path) =>
+    set((s) => ({ externalChanged: { ...s.externalChanged, [path]: false } })),
   setCursor: (cursor) => set({ cursor }),
   setRichtext: (isRichtext) => set({ isRichtext }),
 }));

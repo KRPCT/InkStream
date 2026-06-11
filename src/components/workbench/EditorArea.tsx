@@ -2,6 +2,7 @@ import { FileText, FolderOpen } from 'lucide-react';
 import { useRef } from 'react';
 import EmptyState from '../common/EmptyState';
 import EditorTabs from './EditorTabs';
+import ExternalChangeBar from './ExternalChangeBar';
 import Toolbar from '../../editor/richtext/Toolbar';
 import { useCodeMirror } from '../../editor/useCodeMirror';
 import { requestOpenFolder } from '../../editor/vaultFlow';
@@ -39,7 +40,8 @@ export default function EditorArea() {
     <div className="flex h-full flex-col bg-[var(--background-primary)]">
       {/* 垂直结构：[Tab 栏 36px] → [外部变更提示条槽位 02-04] → [richtext 工具条槽位 02-04/05] → [CM 内容区] */}
       {vault && hasTabs ? <EditorTabs /> : null}
-      {/* 外部变更提示条槽位（02-04）：脏文档外部变更时插入 */}
+      {/* 外部变更提示条（02-04）：脏文档外部变更时插入（自身条件渲染，D-04） */}
+      <ExternalChangeBar />
       {/* richtext 工具条（02-05）：frontmatter language=richtext 时显示（D-14，自身条件渲染） */}
       <Toolbar />
       <div className="relative min-h-0 flex-1">

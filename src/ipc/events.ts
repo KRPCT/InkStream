@@ -1,6 +1,9 @@
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 import { invoke } from './invoke';
 
+/** 取消订阅函数类型（自 @tauri-apps/api 重导出，业务层经 ipc/ 收口取用，不直接 import）。 */
+export type { UnlistenFn };
+
 /**
  * 后端事件订阅收口层（唯一接触 @tauri-apps/api/event 的文件之一）。
  *

@@ -1,7 +1,11 @@
 import { EditorState, type Extension } from '@codemirror/state';
 import type { EditorView } from '@codemirror/view';
+import { readFile } from '../ipc/files';
 import { useEditorStore } from '../stores/useEditorStore';
+import { useVaultStore } from '../stores/useVaultStore';
+import { baseExtensions } from './extensions';
 import { readLanguage } from './frontmatter';
+import { languageFromDoc, markAppliedLanguage } from './languages';
 import { getView } from './viewHandle';
 
 /**
@@ -57,6 +61,26 @@ export function openFile(view: EditorView, path: string, doc: string, ext: Exten
   view.setState(state);
   restoreScroll(view, scrollCache.get(path) ?? 0);
   syncRichtext(view);
+}
+
+/**
+ * 从磁盘重载某文件（D-04 外部变更：干净静默重载 / 「重载丢弃我的修改」）。
+ *
+ * 丢弃该 path 的缓存 state（含未落盘编辑与 undo 历史）后按磁盘内容重建并整体换装。
+ * 仅当该 path 为当前活动文件时换装（否则只清缓存，下次打开自然读最新盘）。
+ * 无 vault / 无 view 静默返回。读盘失败抛出由调用方兜底（仲裁层吞并提示）。
+ */
+export async function reloadFromDisk(path: string): Promise<void> {
+  const vault = useVaultStore.getState().vault;
+  const view = getView();
+  cache.delete(path);
+  scrollCache.delete(path);
+  if (!vault || !view) return;
+  const doc = await readFile(vault.root, path);
+  if (useEditorStore.getState().activePath !== path) return;
+  const lang = languageFromDoc(doc, path);
+  openFile(view, path, doc, baseExtensions(lang));
+  markAppliedLanguage(view, lang);
 }
 
 /**
