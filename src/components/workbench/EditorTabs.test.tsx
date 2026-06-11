@@ -9,7 +9,7 @@ let releaseFlush: (() => void) | null = null;
 
 const flushAutosave = vi.fn().mockResolvedValue(undefined);
 const switchTab = vi.fn();
-const disposeStateSpy = vi.fn(() => {
+const disposeStateSpy = vi.fn((_path: string) => {
   closeOrder.push('dispose');
 });
 
