@@ -9,6 +9,12 @@ use tauri::{Emitter, Manager};
 /// vault watcher 防抖窗口（A4 裁量）。磁盘抖动（编辑器临时文件、连续写）在此窗口内合并。
 const DEBOUNCE: Duration = Duration::from_millis(400);
 
+/// autosave 原子写临时文件名前缀（须与 files.rs `temp_sibling` 的 `.inkstream-tmp-` 同步）。
+///
+/// EDIT-06 Layer 4：原子写 = temp+rename，temp 叶子的 create/modify 事件不是"外部变更"，
+/// 不该 emit 到前端（否则与前端自激抑制窗口赛跑，多事件泄漏成组合期 reload→吞字）。
+const AUTOSAVE_TMP_PREFIX: &str = ".inkstream-tmp-";
+
 /// 全 App 单例 watcher 句柄（切 vault 时停旧启新，Runtime State Inventory）。
 ///
 /// Debouncer 持有后台监听线程，drop 即停。换 vault 调 [`stop_watch`] 先释放再 [`start_watch`]。
@@ -50,6 +56,13 @@ fn should_emit(root: &Path, path: &Path) -> bool {
             if seg.to_string_lossy().starts_with('.') {
                 return false;
             }
+        }
+    }
+    // EDIT-06 Layer 4：叶子是 autosave 原子写 temp（`.inkstream-tmp-…`）则跳过——它的
+    // create/modify 是自身落盘抖动而非外部变更，不该 emit（与前端 Layer 2 抑制窗协同）。
+    if let Some(std::path::Component::Normal(leaf)) = comps.last() {
+        if leaf.to_string_lossy().starts_with(AUTOSAVE_TMP_PREFIX) {
+            return false;
         }
     }
     true
@@ -157,6 +170,19 @@ mod tests {
         // 点开头文件本身（叶子，无点祖先目录）照常 emit（隐藏交前端 D-11）。
         let root = Path::new("/vault");
         assert!(should_emit(root, Path::new("/vault/.env")));
+    }
+
+    #[test]
+    fn should_emit_skips_autosave_tmp_leaf() {
+        // EDIT-06 Layer 4：autosave 原子写 temp 叶子（.inkstream-tmp-…）是自身落盘抖动，
+        // 不该 emit 给前端（否则多事件泄漏成组合期 reload→吞字）。须与 files.rs 命名同步。
+        let root = Path::new("/vault");
+        assert!(!should_emit(
+            root,
+            Path::new("/vault/notes/.inkstream-tmp-1234-5678-a.md")
+        ));
+        // 真实目标文件（rename 后的 a.md）仍照常 emit。
+        assert!(should_emit(root, Path::new("/vault/notes/a.md")));
     }
 
     #[test]
