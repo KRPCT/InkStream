@@ -115,14 +115,22 @@ describe('autosave 防抖落盘管线', () => {
     expect(mockWrite).not.toHaveBeenCalled();
   });
 
-  it('suppressNextWatch 后该路径下一个 watcher 事件被吞（自激抑制）', () => {
+  it('suppressNextWatch 后窗口内该路径事件被吞、未抑制路径不吞（Layer 2 窗口自激抑制）', () => {
     suppressNextWatch('a.md');
-    // 第一次消费返回 true（吞掉自激事件）
+    // 窗口内多次消费均返回 true（覆盖 temp+rename 的多事件抖动，区别于旧单次 token）
     expect(consumeSuppressedWatch('a.md')).toBe(true);
-    // 第二次返回 false（只吞一个）
-    expect(consumeSuppressedWatch('a.md')).toBe(false);
+    expect(consumeSuppressedWatch('a.md')).toBe(true);
     // 未抑制的路径直接 false
     expect(consumeSuppressedWatch('b.md')).toBe(false);
+  });
+
+  it('抑制窗口到期后真实外部变更不再被吞（窗口过期放行 + 清理）', () => {
+    suppressNextWatch('a.md');
+    expect(consumeSuppressedWatch('a.md')).toBe(true);
+    // 推进超过抑制窗口（fake timers 同步推进 performance.now）
+    vi.advanceTimersByTime(700);
+    // 过期：放行真实外部变更（D-04 不漏外部修改）
+    expect(consumeSuppressedWatch('a.md')).toBe(false);
   });
 
   it('落盘前自动 suppressNextWatch 该路径（原子写不触发自身 watcher 误判）', async () => {
