@@ -1,12 +1,31 @@
 import type { MouseEvent } from 'react';
 import { isMacOS } from '../../ipc/platform';
 import { windowControls } from '../../ipc/window';
+import { useEditorStore } from '../../stores/useEditorStore';
+import { useVaultStore } from '../../stores/useVaultStore';
 import MenuBar from './MenuBar';
 import WindowControls from './WindowControls';
 
+const APP_TITLE = 'InkStream / 墨流';
+
 interface TitleBarProps {
-  /** D-03：Phase 1 显示应用名；Phase 2 接入工作区后换「文件名 - vault 名」。 */
+  /** D-03：可显式覆盖居中标题（测试 / 特殊态）；省略时自 store 三态派生。 */
   title?: string;
+}
+
+/**
+ * 三态标题（D-03/UI-SPEC）：有活动文件「{文件名} - {vault 名}」/ 无活动文件「{vault 名}」/
+ * 无 vault「InkStream / 墨流」。脏态不进标题避免抖动（D-03）。
+ */
+function useDerivedTitle(): string {
+  const vaultName = useVaultStore((s) => s.vault?.name ?? null);
+  const activePath = useEditorStore((s) => s.activePath);
+  const activeName = useEditorStore((s) =>
+    s.activePath ? (s.tabs.find((t) => t.path === s.activePath)?.name ?? null) : null,
+  );
+  if (!vaultName) return APP_TITLE;
+  if (activePath && activeName) return `${activeName} - ${vaultName}`;
+  return vaultName;
 }
 
 /**
@@ -24,8 +43,10 @@ function handleDoubleClick(event: MouseEvent<HTMLElement>): void {
  * data-tauri-drag-region 不冒泡，只对直接挂载元素生效——容器与居中标题都挂，
  * 菜单插槽与控制按钮不挂（保持可点）。macOS 让出 80px inset 给 overlay 红绿灯。
  */
-export default function TitleBar({ title = 'InkStream / 墨流' }: TitleBarProps) {
+export default function TitleBar({ title }: TitleBarProps) {
   const mac = isMacOS();
+  const derived = useDerivedTitle();
+  const shown = title ?? derived;
 
   return (
     <header
@@ -41,9 +62,9 @@ export default function TitleBar({ title = 'InkStream / 墨流' }: TitleBarProps
       </div>
       <span
         data-tauri-drag-region
-        className="absolute left-1/2 -translate-x-1/2 text-[13px] font-normal text-[var(--text-muted)]"
+        className="absolute left-1/2 -translate-x-1/2 truncate text-[13px] font-normal text-[var(--text-muted)]"
       >
-        {title}
+        {shown}
       </span>
       {mac ? null : (
         <div className="ml-auto h-full">

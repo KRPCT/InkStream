@@ -1,6 +1,21 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { switchVault } from '../editor/vaultFlow';
+import { openVault } from '../ipc/vault';
+import { startWatch, stopWatch } from '../ipc/events';
 import { useVaultStore } from './useVaultStore';
 import type { TreeNode, VaultInfo } from '../types/vault';
+
+vi.mock('../ipc/vault', () => ({
+  openVault: vi.fn(),
+  listDir: vi.fn().mockResolvedValue([]),
+  listFiles: vi.fn().mockResolvedValue([]),
+  findRepoRoot: vi.fn().mockResolvedValue(null),
+}));
+
+vi.mock('../ipc/events', () => ({
+  startWatch: vi.fn().mockResolvedValue(null),
+  stopWatch: vi.fn().mockResolvedValue(null),
+}));
 
 const VAULT: VaultInfo = { root: '/v', repoRoot: null, name: 'v' };
 const TREE: TreeNode[] = [{ id: 'a.md', name: 'a.md', isDir: false }];
@@ -78,43 +93,18 @@ describe('useVaultStore', () => {
 });
 
 describe('switchVault (vaultFlow watch lifecycle)', () => {
-  const openVaultIpc = vi.fn();
-  const listDir = vi.fn().mockResolvedValue([]);
-  const listFiles = vi.fn().mockResolvedValue([]);
-  const startWatch = vi.fn().mockResolvedValue(null);
-  const stopWatch = vi.fn().mockResolvedValue(null);
-  const findRepoRoot = vi.fn().mockResolvedValue('/v');
-
   beforeEach(() => {
-    vi.resetModules();
     vi.clearAllMocks();
     reset();
-    vi.doMock('../ipc/vault', () => ({
-      openVault: (p: string) => openVaultIpc(p),
-      listDir: (...a: unknown[]) => listDir(...a),
-      listFiles: (...a: unknown[]) => listFiles(...a),
-      findRepoRoot: (...a: unknown[]) => findRepoRoot(...a),
-    }));
-    vi.doMock('../ipc/events', () => ({
-      startWatch: (...a: unknown[]) => startWatch(...a),
-      stopWatch: (...a: unknown[]) => stopWatch(...a),
-    }));
-  });
-
-  afterEach(() => {
-    vi.doUnmock('../ipc/vault');
-    vi.doUnmock('../ipc/events');
-    vi.resetModules();
+    vi.mocked(openVault).mockImplementation((p: string) =>
+      Promise.resolve({ root: p, repoRoot: p, name: p.replace(/^\//, '') }),
+    );
   });
 
   it('切 vault：stop_watch 旧 + open_vault 新 + start_watch 新（D-07 单窗单 vault）', async () => {
-    openVaultIpc.mockImplementation((p: string) =>
-      Promise.resolve({ root: p, repoRoot: p, name: p.slice(1) }),
-    );
-    const { switchVault } = await import('../editor/vaultFlow');
     await switchVault('/v');
     expect(stopWatch).toHaveBeenCalled();
-    expect(openVaultIpc).toHaveBeenCalledWith('/v');
+    expect(openVault).toHaveBeenCalledWith('/v');
     expect(startWatch).toHaveBeenCalledWith('/v');
     expect(useVaultStore.getState().vault?.root).toBe('/v');
     expect(useVaultStore.getState().recentVaults).toContain('/v');

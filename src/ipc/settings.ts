@@ -1,19 +1,30 @@
 import { load, type Store } from '@tauri-apps/plugin-store';
 import type { PersistedSettings } from '../types/settings';
+import type { PersistedVault } from '../types/vault';
 
 /**
- * settings.json 读写收口（tauri-plugin-store，应用配置目录）。
+ * settings.json / vault-state.json 读写收口（tauri-plugin-store，应用配置目录）。
  * 全项目唯一接触 '@tauri-apps/plugin-store' 的文件（ipc/ 收口立约）。
- * autoSave 关闭：落盘节奏由 persistSettings 的 500ms 防抖统一控制。
+ * autoSave 关闭：落盘节奏由 persistSettings / persistVault 的 500ms 防抖统一控制。
+ *
+ * D-08 零写入语义：vault 级状态存应用数据目录（与 settings.json 同体系），
+ * 绝不写入用户 vault 目录（不创建 .inkstream/），git status 永远干净。
  */
 
 const FILE = 'settings.json';
+const VAULT_FILE = 'vault-state.json';
 
 let storePromise: Promise<Store> | null = null;
+let vaultStorePromise: Promise<Store> | null = null;
 
 function settingsStore(): Promise<Store> {
   storePromise ??= load(FILE, { defaults: {}, autoSave: false });
   return storePromise;
+}
+
+function vaultStateStore(): Promise<Store> {
+  vaultStorePromise ??= load(VAULT_FILE, { defaults: {}, autoSave: false });
+  return vaultStorePromise;
 }
 
 /** 读全部键值为单一对象（形状校验交给 validateSettings，此处只搬运）。 */
@@ -30,5 +41,21 @@ export async function saveSettings(s: PersistedSettings): Promise<void> {
   await store.set('mode', s.mode);
   await store.set('layouts', s.layouts);
   await store.set('commandMru', s.commandMru);
+  await store.save();
+}
+
+/** 读 vault 级持久态（应用数据目录，D-08）；形状校验交给 validateVault。 */
+export async function loadVaultState(): Promise<unknown> {
+  const store = await vaultStateStore();
+  return Object.fromEntries(await store.entries());
+}
+
+/** 整体写入 vault 级持久态顶层键并显式 save()（用户仓库零写入，D-08）。 */
+export async function saveVaultState(v: PersistedVault): Promise<void> {
+  const store = await vaultStateStore();
+  await store.set('version', v.version);
+  await store.set('lastVaultPath', v.lastVaultPath);
+  await store.set('recentVaults', v.recentVaults);
+  await store.set('expanded', v.expanded);
   await store.save();
 }

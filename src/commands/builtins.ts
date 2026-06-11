@@ -5,7 +5,7 @@ import {
   renameNodeInTree,
 } from '../components/workbench/fileTreeController';
 import { createFileTreeOps } from '../components/workbench/fileTreeOps';
-import { requestOpenFolder } from '../editor/vaultFlow';
+import { requestOpenFolder, requestOpenRecent } from '../editor/vaultFlow';
 import { cycleDocumentLanguage } from '../editor/richtext/switchLanguage';
 import { flushActiveFile } from '../editor/saveFlow';
 import { windowControls } from '../ipc/window';
@@ -90,6 +90,11 @@ const BUILTINS: Command[] = [
     id: 'file.open-folder',
     title: '文件：打开文件夹',
     run: () => void requestOpenFolder(),
+  },
+  {
+    id: 'file.open-recent',
+    title: '文件：打开最近',
+    run: () => void requestOpenRecent(),
   },
   {
     id: 'file.new-file',

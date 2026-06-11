@@ -20,6 +20,7 @@ const TITLES: Record<string, string> = {
   'view.reset-layout': '视图：重置当前模式布局',
   'view.command-palette': '视图：命令面板',
   'file.open-folder': '文件：打开文件夹',
+  'file.open-recent': '文件：打开最近',
   'file.new-file': '文件：新建文件',
   'file.new-folder': '文件：新建文件夹',
   'file.save': '文件：保存',
@@ -57,9 +58,9 @@ describe('builtins', () => {
     disposeKeymap();
   });
 
-  it('注册 21 条命令，标题与 UI-SPEC 字面逐字一致', () => {
+  it('注册 22 条命令，标题与 UI-SPEC 字面逐字一致', () => {
     const all = getAll();
-    expect(all).toHaveLength(21);
+    expect(all).toHaveLength(22);
     for (const [id, title] of Object.entries(TITLES)) {
       expect(all.find((c) => c.id === id)?.title).toBe(title);
     }
@@ -77,7 +78,7 @@ describe('builtins', () => {
     expect(() => {
       disposeBuiltins = registerBuiltinCommands();
     }).not.toThrow();
-    expect(getAll()).toHaveLength(21);
+    expect(getAll()).toHaveLength(22);
   });
 
   it('合成 Ctrl+P 经 keymap 打开无前缀快速打开', () => {

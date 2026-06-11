@@ -3,6 +3,8 @@ import EmptyState from '../common/EmptyState';
 import { refreshTree, requestOpenFolder } from '../../editor/vaultFlow';
 import { useVaultStore } from '../../stores/useVaultStore';
 import FileTree from './FileTree';
+import GitGuidanceBar from './GitGuidanceBar';
+import RecentVaults from './RecentVaults';
 import { collapseAllInTree, newFileInTree, newFolderInTree } from './fileTreeController';
 
 /** 空态「打开文件夹」按钮（与 EditorArea 同构）。 */
@@ -42,12 +44,17 @@ export default function Sidebar() {
 
   if (!vault) {
     return (
-      <div className="h-full bg-[var(--background-secondary)]">
+      <div className="h-full overflow-auto bg-[var(--background-secondary)]">
         <EmptyState
           icon={FolderOpen}
           heading="未打开工作区"
           body="打开一个文件夹作为工作区，开始写作。"
-          action={<OpenFolderButton />}
+          action={
+            <div className="flex flex-col items-center">
+              <OpenFolderButton />
+              <RecentVaults />
+            </div>
+          }
         />
       </div>
     );
@@ -62,6 +69,7 @@ export default function Sidebar() {
         <HeaderAction icon={ListCollapse} label="折叠全部" onClick={collapseAllInTree} />
         <HeaderAction icon={RefreshCw} label="刷新" onClick={() => void refreshTree()} />
       </div>
+      <GitGuidanceBar />
       <div className="min-h-0 flex-1">
         <FileTree />
       </div>
