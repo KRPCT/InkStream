@@ -36,6 +36,23 @@ html[data-theme='light'] {
   --mode-dot-standard: hsl(220, 10%, 50%);
   --mode-dot-academic: hsl(220, 70%, 45%);
   --mode-dot-creative: hsl(355, 65%, 50%);
+
+  /* CodeMirror 语法高亮 token（UI-SPEC §Color A，取值同源 Atom one-light）。
+     仅随 data-theme 变，不吃模式 accent；highlightTheme.ts 经 var(--cm-*) 消费。 */
+  --cm-keyword: hsl(301, 63%, 40%);
+  --cm-string: hsl(119, 34%, 47%);
+  --cm-comment: hsl(230, 4%, 64%);
+  --cm-number: hsl(35, 99%, 36%);
+  --cm-function: hsl(221, 87%, 60%);
+  --cm-type: hsl(35, 99%, 36%);
+  --cm-variable: hsl(5, 74%, 59%);
+  --cm-operator: hsl(230, 8%, 24%);
+  --cm-heading: hsl(5, 74%, 59%);
+  --cm-emphasis: hsl(301, 63%, 40%);
+  --cm-strong: hsl(35, 99%, 36%);
+  --cm-link: hsl(221, 87%, 60%);
+  --cm-meta: hsl(230, 6%, 44%);
+  --cm-invalid: hsl(344, 84%, 43%);
 }
 
 html[data-theme='dark'] {
@@ -55,6 +72,22 @@ html[data-theme='dark'] {
   --mode-dot-standard: hsl(220, 14%, 71%);
   --mode-dot-academic: hsl(207, 82%, 66%);
   --mode-dot-creative: hsl(355, 65%, 65%);
+
+  /* CodeMirror 语法高亮 token（UI-SPEC §Color A，取值同源 Atom one-dark）。 */
+  --cm-keyword: hsl(286, 60%, 67%);
+  --cm-string: hsl(95, 38%, 62%);
+  --cm-comment: hsl(220, 10%, 40%);
+  --cm-number: hsl(29, 54%, 61%);
+  --cm-function: hsl(207, 82%, 66%);
+  --cm-type: hsl(39, 67%, 69%);
+  --cm-variable: hsl(355, 65%, 65%);
+  --cm-operator: hsl(220, 14%, 71%);
+  --cm-heading: hsl(355, 65%, 65%);
+  --cm-emphasis: hsl(286, 60%, 67%);
+  --cm-strong: hsl(29, 54%, 61%);
+  --cm-link: hsl(207, 82%, 66%);
+  --cm-meta: hsl(220, 9%, 55%);
+  --cm-invalid: hsl(355, 65%, 65%);
 }
 
 /* ── 层 2 mode：6 组合只覆写 --accent-hsl（3 模式 x 2 亮暗，D-14 一次定型） ── */
