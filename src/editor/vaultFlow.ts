@@ -58,6 +58,30 @@ export async function openVaultByPath(path: string): Promise<void> {
 }
 
 /**
+ * 重新枚举当前 vault 根目录 → 回流 useVaultStore.tree + files 快照（FILE-01 写操作后 /
+ * watcher 外部变更后调用）。无 vault 时静默 no-op。
+ *
+ * 受控 data 刷新（A2/Pitfall 5）：写操作成功后回流真相树，与 watcher 外部刷新同一入口，
+ * 避免乐观更新与磁盘真相漂移。同时刷新快速打开 files 快照（FILE-03，补 02-06 carry-forward）。
+ */
+export async function refreshTree(): Promise<void> {
+  const vault = useVaultStore.getState().vault;
+  if (!vault) return;
+  try {
+    const entries = await listDir(vault.root, '');
+    useVaultStore.getState().setTree(entriesToNodes(entries));
+  } catch {
+    // 枚举失败不清空已有树（避免误删视图）；仅快照刷新尽力而为
+  }
+  try {
+    const files = await listFiles(vault.root);
+    useVaultStore.getState().setFiles(files);
+  } catch {
+    /* 快速打开快照刷新失败不阻断 */
+  }
+}
+
+/**
  * 按相对路径在单内核打开文件（快速打开 Ctrl+P 选中入口，FILE-03）。
  *
  * 复用点击文件树的打开链路：快照当前 → readFile → openFile 换装 → openTab/setActive。

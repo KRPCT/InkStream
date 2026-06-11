@@ -1,5 +1,6 @@
 import { useEffect } from 'react';
 import AboutDialog from './components/common/AboutDialog';
+import ConfirmDialog from './components/common/ConfirmDialog';
 import Toast from './components/common/Toast';
 import CommandPalette from './components/palette/CommandPalette';
 import WorkbenchLayout from './components/workbench/WorkbenchLayout';
@@ -22,6 +23,8 @@ export default function App() {
       <CommandPalette />
       {/* 关于对话框：app.about 命令打开（useAboutStore） */}
       <AboutDialog />
+      {/* 破坏性确认模态：删除 / 覆盖磁盘二次确认（useConfirmStore，confirmDestructive 弹出） */}
+      <ConfirmDialog />
       {/* Toast 通知宿主：错误/警告（useToastStore，持久化读写失败路径消费） */}
       <Toast />
     </>

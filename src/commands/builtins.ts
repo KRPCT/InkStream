@@ -1,13 +1,30 @@
+import {
+  collapseAllInTree,
+  newFileInTree,
+  newFolderInTree,
+  renameNodeInTree,
+} from '../components/workbench/fileTreeController';
+import { createFileTreeOps } from '../components/workbench/fileTreeOps';
 import { requestOpenFolder } from '../editor/vaultFlow';
 import { cycleDocumentLanguage } from '../editor/richtext/switchLanguage';
+import { flushActiveFile } from '../editor/saveFlow';
 import { windowControls } from '../ipc/window';
 import { useAboutStore } from '../stores/useAboutStore';
+import { useEditorStore } from '../stores/useEditorStore';
 import { usePaletteStore } from '../stores/usePaletteStore';
 import { useSettingsStore } from '../stores/useSettingsStore';
 import { useWorkbenchStore } from '../stores/useWorkbenchStore';
 import type { Command } from '../types/commands';
 import { bind } from './keymap';
 import { register } from './registry';
+
+/** 当前活动文件 → TreeNode（命令面板 rename/delete 的目标）；无活动文件 no-op。 */
+function activeNode(): { id: string; name: string; isDir: false } | null {
+  const { activePath, tabs } = useEditorStore.getState();
+  if (!activePath) return null;
+  const tab = tabs.find((t) => t.path === activePath);
+  return { id: activePath, name: tab?.name ?? activePath, isDir: false };
+}
 
 /**
  * 内置命令（SHELL-04）：主题 x3（D-15）、视图 x4（D-12）、模式 x3（D-08）、应用：退出。
@@ -75,6 +92,44 @@ const BUILTINS: Command[] = [
     run: () => void requestOpenFolder(),
   },
   {
+    id: 'file.new-file',
+    title: '文件：新建文件',
+    shortcut: 'Ctrl+N',
+    run: () => newFileInTree(),
+  },
+  {
+    id: 'file.new-folder',
+    title: '文件：新建文件夹',
+    run: () => newFolderInTree(),
+  },
+  {
+    id: 'file.save',
+    title: '文件：保存',
+    shortcut: 'Ctrl+S',
+    run: () => void flushActiveFile(),
+  },
+  {
+    id: 'file.rename',
+    title: '文件：在文件树中重命名',
+    run: () => {
+      const node = activeNode();
+      if (node) renameNodeInTree(node.id);
+    },
+  },
+  {
+    id: 'file.delete',
+    title: '文件：删除到回收站',
+    run: () => {
+      const node = activeNode();
+      if (node) void createFileTreeOps().remove(node);
+    },
+  },
+  {
+    id: 'view.collapse-tree',
+    title: '视图：折叠文件树',
+    run: () => collapseAllInTree(),
+  },
+  {
     id: 'go.quick-open',
     title: '转到：快速打开文件',
     shortcut: 'Ctrl+P',
@@ -112,6 +167,8 @@ export function registerBuiltinCommands(): () => void {
     bind('Ctrl+P', 'go.quick-open'),
     bind('Ctrl+B', 'view.toggle-sidebar'),
     bind('Ctrl+Alt+B', 'view.toggle-right-panel'),
+    bind('Ctrl+N', 'file.new-file'),
+    bind('Ctrl+S', 'file.save'),
   ];
   const dispose = (): void => {
     disposers.forEach((d) => d());

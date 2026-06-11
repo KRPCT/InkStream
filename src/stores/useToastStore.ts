@@ -6,11 +6,13 @@ export interface ToastItem {
   id: number;
   kind: ToastKind;
   message: string;
+  /** 可选行内操作（如移动撤销）：点击后执行并关闭该 toast。 */
+  action?: () => void;
 }
 
 interface ToastState {
   toasts: ToastItem[];
-  showToast: (kind: ToastKind, message: string) => void;
+  showToast: (kind: ToastKind, message: string, action?: () => void) => void;
   dismiss: (id: number) => void;
 }
 
@@ -27,9 +29,9 @@ const timers = new Map<number, ReturnType<typeof setTimeout>>();
  */
 export const useToastStore = create<ToastState>((set) => ({
   toasts: [],
-  showToast: (kind, message) => {
+  showToast: (kind, message, action) => {
     const id = ++nextId;
-    set((s) => ({ toasts: [...s.toasts, { id, kind, message }] }));
+    set((s) => ({ toasts: [...s.toasts, { id, kind, message, action }] }));
     timers.set(
       id,
       setTimeout(() => useToastStore.getState().dismiss(id), AUTO_DISMISS_MS),
@@ -44,6 +46,6 @@ export const useToastStore = create<ToastState>((set) => ({
 }));
 
 /** 任意模块可调的便捷入口（无需组件渲染即可入队）。 */
-export function showToast(kind: ToastKind, message: string): void {
-  useToastStore.getState().showToast(kind, message);
+export function showToast(kind: ToastKind, message: string, action?: () => void): void {
+  useToastStore.getState().showToast(kind, message, action);
 }

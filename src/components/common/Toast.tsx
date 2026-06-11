@@ -31,7 +31,24 @@ export default function Toast() {
           ) : (
             <TriangleAlert size={16} aria-hidden className="mt-0.5 shrink-0 text-[var(--text-muted)]" />
           )}
-          <span className="text-[13px] leading-normal text-[var(--text-normal)]">{t.message}</span>
+          <span className="min-w-0 flex-1 text-[13px] leading-normal text-[var(--text-normal)]">
+            {t.message}
+          </span>
+          {t.action ? (
+            <span
+              role="button"
+              tabIndex={0}
+              aria-label="撤销"
+              onClick={(e) => {
+                e.stopPropagation();
+                t.action?.();
+                dismiss(t.id);
+              }}
+              className="shrink-0 cursor-pointer text-[13px] font-semibold text-[var(--interactive-accent)] hover:underline"
+            >
+              撤销
+            </span>
+          ) : null}
         </button>
       ))}
     </div>
