@@ -20,11 +20,8 @@ vi.mock('codemirror-lang-typst', () => ({
   },
 }));
 
-let deferredImports: Array<() => void> = [];
-
 afterEach(() => {
   vi.clearAllMocks();
-  deferredImports = [];
 });
 
 describe('switchLanguage typst 迟到 reconfigure 守卫（WR-10）', () => {

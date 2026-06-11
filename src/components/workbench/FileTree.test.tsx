@@ -3,7 +3,7 @@ import { useConfirmStore } from '../../stores/useConfirmStore';
 import { useToastStore } from '../../stores/useToastStore';
 import { useVaultStore } from '../../stores/useVaultStore';
 import type { TreeNode, VaultInfo } from '../../types/vault';
-import { createFileTreeOps, ensureMdExtension } from './fileTreeOps';
+import { createFileTreeOps, ensureMdExtension, hasIllegalNameChars } from './fileTreeOps';
 
 const createFile = vi.fn().mockResolvedValue(null);
 const createDir = vi.fn().mockResolvedValue(null);
@@ -57,6 +57,46 @@ describe('ensureMdExtension', () => {
     expect(ensureMdExtension('a.txt')).toBe('a.txt');
     expect(ensureMdExtension('lib.rs')).toBe('lib.rs');
     expect(ensureMdExtension('readme.md')).toBe('readme.md');
+  });
+});
+
+describe('hasIllegalNameChars（WR-13）', () => {
+  it('拒绝含路径分隔符的名字（否则静默变成移动）', () => {
+    expect(hasIllegalNameChars('a/b')).toBe(true);
+    expect(hasIllegalNameChars('a\\b')).toBe(true);
+    expect(hasIllegalNameChars('sub/dir/file')).toBe(true);
+  });
+
+  it('拒绝 Windows 保留字符 : * ? " < > |', () => {
+    expect(hasIllegalNameChars('a:b')).toBe(true);
+    expect(hasIllegalNameChars('a*b')).toBe(true);
+    expect(hasIllegalNameChars('a?b')).toBe(true);
+    expect(hasIllegalNameChars('a"b')).toBe(true);
+    expect(hasIllegalNameChars('a<b')).toBe(true);
+    expect(hasIllegalNameChars('a>b')).toBe(true);
+    expect(hasIllegalNameChars('a|b')).toBe(true);
+  });
+
+  it('接受常规名字（含点、中文、空格、连字符）', () => {
+    expect(hasIllegalNameChars('chapter-1.md')).toBe(false);
+    expect(hasIllegalNameChars('我的笔记')).toBe(false);
+    expect(hasIllegalNameChars('draft v2')).toBe(false);
+  });
+});
+
+describe('WR-12 父目录含 ":" 时 create 不错位', () => {
+  it('parentPath 含冒号：create 仍拼出正确路径（不靠 id 分割）', async () => {
+    // 旧实现把 type/parentPath 打包进 id 再按 ':' 分割；父目录含冒号会错位。
+    // 现父目录经 onCreate 的 node.data.pending 透传，ops.create 直接 join，永不分割。
+    const ops = createFileTreeOps();
+    await ops.create({ parentPath: 'C:colon/notes', name: 'todo', isDir: false });
+    expect(createFile).toHaveBeenCalledWith('/v', 'C:colon/notes/todo.md');
+  });
+
+  it('parentPath 含冒号 + 文件夹：create 拼出正确目录路径', async () => {
+    const ops = createFileTreeOps();
+    await ops.create({ parentPath: 'a:b/c', name: 'drafts', isDir: true });
+    expect(createDir).toHaveBeenCalledWith('/v', 'a:b/c/drafts');
   });
 });
 
