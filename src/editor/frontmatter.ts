@@ -15,14 +15,25 @@ export const LANGUAGE_CYCLE = ['markdown', 'latex', 'typst', 'richtext'] as cons
 const HEAD = '---\n';
 const FENCE = '\n---';
 
+/**
+ * 闭合栅栏的整行锚定匹配（WR-09）：`\n---` 必须独占一行——其后仅允许尾随空白，
+ * 再接换行或文档结尾。这样正文里的水平线 `---`/`----`/`---foo` 不会被误判为闭合。
+ *
+ * 捕获组：m[0] 为完整匹配（含前导 `\n---` 与尾随空白及可能的换行）；末段换行用于
+ * 正确推进 bodyStart 到正文首行。
+ */
+const FENCE_RE = /\n---[ \t]*(?:\n|$)/;
+
 /** 头部 frontmatter 区间 [开始内容偏移, 结束分隔符前偏移]；无闭合头部返回 null。 */
 function frontmatterBounds(doc: string): { inner: string; bodyStart: number } | null {
   if (!doc.startsWith(HEAD)) return null;
-  const end = doc.indexOf(FENCE, HEAD.length);
-  if (end < 0) return null;
-  // 结束分隔符行后即正文；FENCE 后通常跟 '\n'（吃掉它使正文从下一行起）。
-  let bodyStart = end + FENCE.length;
-  if (doc[bodyStart] === '\n') bodyStart += 1;
+  // 仅在头部内容区（HEAD 之后）查找整行锚定的闭合栅栏，避免命中正文 ---。
+  const rest = doc.slice(HEAD.length);
+  const m = FENCE_RE.exec(rest);
+  if (!m) return null;
+  const end = HEAD.length + m.index; // 闭合 `\n` 前的偏移（inner 截止于此）。
+  // 正文起点：跳过整段匹配（`\n---` + 尾随空白 + 末尾换行/EOF）。
+  const bodyStart = end + m[0].length;
   return { inner: doc.slice(HEAD.length, end), bodyStart };
 }
 
