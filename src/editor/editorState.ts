@@ -8,6 +8,7 @@ import { readLanguage } from './frontmatter';
 import { languageFromDoc, markAppliedLanguage } from './languages';
 import { getView } from './viewHandle';
 import { getRenderMode, isMarkdownDoc, setRenderMode } from './livepreview/renderMode';
+import { imeTraceSmokingGun } from './livepreview/imeTrace';
 import type { RenderMode } from '../types/editor';
 
 /**
@@ -96,6 +97,10 @@ export function syncRichtext(view: EditorView): void {
  * 换装后回填该 path 的滚动位置（缓存有则还原，无则置 0），实现 D-03 滚动位置恢复。
  */
 export function openFile(view: EditorView, path: string, doc: string, ext: Extension): void {
+  // 冒烟枪（EDIT-06 诊断）：组合期 view.setState 会 destroy/重建 contentDOM 文本节点 → 撕掉 IME 锚定
+  // 节点 → Chromium 中止组合（吞字 root cause）。autosave/setState 组合期门（3507f22）+ externalChange
+  // 的 deferReplayAfterComposition 应已挡住所有组合期 setState；此处 DEV warn 是该门若仍泄漏的直接证据。
+  if (view.composing) imeTraceSmokingGun('openFile/setState', { path });
   const cached = cache.get(path);
   const state = cached ?? EditorState.create({ doc, extensions: ext });
   view.setState(state);
@@ -114,6 +119,10 @@ export function openFile(view: EditorView, path: string, doc: string, ext: Exten
 export async function reloadFromDisk(path: string): Promise<void> {
   const vault = useVaultStore.getState().vault;
   const view = getView();
+  // 冒烟枪（EDIT-06）：reload 经 openFile→view.setState 撕 DocView。externalChange 的
+  // deferReplayAfterComposition 应已把组合期 reload 推迟到 compositionend；若此处仍在组合期被调到，
+  // 说明推迟门泄漏——DEV warn 直接抓现行。
+  if (view?.composing) imeTraceSmokingGun('reloadFromDisk', { path });
   cache.delete(path);
   scrollCache.delete(path);
   if (!vault || !view) return;

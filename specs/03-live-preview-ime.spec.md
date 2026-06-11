@@ -92,6 +92,9 @@
   - 验证：自动（对应 CM 装饰扩展的配对测试，`pnpm test` 全绿即覆盖）。
   - 说明：此桩仅减少人工负担，**不替代**第 4 节真机矩阵；自动桩绿不构成回归门通过。
 
+> **真机诊断（DEV-ONLY [IME-TRACE]）**：要定位 IME 吞字，开 devtools Console、过滤 `[IME-TRACE]`、输入「咕咕咕」——
+> 即可看到每个组合事务的 MAP / REBUILD 路径与任何组合期 setState/reload 冒烟枪（仅 DEV 构建有，生产零成本）。
+
 > **⚠️ 真机为 EDIT-06 唯一验收门（jsdom 无法复现 composition，这正是本 bug 曾经带病上线的原因）。**
 > jsdom 的 `CompositionEvent` 桩**不驱动**浏览器真实 IME 组合状态机：它无法复现「合成中文本节点」、
 > 候选窗锚点、`compositionend` 上屏 flush 与 `observer.clear()` 的竞态——而本 bug 的两处根因恰好只在

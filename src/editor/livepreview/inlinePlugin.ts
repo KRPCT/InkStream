@@ -1,5 +1,5 @@
 import { syntaxTree } from '@codemirror/language';
-import { type Range, RangeSetBuilder } from '@codemirror/state';
+import { type Range, RangeSetBuilder, Transaction } from '@codemirror/state';
 import {
   Decoration,
   type DecorationSet,
@@ -23,6 +23,7 @@ import { TaskCheckboxWidget } from './widgets/TaskCheckboxWidget';
 import { useVaultStore } from '../../stores/useVaultStore';
 import { useEditorStore } from '../../stores/useEditorStore';
 import { isFrozen, refreshLivePreview } from './composingGuard';
+import { imeTrace } from './imeTrace';
 
 /**
  * 行内层 ViewPlugin（EDIT-03 / RESEARCH Pattern 1，三层范式的行内脊柱）。
@@ -333,6 +334,13 @@ class InlinePluginValue {
     if (!refreshed && (u.view.composing || isFrozen(u.view))) {
       if (u.docChanged) this.decorations = this.decorations.map(u.changes);
       // 纯选区变化的组合事务：保持当前装饰不动（不重建、无可 map 的 changes）。
+      imeTrace('inlinePlugin', {
+        path: 'MAP',
+        docChanged: u.docChanged,
+        selectionSet: u.selectionSet,
+        userEvent: u.transactions.map((t) => t.annotation(Transaction.userEvent)).find(Boolean) ?? null,
+        docLen: u.state.doc.length,
+      });
       return;
     }
 
@@ -340,6 +348,13 @@ class InlinePluginValue {
     // selectionSet 触发重建使活动行集随主选区移动；refreshLivePreview 强刷亦在此重建一次。
     if (u.docChanged || u.viewportChanged || u.selectionSet || refreshed) {
       this.decorations = buildInlineDecorations(u.view);
+      imeTrace('inlinePlugin', {
+        path: 'REBUILD',
+        docChanged: u.docChanged,
+        selectionSet: u.selectionSet,
+        refreshed,
+        docLen: u.state.doc.length,
+      });
     }
   }
 }

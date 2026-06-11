@@ -4,6 +4,7 @@ import { Decoration, type DecorationSet, EditorView } from '@codemirror/view';
 import { BLOCK_REPLACE } from './nodeNames';
 import { TableWidget } from './widgets/TableWidget';
 import { refreshLivePreview } from './composingGuard';
+import { imeTrace } from './imeTrace';
 
 /**
  * 块级层 StateField（EDIT-03 / RESEARCH Pattern 2 + 4 / Pitfall 3，三层范式块级支柱）。
@@ -134,6 +135,7 @@ export const blockField = StateField.define<BlockState>({
     //    atomicRanges 错位，CM6 据此重建合成中的 DOM（同样吞字）。映射为 O(blocks) 位移，不扫语法树。
     if (tr.isUserEvent('input.type.compose')) {
       if (!tr.docChanged) return prev; // 纯组合 selection 无文档变：保旧态不动。
+      imeTrace('blockField', { path: 'MAP', userEvent: 'input.type.compose', docLen: tr.state.doc.length });
       return {
         deco: prev.deco.map(tr.changes),
         tables: prev.tables.map((t) => ({
@@ -144,7 +146,10 @@ export const blockField = StateField.define<BlockState>({
     }
     // 1. doc 变 / compositionend 强刷：全文扫描重建（refreshLivePreview 解冻后还原渲染态，CR-01）。
     const refreshed = tr.effects.some((e) => e.is(refreshLivePreview));
-    if (tr.docChanged || refreshed) return buildBlockState(tr.state);
+    if (tr.docChanged || refreshed) {
+      imeTrace('blockField', { path: 'REBUILD', docChanged: tr.docChanged, refreshed, docLen: tr.state.doc.length });
+      return buildBlockState(tr.state);
+    }
     // 2. 选区变化：仅跨越表格块边界才重建（O(blocks)），否则复用——不做全树 O(doc) 重算（UAT #8）。
     if (tr.selection && selectionCrossesBoundary(prev, tr)) {
       return buildBlockState(tr.state);

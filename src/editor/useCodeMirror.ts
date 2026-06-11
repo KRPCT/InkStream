@@ -8,6 +8,7 @@ import { syncRichtext } from './editorState';
 import { baseExtensions } from './extensions';
 import { reconfigureLanguageFromDoc } from './languages';
 import { setView } from './viewHandle';
+import { imeTrace } from './livepreview/imeTrace';
 
 /**
  * 全 App 单内核 hook（RESEARCH Pattern 1，EDIT-01）。
@@ -56,12 +57,16 @@ export function useCodeMirror(parentRef: RefObject<HTMLElement | null>): RefObje
     });
     viewRef.current = view;
     setView(view);
+    // EDIT-06 诊断：view 创建/重建是 IME 节点被整体抽换的最重事件。若组合中途 React 重挂导致重建，
+    // 必吞字——记录时间戳供真机比对（StrictMode 开发态双挂亦会出现一对 setup/cleanup，属预期）。
+    imeTrace('useCodeMirror.setup', { ts: Date.now() });
 
     if (import.meta.env.MODE === 'test') {
       (globalThis as unknown as { __ink_test_view?: EditorView }).__ink_test_view = view;
     }
 
     return () => {
+      imeTrace('useCodeMirror.cleanup', { ts: Date.now(), composingAtCleanup: view.composing });
       view.destroy();
       viewRef.current = null;
       setView(null);
