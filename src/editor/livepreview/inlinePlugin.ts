@@ -301,12 +301,15 @@ class InlinePluginValue {
   }
 
   update(u: ViewUpdate): void {
-    // IME 闸门（EDIT-06）：组合期保旧 RangeSet，绝不重算（view.composing 残留 true 由 isFrozen 兜底双判）。
-    if (u.view.composing || isFrozen(u.view)) return;
-    // 仅文档/视口/选区变化时重算（选区变化驱动光标行还原）；refreshLivePreview effect 亦触发一次重建。
+    // refreshLivePreview（compositionend 解冻后强刷一次）必须先于 IME 短路判定：compositionend 时
+    // u.view.composing 可能残留 true（codemirror/dev#1069），若先短路则强刷被吞、装饰留旧（CR-01）。
     const refreshed = u.transactions.some((tr) =>
       tr.effects.some((e) => e.is(refreshLivePreview)),
     );
+    // IME 闸门（EDIT-06）：组合期保旧 RangeSet，绝不重算——唯 refreshLivePreview 例外（仅 compositionend
+    // 后派发，放行安全；view.composing 残留 true 由 isFrozen 兜底双判）。
+    if (!refreshed && (u.view.composing || isFrozen(u.view))) return;
+    // 仅文档/视口/选区变化时重算（选区变化驱动光标行还原）；refreshLivePreview effect 亦触发一次重建。
     if (u.docChanged || u.viewportChanged || u.selectionSet || refreshed) {
       this.decorations = buildInlineDecorations(u.view);
     }

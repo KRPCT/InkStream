@@ -55,11 +55,12 @@ export function resolveVaultImage(url: string, vault: ImageVaultContext | null):
   if (!vault) return { kind: 'invalid' };
 
   // 当前文档所在目录（去掉文件名段）作为相对图基准目录。
-  const docSegments = vault.docPath.split('/').filter(Boolean);
+  // 反斜杠与正斜杠同视为路径分隔符：Windows 风格 `..\..\` 须折叠才能被下方上跳越界判定识破（WR-01）。
+  const docSegments = vault.docPath.split(/[\\/]/).filter(Boolean);
   docSegments.pop(); // 去掉文档文件名，留目录段。
 
   const stack = [...docSegments];
-  for (const seg of url.split('/')) {
+  for (const seg of url.split(/[\\/]/)) {
     if (seg === '' || seg === '.') continue;
     if (seg === '..') {
       if (stack.length === 0) return { kind: 'invalid' }; // 上跳越过 vault 根。
