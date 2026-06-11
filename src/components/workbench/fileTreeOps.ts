@@ -36,6 +36,19 @@ export function ensureMdExtension(name: string): string {
   return name.includes('.') ? name : `${name}.md`;
 }
 
+/**
+ * 文件/文件夹名非法字符校验（WR-13）。
+ *
+ * 拒绝路径分隔符（`/`、`\\`）——否则 `a/b` 会被 Rust 当作子目录路径，把「重命名」
+ * 静默变成「移动」。一并拒绝 Windows 文件名保留字符 `:*?"<>|`（跨平台一致体验）。
+ * 纯逻辑可单测，UI 层（onRename）据此返回编辑态并提示。
+ */
+const ILLEGAL_NAME_CHARS = /[/\\:*?"<>|]/;
+
+export function hasIllegalNameChars(name: string): boolean {
+  return ILLEGAL_NAME_CHARS.test(name);
+}
+
 export interface CreateArgs {
   /** 父目录相对路径（根目录传 ''）。 */
   parentPath: string;

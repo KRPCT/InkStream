@@ -12,15 +12,16 @@ import {
 import { openFileInEditor } from '../../editor/vaultFlow';
 import { getView } from '../../editor/viewHandle';
 import { useEditorStore } from '../../stores/useEditorStore';
+import { showToast } from '../../stores/useToastStore';
 import { useVaultStore } from '../../stores/useVaultStore';
 import type { TreeNode } from '../../types/vault';
 import { setFileTreeApi } from './fileTreeController';
-import { createFileTreeOps } from './fileTreeOps';
+import { createFileTreeOps, hasIllegalNameChars } from './fileTreeOps';
 
 /** 文件夹优先 + Intl.Collator locale 序（D-11，中文按拼音序）。 */
 const collator = new Intl.Collator(undefined, { numeric: true, sensitivity: 'base' });
 
-/** 临时新建节点 id 前缀（onRename 提交时解析父目录与类型，真正下发 IPC）。 */
+/** 临时新建节点 id 前缀（onRename 提交时经 node.data.pending 取父目录与类型，下发 IPC）。 */
 const NEW_PREFIX = '__new__';
 
 /** D-11：隐藏点开头条目（.git 等），其余递归保留并排序。 */
@@ -122,24 +123,36 @@ export default function FileTree() {
   const data = visibleSorted(tree);
   const ops = useMemo(() => createFileTreeOps(), []);
 
-  // 新建：返回临时占位节点（id 编码父目录与类型）；用户提交名字时经 onRename 下发 IPC。
+  // 新建：返回临时占位节点。父目录与类型挂在 node.data.pending（WR-12），
+  // 不再编码进 id 串——父目录路径含 ':' 时按 id 分割会错位。
   const onCreate: CreateHandler<TreeNode> = ({ parentNode, type }) => {
     const parentPath = parentNode?.data.id ?? '';
-    return { id: `${NEW_PREFIX}:${type}:${parentPath}:${Date.now()}`, name: '' };
+    return {
+      id: `${NEW_PREFIX}:${Date.now()}`,
+      name: '',
+      isDir: type === 'internal',
+      pending: { parentPath, isDir: type === 'internal' },
+    };
   };
 
   const onRename: RenameHandler<TreeNode> = async ({ node, name }) => {
-    if (!name.trim()) {
+    const trimmed = name.trim();
+    if (!trimmed) {
       node.reset();
       return;
     }
-    const item = node.data;
-    if (item.id.startsWith(`${NEW_PREFIX}:`)) {
-      const [, type, parentPath] = item.id.split(':');
-      await ops.create({ parentPath, name, isDir: type === 'internal' });
+    // WR-13：拒绝含路径分隔符 / OS 非法字符的名字（否则 a/b 会静默变成移动到子目录）。
+    if (hasIllegalNameChars(trimmed)) {
+      showToast('error', '名称不能包含 / \\ : * ? " < > | 等字符。');
+      node.edit(); // 回到编辑态让用户改名
       return;
     }
-    const result = await ops.rename(item, name);
+    const item = node.data;
+    if (item.pending) {
+      await ops.create({ parentPath: item.pending.parentPath, name: trimmed, isDir: item.pending.isDir });
+      return;
+    }
+    const result = await ops.rename(item, trimmed);
     if (result.conflict) node.edit(); // 同名冲突：重回编辑态，提示换名
   };
 

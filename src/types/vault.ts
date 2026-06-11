@@ -59,4 +59,14 @@ export interface TreeNode {
   isDir: boolean;
   /** 子节点；目录可有（空数组表示已展开但为空 / 尚未加载用 undefined 区分由消费方定）。 */
   children?: TreeNode[];
+  /**
+   * 临时新建占位节点的待提交元数据（WR-12）。仅 onCreate 产出的占位节点带此字段——
+   * 父目录路径与新建类型从此结构读取，**不再**编码进 id 串（父目录含 ':' 时按 id 分割会错位）。
+   */
+  pending?: {
+    /** 父目录相对路径（根为空串）。 */
+    parentPath: string;
+    /** 新建类型：目录 or 文件。 */
+    isDir: boolean;
+  };
 }
