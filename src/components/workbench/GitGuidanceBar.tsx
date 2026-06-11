@@ -21,28 +21,28 @@ export default function GitGuidanceBar() {
       <GitBranch size={14} aria-hidden className="shrink-0 text-[var(--text-muted)]" />
       {guidance.kind === 'init' ? (
         <>
-          <span className="min-w-0 flex-1 text-[12px] leading-snug text-[var(--text-muted)]">
+          <span className="min-w-0 flex-1 truncate text-[12px] leading-snug text-[var(--text-muted)]">
             这个文件夹还不是 git 仓库，版本管理功能将在后续版本启用。
           </span>
           <button
             type="button"
             disabled
             title="git 功能将在 Phase 6 启用"
-            className="shrink-0 cursor-not-allowed rounded-[4px] px-2 py-1 text-[12px] text-[var(--text-faint)]"
+            className="shrink-0 cursor-not-allowed whitespace-nowrap rounded-[4px] px-2 py-1 text-[12px] text-[var(--text-faint)]"
           >
             初始化 git
           </button>
           <button
             type="button"
             onClick={dismiss}
-            className="shrink-0 rounded-[4px] px-2 py-1 text-[12px] text-[var(--text-normal)] hover:bg-[var(--background-modifier-hover)]"
+            className="shrink-0 whitespace-nowrap rounded-[4px] px-2 py-1 text-[12px] text-[var(--text-normal)] hover:bg-[var(--background-modifier-hover)]"
           >
             以后再说
           </button>
         </>
       ) : (
         <>
-          <span className="min-w-0 flex-1 text-[12px] leading-snug text-[var(--text-muted)]">
+          <span className="min-w-0 flex-1 truncate text-[12px] leading-snug text-[var(--text-muted)]">
             这个文件夹在一个 git 仓库内，你想打开仓库根还是仅此文件夹？
           </span>
           <button
@@ -52,14 +52,14 @@ export default function GitGuidanceBar() {
               dismiss();
               void switchVault(root);
             }}
-            className="shrink-0 rounded-[4px] px-2 py-1 text-[12px] font-semibold text-[var(--text-normal)] hover:bg-[var(--background-modifier-hover)]"
+            className="shrink-0 whitespace-nowrap rounded-[4px] px-2 py-1 text-[12px] font-semibold text-[var(--text-normal)] hover:bg-[var(--background-modifier-hover)]"
           >
             打开仓库根
           </button>
           <button
             type="button"
             onClick={dismiss}
-            className="shrink-0 rounded-[4px] px-2 py-1 text-[12px] text-[var(--text-normal)] hover:bg-[var(--background-modifier-hover)]"
+            className="shrink-0 whitespace-nowrap rounded-[4px] px-2 py-1 text-[12px] text-[var(--text-normal)] hover:bg-[var(--background-modifier-hover)]"
           >
             仅此文件夹
           </button>
