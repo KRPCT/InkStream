@@ -113,12 +113,17 @@ describe('isUrl', () => {
 });
 
 describe('richtextPasteHandler 智能粘贴（D-16）', () => {
+  // jsdom 不提供 DataTransfer/ClipboardEvent 的完整实现，构造满足 handler 读取契约的最小事件。
   function paste(text: string): { handled: boolean } {
-    const dt = new DataTransfer();
-    dt.setData('text/plain', text);
-    const evt = new ClipboardEvent('paste', { clipboardData: dt, cancelable: true });
+    let prevented = false;
+    const evt = {
+      clipboardData: { getData: (type: string) => (type === 'text/plain' ? text : '') },
+      preventDefault: () => {
+        prevented = true;
+      },
+    } as unknown as ClipboardEvent;
     richtextPasteHandler(evt, view);
-    return { handled: evt.defaultPrevented };
+    return { handled: prevented };
   }
 
   it('剪贴板为 URL + 有选区 → 自动包成 [选区](URL)', () => {
