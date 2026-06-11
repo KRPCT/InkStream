@@ -15,6 +15,9 @@
     "window-state:default",
     "store:default",
     "fs:default",
-    "opener:allow-open-url"
+    {
+      "identifier": "opener:allow-open-url",
+      "allow": [{ "url": "http://*" }, { "url": "https://*" }]
+    }
   ]
 }
