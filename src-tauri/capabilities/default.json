@@ -1,7 +1,7 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "Minimal capability set for the main window (no fs/shell/http)",
+  "description": "Minimal capability set for the main window. fs 仅授 plugin 默认权限；所有文件 IO 走自定义 command（vault/files）在 Rust 内做 path_guard 收口校验，不开放 fs:allow-* 通配 scope（T-02-02）。",
   "windows": ["main"],
   "permissions": [
     "core:default",
@@ -13,6 +13,7 @@
     "core:window:allow-center",
     "core:window:allow-theme",
     "window-state:default",
-    "store:default"
+    "store:default",
+    "fs:default"
   ]
 }
