@@ -85,6 +85,42 @@ describe('arbitrateVaultChange (D-04 双路径)', () => {
     expect(reloadFromDisk).not.toHaveBeenCalled();
   });
 
+  it('CR-03：脏的后台（非活动）tab 被外部修改 → freeze + 标记，绝不静默 refreshTree 后被覆盖', async () => {
+    // a.md 活动且干净；b.md 在后台打开且脏。外部修改的是后台脏文件 b.md。
+    useEditorStore.setState({
+      tabs: [
+        { path: 'a.md', name: 'a.md' },
+        { path: 'b.md', name: 'b.md' },
+      ],
+      activePath: 'a.md',
+      dirty: { 'b.md': true },
+      frozen: {},
+      externalChanged: {},
+    });
+    await arbitrateVaultChange({ path: '/v/b.md', kind: 'modify' });
+    // 后台脏文件必须冻结 + 标记冲突，切回 b.md 时呈现 ExternalChangeBar（FILE-02/SC#4）。
+    expect(freezeAutosave).toHaveBeenCalledWith('b.md');
+    expect(useEditorStore.getState().externalChanged['b.md']).toBe(true);
+    expect(reloadFromDisk).not.toHaveBeenCalled();
+  });
+
+  it('CR-03：干净的后台 tab 被外部修改 → 仍走 refreshTree（无脏冲突）', async () => {
+    useEditorStore.setState({
+      tabs: [
+        { path: 'a.md', name: 'a.md' },
+        { path: 'b.md', name: 'b.md' },
+      ],
+      activePath: 'a.md',
+      dirty: {},
+      frozen: {},
+      externalChanged: {},
+    });
+    await arbitrateVaultChange({ path: '/v/b.md', kind: 'modify' });
+    expect(refreshTree).toHaveBeenCalled();
+    expect(freezeAutosave).not.toHaveBeenCalled();
+    expect(useEditorStore.getState().externalChanged['b.md']).toBeFalsy();
+  });
+
   it('自激 watcher 事件被 suppressNextWatch 吞：不弹提示条不重载（回归）', async () => {
     consumeSuppressedWatch.mockReturnValue(true);
     useEditorStore.getState().markDirty('a.md');
