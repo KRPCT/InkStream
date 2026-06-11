@@ -1,11 +1,17 @@
 import { EditorSelection } from '@codemirror/state';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { EditorView } from '@codemirror/view';
 import { destroyTestView, dispatchComposition, makeTestView } from '../../test/composition';
 import { extensionsForLanguage } from '../languages';
 import { baseExtensions } from '../extensions';
 import { inlinePlugin } from './inlinePlugin';
-import { livePreviewExtensions, renderModeCompartment } from './livePreview';
+
+const openExternal = vi.fn<(url: string) => Promise<void>>(() => Promise.resolve());
+vi.mock('../../ipc/opener', () => ({
+  openExternal: (url: string) => openExternal(url),
+}));
+
+const { livePreviewExtensions, renderModeCompartment } = await import('./livePreview');
 
 /**
  * 组合根接线回归门（Pattern 3：行内层 + IME 闸门经一个 Extension[] 共存生效）。
@@ -46,6 +52,27 @@ describe('livePreviewExtensions 组合根', () => {
     dispatchComposition(view, { phase: 'compositionstart', data: '你' });
     view.dispatch({ changes: { from: view.state.doc.length, insert: '你' } });
     expect(view.plugin(inlinePlugin)!.decorations).toBe(before);
+  });
+});
+
+describe('livePreviewExtensions 含链接手势 linkGesture（D-10）', () => {
+  it('Ctrl+mousedown 命中链接经组合根 domEventHandler 调 openExternal', () => {
+    openExternal.mockClear();
+    view = makeTestView('[t](https://x.com)', [
+      extensionsForLanguage('markdown'),
+      livePreviewExtensions(),
+    ]);
+    // jsdom 无布局：钉死 posAtCoords 命中链接内部。
+    Object.defineProperty(view, 'posAtCoords', { configurable: true, value: () => 1 });
+
+    const event = new MouseEvent('mousedown', {
+      bubbles: true,
+      cancelable: true,
+      ctrlKey: true,
+    });
+    view.contentDOM.dispatchEvent(event);
+
+    expect(openExternal).toHaveBeenCalledWith('https://x.com');
   });
 });
 
