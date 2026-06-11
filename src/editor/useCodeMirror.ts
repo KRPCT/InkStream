@@ -5,6 +5,7 @@ import { EditorView } from '@codemirror/view';
 import { useEditorStore } from '../stores/useEditorStore';
 import { scheduleAutosave } from '../stores/autosave';
 import { baseExtensions } from './extensions';
+import { reconfigureLanguageFromDoc } from './languages';
 import { setView } from './viewHandle';
 
 /**
@@ -31,6 +32,9 @@ export function useCodeMirror(parentRef: RefObject<HTMLElement | null>): RefObje
         useEditorStore.getState().markDirty(activePath);
         // 编辑触发防抖自动落盘（D-02 原子写，500ms 防抖合并）
         scheduleAutosave(activePath);
+        // 手动编辑 frontmatter language 行 → 头部语言变化即热切（D-13 文档单一真相源）。
+        // reconfigure 只发 effect（非 docChange），不会自激 updateListener。
+        reconfigureLanguageFromDoc(u.view, activePath);
       }
       if (u.selectionSet || u.docChanged) {
         useEditorStore.getState().setCursor(u.state.selection.main.head);

@@ -1,4 +1,5 @@
 import { requestOpenFolder } from '../editor/vaultFlow';
+import { cycleDocumentLanguage } from '../editor/richtext/switchLanguage';
 import { windowControls } from '../ipc/window';
 import { useAboutStore } from '../stores/useAboutStore';
 import { usePaletteStore } from '../stores/usePaletteStore';
@@ -78,6 +79,12 @@ const BUILTINS: Command[] = [
     title: '转到：快速打开文件',
     shortcut: 'Ctrl+P',
     run: () => usePaletteStore.getState().openQuickOpen(),
+  },
+  {
+    id: 'doc.toggle-language',
+    title: '文档：切换文档语言',
+    // 写入/修改 frontmatter `language` 字段，循环 markdown→latex→typst→richtext（D-13）。
+    run: () => cycleDocumentLanguage(),
   },
   {
     id: 'app.exit',

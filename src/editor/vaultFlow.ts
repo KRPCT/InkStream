@@ -7,7 +7,7 @@ import { useEditorStore } from '../stores/useEditorStore';
 import { useVaultStore } from '../stores/useVaultStore';
 import type { TreeEntry, TreeNode } from '../types/vault';
 import { baseExtensions } from './extensions';
-import { languageForPath } from './languages';
+import { languageFromDoc, markAppliedLanguage } from './languages';
 import { openFile, snapshotBeforeSwitch } from './editorState';
 
 /**
@@ -89,8 +89,11 @@ export async function openFileInEditor(view: EditorView, node: TreeNode): Promis
   if (active) snapshotBeforeSwitch(view, active);
   try {
     const doc = await readFile(vault.root, node.id);
-    // 按扩展名解析初始语言，使打开 .py/.rs/.css 等文件即得对应高亮（EDIT-04）。
-    openFile(view, node.id, doc, baseExtensions(languageForPath(node.id)));
+    // 初始语言：frontmatter `language:` 优先于扩展名（D-13 文档单一真相源，EDIT-05），
+    // 否则按扩展名解析（.py/.rs/.css 即得高亮，EDIT-04）。
+    const lang = languageFromDoc(doc, node.id);
+    openFile(view, node.id, doc, baseExtensions(lang));
+    markAppliedLanguage(view, lang);
     useEditorStore.getState().openTab({ path: node.id, name: node.name });
     useEditorStore.getState().setActive(node.id);
   } catch {
