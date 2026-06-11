@@ -1,8 +1,55 @@
-import { describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it } from 'vitest';
+import { useEditorStore } from './useEditorStore';
 
-// Wave 0 stub（Task 1 建脚手架，Task 2 转绿）：useEditorStore 尚未实现。
-describe.todo('useEditorStore', () => {
-  it('markDirty flips dirty flag', () => {
-    expect(true).toBe(true);
+function reset(): void {
+  useEditorStore.setState({ tabs: [], activePath: null, dirty: {}, cursor: 0 });
+}
+
+describe('useEditorStore', () => {
+  beforeEach(reset);
+
+  it('openTab adds a tab and setActive marks it active', () => {
+    useEditorStore.getState().openTab({ path: 'a.md', name: 'a.md' });
+    useEditorStore.getState().setActive('a.md');
+    const s = useEditorStore.getState();
+    expect(s.tabs.map((t) => t.path)).toEqual(['a.md']);
+    expect(s.activePath).toBe('a.md');
+  });
+
+  it('openTab is idempotent on the same path', () => {
+    useEditorStore.getState().openTab({ path: 'a.md', name: 'a.md' });
+    useEditorStore.getState().openTab({ path: 'a.md', name: 'a.md' });
+    expect(useEditorStore.getState().tabs).toHaveLength(1);
+  });
+
+  it('markDirty flips dirty flag, clearDirty resets it', () => {
+    useEditorStore.getState().markDirty('a.md');
+    expect(useEditorStore.getState().dirty['a.md']).toBe(true);
+    useEditorStore.getState().clearDirty('a.md');
+    expect(useEditorStore.getState().dirty['a.md']).toBe(false);
+  });
+
+  it('setCursor mirrors cursor position (StatusBar 消费)', () => {
+    useEditorStore.getState().setCursor(42);
+    expect(useEditorStore.getState().cursor).toBe(42);
+  });
+
+  it('closeTab removes the tab and its dirty flag (释放)', () => {
+    useEditorStore.getState().openTab({ path: 'a.md', name: 'a.md' });
+    useEditorStore.getState().openTab({ path: 'b.md', name: 'b.md' });
+    useEditorStore.getState().setActive('a.md');
+    useEditorStore.getState().markDirty('a.md');
+    useEditorStore.getState().closeTab('a.md');
+    const s = useEditorStore.getState();
+    expect(s.tabs.map((t) => t.path)).toEqual(['b.md']);
+    expect(s.dirty['a.md']).toBeUndefined();
+    // 关掉活动 tab 后活动切到剩余 tab
+    expect(s.activePath).toBe('b.md');
+  });
+
+  it('store holds no EditorView/EditorState instance fields', () => {
+    const keys = Object.keys(useEditorStore.getState());
+    expect(keys).not.toContain('view');
+    expect(keys).not.toContain('editorState');
   });
 });
