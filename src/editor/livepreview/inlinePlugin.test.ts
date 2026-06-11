@@ -8,14 +8,19 @@ import { extensionsForLanguage } from '../languages';
 import { inlinePlugin } from './inlinePlugin';
 
 /**
- * 行内层 ViewPlugin 回归门（EDIT-03 / RESEARCH Pattern 1，EDIT-06 Option 1）。
+ * 行内层 ViewPlugin 回归门（EDIT-03 / RESEARCH Pattern 1，EDIT-06 Option 2）。
  *
  * 断言：
- *   1. 渲染态：`# H1` 标记 `# ` 被隐藏装饰（cm-ink-hidden）+ 标题行得字号 class（cm-ink-h1）；
- *   2. 光标行还原/淡显：光标移入标题行后，该行标记转淡显（FAINT，D-07）；
+ *   1. 渲染态（非活动行）：`# H1` 标记 `# ` 被隐藏装饰（cm-ink-hidden）+ 标题行得字号 class（cm-ink-h1）；
+ *   2. 活动行整行纯源码（Option 2 契约）：与主选区相交的行**零行内装饰**（无 hidden / 无 faint / 无 replace），
+ *      该行渲染为单个与 doc 切片逐字节相等的文本节点（findCompositionRange 文本相等闸门的硬前提）；
+ *      同一元素移出活动行后恢复 hidden + widget 渲染；多行选区相交的所有行均纯源码；
  *   3. 规范重建：docChanged / selectionSet 时装饰无条件重建（不再有 IME 冻结/映射闸门——
- *      CM6 6.43.1 内置合成保护，组合期 docChange 照常重建）；
+ *      CM6 6.43.1 内置合成保护，组合期 docChange 照常重建，selectionSet 驱动活动行集随光标移动）；
  *   4. 性能纪律 + 无硬编码色：源文件含 visibleRanges/RangeSetBuilder，无 # 十六进制色。
+ *
+ * 注：jsdom 不复现真实 IME，本套只锁「活动行纯源码」契约；EDIT-06 真验收为手动
+ * Windows+WebView2 拼音测试（咕咕咕 + 长句 + 跨装饰）。
  */
 
 let view: EditorView | null = null;
@@ -86,46 +91,72 @@ describe('inlinePlugin 渲染态', () => {
   });
 });
 
-describe('inlinePlugin 光标行淡显（D-07 / UAT #4）', () => {
-  it('光标在标题行内时该行标记由隐藏转淡显（cm-ink-mark-faint，非 hidden、非裸）', () => {
+describe('inlinePlugin 活动行整行纯源码（EDIT-06 Option 2，Typora/Obsidian 级契约）', () => {
+  /** 取落在某行 [from,to) 字节区间内的装饰（行级 line 装饰起止相等于 line.from，亦计入）。 */
+  function decosOnLine(v: EditorView, lineNo: number): ReturnType<typeof collectDecos> {
+    const line = v.state.doc.line(lineNo);
+    return collectDecos(v).filter((d) => d.from >= line.from && d.from <= line.to);
+  }
+
+  it('光标在 `**bold**` 行 → 该行零装饰（无 hidden / 无 faint / 无 replace，纯源码）；移出后标记隐藏 + 加粗渲染', () => {
+    view = lpView('**bold**\n\n尾');
+    // 光标移到末行：第一行非活动 → 两侧 `**` 隐藏（cm-ink-hidden），加粗内容渲染。
+    view.dispatch({ selection: EditorSelection.cursor(view.state.doc.length) });
+    const rendered = decosOnLine(view, 1);
+    expect(rendered.filter((d) => d.class === 'cm-ink-hidden').length).toBeGreaterThanOrEqual(2);
+
+    // 光标移回加粗行内（pos 2）：整行纯源码——零行内装饰，且绝无残留 faint 类。
+    view.dispatch({ selection: EditorSelection.cursor(2) });
+    const active = decosOnLine(view, 1);
+    expect(active.length).toBe(0);
+    expect(active.some((d) => d.class === 'cm-ink-hidden')).toBe(false);
+    expect(active.some((d) => d.class === 'cm-ink-mark-faint')).toBe(false);
+    expect(active.some((d) => d.widget)).toBe(false);
+  });
+
+  it('光标在标题行 → 该行零装饰（无 cm-ink-h1 行级 class、无 hidden）；移出后字号 class + 标记隐藏复现', () => {
     view = lpView('# H1\n\n正文');
-    // 光标移到末行：标题被渲染（标记隐藏 cm-ink-hidden）。
+    // 光标在末行：标题行非活动 → 得 cm-ink-h1 + `# ` 隐藏。
     view.dispatch({ selection: EditorSelection.cursor(view.state.doc.length) });
-    const rendered = collectDecos(view).filter((d) => d.from === 0);
+    const rendered = decosOnLine(view, 1);
+    expect(rendered.some((d) => d.class?.includes('cm-ink-h1'))).toBe(true);
     expect(rendered.some((d) => d.class === 'cm-ink-hidden')).toBe(true);
-    expect(rendered.some((d) => d.class === 'cm-ink-mark-faint')).toBe(false);
 
-    // 光标移回标题行内：标记淡显（cm-ink-mark-faint），不再硬隐藏，也非无装饰裸还原。
+    // 光标移回标题行（pos 2）：整行纯源码，连行级字号 class 都不发（纯文本节点 == doc 切片）。
     view.dispatch({ selection: EditorSelection.cursor(2) });
-    const revealed = collectDecos(view).filter((d) => d.from === 0);
-    expect(revealed.some((d) => d.class === 'cm-ink-hidden')).toBe(false);
-    expect(revealed.some((d) => d.class === 'cm-ink-mark-faint')).toBe(true);
+    const active = decosOnLine(view, 1);
+    expect(active.length).toBe(0);
   });
 
-  it('光标在 `**b**` 行内：两侧 `**` 由隐藏转淡显（满宽淡显，非消失）', () => {
-    view = lpView('**b**\n\n尾');
-    // 光标在末行：渲染态两个 EmphasisMark 隐藏。
-    view.dispatch({ selection: EditorSelection.cursor(view.state.doc.length) });
-    expect(collectDecos(view).filter((d) => d.class === 'cm-ink-hidden').length).toBeGreaterThanOrEqual(2);
-
-    // 光标移入加粗元素内（pos 2）：两侧 `**` 转淡显。
-    view.dispatch({ selection: EditorSelection.cursor(2) });
-    const onLine = collectDecos(view);
-    const faint = onLine.filter((d) => d.class === 'cm-ink-mark-faint');
-    expect(faint.length).toBeGreaterThanOrEqual(2);
-    expect(onLine.some((d) => d.class === 'cm-ink-hidden' && d.from < 5)).toBe(false);
-  });
-
-  it('嵌套：光标在 `[**x**](u)` 内 → 链接括号 + URL + 内层 `**` 全部淡显（深度栈正确）', () => {
+  it('链接 `[**x**](u)` 行活动 → 整行零装饰（链接括号/URL/内层 `**` 一律不发，无 faint 残留）', () => {
     view = lpView('[**x**](https://x.com)\n\n尾');
-    // 光标移入链接内（pos 3，落在内层加粗）：嵌套各层标记均应淡显，无一硬隐藏。
+    // 光标移入链接行（pos 3）：整行纯源码。
     view.dispatch({ selection: EditorSelection.cursor(3) });
-    const decos = collectDecos(view);
-    // LinkMark `[`(0-1) + 内层 EmphasisMark `**` + URL 等标记全部 faint。
-    expect(decos.some((d) => d.class === 'cm-ink-mark-faint' && d.from === 0)).toBe(true);
-    expect(decos.filter((d) => d.class === 'cm-ink-mark-faint').length).toBeGreaterThanOrEqual(4);
-    // 该元素内无任何标记仍走 cm-ink-hidden（嵌套全层淡显，无遗漏）。
-    expect(decos.some((d) => d.class === 'cm-ink-hidden')).toBe(false);
+    const active = decosOnLine(view, 1);
+    expect(active.length).toBe(0);
+    expect(active.some((d) => d.class === 'cm-ink-mark-faint')).toBe(false);
+    expect(active.some((d) => d.class === 'cm-ink-hidden')).toBe(false);
+  });
+
+  it('多行选区 → 所有相交行均纯源码（零装饰），选区外行仍渲染', () => {
+    view = lpView('# H1\n**b**\n## H2\n\n尾');
+    // 选区从第 1 行起跨到第 3 行（## H2 内）：第 1-3 行全活动 → 全纯源码。
+    const l1 = view.state.doc.line(1).from;
+    const l3 = view.state.doc.line(3).to;
+    view.dispatch({ selection: EditorSelection.range(l1, l3) });
+    expect(decosOnLine(view, 1).length).toBe(0);
+    expect(decosOnLine(view, 2).length).toBe(0);
+    expect(decosOnLine(view, 3).length).toBe(0);
+    // 选区外的末行「尾」本无可渲染元素，但确认整体无 faint 类残留（FAINT_MARK 已删）。
+    expect(collectDecos(view).some((d) => d.class === 'cm-ink-mark-faint')).toBe(false);
+  });
+
+  it('同一元素：非活动行隐藏标记 + 渲染，活动行纯源码（对照契约）', () => {
+    view = lpView('**a**\n**b**\n\n尾');
+    // 光标在第 1 行（pos 1）：第 1 行活动纯源码，第 2 行非活动 → `**` 隐藏。
+    view.dispatch({ selection: EditorSelection.cursor(1) });
+    expect(decosOnLine(view, 1).length).toBe(0);
+    expect(decosOnLine(view, 2).filter((d) => d.class === 'cm-ink-hidden').length).toBeGreaterThanOrEqual(2);
   });
 });
 
@@ -229,49 +260,50 @@ describe('inlinePlugin 列表 / 引用逐行还原（D-06）', () => {
     ).toBe(true);
   });
 
-  it('引用块：QuoteMark 隐藏 + 左竖条；逐行还原', () => {
+  it('引用块：QuoteMark 隐藏 + 左竖条（非活动行渲染）', () => {
     view = lpView('> q1\n> q2');
-    cursorToEnd(view); // 光标在第二行（pos 8 之内），第一行渲染。
-    let decos = collectDecos(view);
-    // 第一行 QuoteMark（0-1）被隐藏；该引用行得竖条 line class。
+    cursorToEnd(view); // 光标在第二行，第一行非活动 → 渲染。
+    const decos = collectDecos(view);
+    // 第一行得竖条 line class。
     expect(decos.some((d) => d.class === 'cm-ink-quote')).toBe(true);
-    // 第一行 QuoteMark 处理（隐藏）。
-    const firstMarkHidden = decos.some(
-      (d) => d.from === 0 && (d.class === 'cm-ink-hidden' || d.class === 'cm-ink-quote-mark'),
-    );
-    expect(firstMarkHidden).toBe(true);
-
-    // 光标移到第一行（pos 1）：该行 QuoteMark 转淡显（非硬隐藏、非裸还原），第二行仍渲染。
-    view.dispatch({ selection: EditorSelection.cursor(1) });
-    decos = collectDecos(view);
-    // 不再 cm-ink-hidden / cm-ink-quote-mark（隐藏类）。
+    // 第一行 QuoteMark（0-1）隐藏。
     expect(
       decos.some(
         (d) => d.from === 0 && (d.class === 'cm-ink-hidden' || d.class === 'cm-ink-quote-mark'),
       ),
-    ).toBe(false);
-    // 改走 cm-ink-mark-faint 淡显。
-    expect(decos.some((d) => d.from === 0 && d.class === 'cm-ink-mark-faint')).toBe(true);
+    ).toBe(true);
   });
 
-  it('列表：光标所在项标记淡显（cm-ink-mark-faint），其余项保渲染', () => {
+  it('引用块活动行整行纯源码（QuoteMark 不发任何装饰，含竖条 line class）', () => {
+    view = lpView('> q1\n> q2');
+    // 光标在第一行（pos 1）：该行活动 → 整行纯源码，连竖条 line 装饰都不发。
+    view.dispatch({ selection: EditorSelection.cursor(1) });
+    const line1 = view.state.doc.line(1);
+    const onLine1 = collectDecos(view).filter((d) => d.from >= line1.from && d.from <= line1.to);
+    expect(onLine1.length).toBe(0);
+    expect(onLine1.some((d) => d.class === 'cm-ink-mark-faint')).toBe(false);
+    // 第二行非活动 → 仍渲染（QuoteMark 隐藏）。
+    expect(collectDecos(view).some((d) => d.class === 'cm-ink-quote-mark' || d.class === 'cm-ink-hidden')).toBe(true);
+  });
+
+  it('列表：活动行项整行纯源码，其余项保渲染', () => {
     view = lpView('- a\n- b');
-    // 光标在第一行（pos 0）：第一项淡显，第二项（4-5）保渲染。
+    // 光标在第一行（pos 0）：第一项活动纯源码，第二项（4-5）保渲染。
     view.dispatch({ selection: EditorSelection.cursor(0) });
     const decos = collectDecos(view);
     // 第二行 ListMark（4-5）仍被处理（渲染隐藏）。
     expect(
       decos.some((d) => (d.class === 'cm-ink-list-mark' || d.widget) && d.from === 4),
     ).toBe(true);
-    // 第一行 ListMark（0-1）不再走 list-mark 隐藏类，改走淡显。
-    expect(
-      decos.some((d) => d.class === 'cm-ink-list-mark' && d.from === 0),
-    ).toBe(false);
-    expect(decos.some((d) => d.class === 'cm-ink-mark-faint' && d.from === 0)).toBe(true);
+    // 第一行（活动）整行零装饰：ListMark 既不隐藏也不淡显。
+    const line1 = view.state.doc.line(1);
+    const onLine1 = decos.filter((d) => d.from >= line1.from && d.from <= line1.to);
+    expect(onLine1.length).toBe(0);
+    expect(decos.some((d) => d.class === 'cm-ink-mark-faint')).toBe(false);
   });
 });
 
-describe('inlinePlugin 规范重建（EDIT-06 Option 1：信赖 CM6 合成保护，无自建闸门）', () => {
+describe('inlinePlugin 规范重建（EDIT-06 Option 2：信赖 CM6 合成保护，活动行随选区重建）', () => {
   it('组合 userEvent 的 docChanged 照常无条件重建（不再保旧 RangeSet / 不再 map）', () => {
     // Option 1 删除了 composition 冻结闸门：组合事务（input.type.compose）的 docChange 与普通输入
     // 一样走 buildInlineDecorations 规范重建。此处文首插入新标题，插入后必产生其隐藏标记装饰，
@@ -294,20 +326,24 @@ describe('inlinePlugin 规范重建（EDIT-06 Option 1：信赖 CM6 合成保护
     dispatchComposition(view, { phase: 'compositionstart', data: '你' });
     view.dispatch({ changes: { from: view.state.doc.length, insert: '\n\n## 二级' } });
     dispatchComposition(view, { phase: 'compositionend', data: '你' });
+    // 光标移回首行（让新二级标题行成为非活动行，Option 2 下活动行不渲染）。
+    view.dispatch({ selection: EditorSelection.cursor(0) });
     // 规范重建：新二级标题得 cm-ink-h2 行级 class（不依赖任何强刷 effect）。
     expect(collectDecos(view).filter((d) => d.class === 'cm-ink-h2').length).toBeGreaterThan(0);
   });
 
-  it('selectionSet 驱动光标行淡显重建（光标移入标题行 → 标记转 faint）', () => {
+  it('selectionSet 驱动活动行集随光标移动（光标移入标题行 → 该行转纯源码，零装饰）', () => {
     view = lpView('# H1\n\n正文');
     view.dispatch({ selection: EditorSelection.cursor(view.state.doc.length) });
     expect(collectDecos(view).some((d) => d.from === 0 && d.class === 'cm-ink-hidden')).toBe(true);
 
-    // 纯选区移动（无 docChange）：update 据 selectionSet 重建，标题行标记转淡显。
+    // 纯选区移动（无 docChange）：update 据 selectionSet 重建，标题行进入活动集 → 整行纯源码。
     view.dispatch({ selection: EditorSelection.cursor(2) });
-    const revealed = collectDecos(view).filter((d) => d.from === 0);
-    expect(revealed.some((d) => d.class === 'cm-ink-mark-faint')).toBe(true);
-    expect(revealed.some((d) => d.class === 'cm-ink-hidden')).toBe(false);
+    const line1 = view.state.doc.line(1);
+    const onLine1 = collectDecos(view).filter((d) => d.from >= line1.from && d.from <= line1.to);
+    expect(onLine1.length).toBe(0);
+    expect(onLine1.some((d) => d.class === 'cm-ink-hidden')).toBe(false);
+    expect(onLine1.some((d) => d.class === 'cm-ink-mark-faint')).toBe(false);
   });
 });
 
@@ -321,6 +357,15 @@ describe('inlinePlugin 源纪律', () => {
 
   it('不再自建 IME 冻结闸门（无 isFrozen / refreshLivePreview / composingGuard 残留，Option 1）', () => {
     expect(src).not.toMatch(/isFrozen|refreshLivePreview|composingGuard/);
+  });
+
+  it('活动行整行硬跳过存在且 FAINT_MARK 已删（Option 2：活动行纯源码，无淡显死码）', () => {
+    // 据主选区算活动行集 [firstLine,lastLine] 并在 enter 顶部据此整行跳过。
+    expect(src).toContain('state.selection.main');
+    expect(src).toMatch(/isActiveLine/);
+    // FAINT_MARK 常量与 cm-ink-mark-faint 主题规则均已删除（不留淡显死码）。
+    expect(src).not.toMatch(/const FAINT_MARK/);
+    expect(src).not.toMatch(/'\.cm-ink-mark-faint'/);
   });
 
   it('标记隐藏 CSS 用非退化盒几何（font-size:0.1px，非 font-size:0 反模式）', () => {

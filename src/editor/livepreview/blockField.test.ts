@@ -86,6 +86,18 @@ describe('blockField 块级替换', () => {
     expect(collectBlocks(view).some((b) => b.widget instanceof TableWidget)).toBe(false);
   });
 
+  it('多行选区触到表格任一行即整块还原源码（EDIT-06 Option 2：与行内层活动行契约对齐）', () => {
+    view = bfView(TABLE_DOC);
+    view.dispatch({ selection: EditorSelection.cursor(0) });
+    expect(collectBlocks(view).some((b) => b.widget instanceof TableWidget)).toBe(true);
+
+    // 选区从表格外（doc 起点）跨到表格首行内（仅触表格第一行）：表格行范围与选区相交 → 还原源码。
+    view.dispatch({ selection: EditorSelection.range(0, TABLE_FROM + 1) });
+    expect(collectBlocks(view).some((b) => b.widget instanceof TableWidget)).toBe(false);
+    // 触到表格的块不发替换装饰，故也不进 atomicRanges（活动行恒为可编辑纯源码）。
+    expect(view.state.field(blockField).deco.size).toBe(0);
+  });
+
   it('doc 不变（块级替换仅装饰，绝不改真相源）', () => {
     view = bfView(TABLE_DOC);
     expect(view.state.doc.toString()).toBe(TABLE_DOC);

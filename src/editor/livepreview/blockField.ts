@@ -2,15 +2,15 @@ import { syntaxTree } from '@codemirror/language';
 import { RangeSetBuilder, StateField, type EditorState } from '@codemirror/state';
 import { Decoration, type DecorationSet, EditorView } from '@codemirror/view';
 import { BLOCK_REPLACE } from './nodeNames';
-import { cursorInRange } from './revealLine';
 import { TableWidget } from './widgets/TableWidget';
 
 /**
  * 块级层 StateField（EDIT-03 / RESEARCH Pattern 2 + 4 / Pitfall 3，三层范式块级支柱）。
  *
  * 职责：对 GFM 表格（BLOCK_REPLACE 节点）整块替换为 TableWidget——
- *   - 光标不在块内 → `Decoration.replace({ widget: new TableWidget(text), block: true })`（渲染真表格）；
- *   - 光标在块内 → 不替换（整块还原源码 Markdown，D-06 原子块级）。
+ *   - 表格行范围与主选区不相交 → `Decoration.replace({ widget: new TableWidget(text), block: true })`（渲染真表格）；
+ *   - 表格行范围与主选区相交（EDIT-06 Option 2，与行内层活动行契约对齐）→ 不替换（整块还原源码 Markdown，
+ *     D-06 原子块级），故也不进 atomicRanges，活动行恒为可编辑纯源码。
  *
  * 块级 replace **必须**从 StateField 经 `provide(EditorView.decorations.from)` 提供——官方约束：
  * 改变文档块结构的 block-replacing 装饰不得从 ViewPlugin 给（RESEARCH Pitfall 3）。
@@ -53,12 +53,23 @@ interface BlockState {
 function buildBlockState(state: EditorState): BlockState {
   const builder = new RangeSetBuilder<Decoration>();
   const tables: TableRange[] = [];
+  // 活动行集（EDIT-06 Option 2）：与行内层同源，仅据**主选区**算 [firstLine,lastLine]。
+  // 表格只要其行范围与主选区相交即整块还原源码——与行内层「活动行纯源码」契约对齐：
+  // 触到活动行的表格不发 block-replace 装饰，故也不进 atomicRanges，活动行恒为可编辑纯源码。
+  const sel = state.selection.main;
+  const selFirstLine = state.doc.lineAt(sel.from).number;
+  const selLastLine = state.doc.lineAt(sel.to).number;
+  const tableTouchesActiveLine = (from: number, to: number): boolean => {
+    const tFirst = state.doc.lineAt(from).number;
+    const tLast = state.doc.lineAt(to).number;
+    return tFirst <= selLastLine && tLast >= selFirstLine;
+  };
   syntaxTree(state).iterate({
     enter: (node) => {
       if (!BLOCK_REPLACE.has(node.name)) return undefined;
       tables.push({ from: node.from, to: node.to });
-      // 光标在块内 → 整块还原源码（不替换），并跳过子树。
-      if (cursorInRange(state, node.from, node.to)) return false;
+      // 表格行范围与主选区相交 → 整块还原源码（不替换），并跳过子树。
+      if (tableTouchesActiveLine(node.from, node.to)) return false;
       const text = state.doc.sliceString(node.from, node.to);
       builder.add(
         node.from,
@@ -71,26 +82,37 @@ function buildBlockState(state: EditorState): BlockState {
   return { deco: builder.finish(), tables };
 }
 
-/** 主光标 head 落入哪个表格块（闭区间，含端点）；不在任何块内返回 null。 */
-function tableAtHead(tables: readonly TableRange[], head: number): TableRange | null {
+/**
+ * 主选区（state.selection.main，[from,to] 行范围）触到哪些表格块的「指纹」——按表起点拼接。
+ *
+ * 用行号区间相交（与 buildBlockState 的 tableTouchesActiveLine 同源）判定：选区行 [selFirst,selLast]
+ * 与表格行 [tFirst,tLast] 相交即触及。指纹只记被触及表格的 from 序列，O(blocks)，无语法树访问。
+ */
+function touchedTablesFingerprint(tables: readonly TableRange[], state: EditorState): string {
+  const sel = state.selection.main;
+  const selFirst = state.doc.lineAt(sel.from).number;
+  const selLast = state.doc.lineAt(sel.to).number;
+  const touched: number[] = [];
   for (const t of tables) {
-    if (head >= t.from && head <= t.to) return t;
+    const tFirst = state.doc.lineAt(t.from).number;
+    const tLast = state.doc.lineAt(t.to).number;
+    if (tFirst <= selLast && tLast >= selFirst) touched.push(t.from);
   }
-  return null;
+  return touched.join(',');
 }
 
 /**
  * 选区变化时的复用判据（性能核心：消除每次点击的 O(doc) 全树重算）。
  *
- * 仅当主光标 head 实际跨越表格块边界（进块 ↔ 出块 ↔ 换块）才重建——驱动 D-06 整块还原切换；
- * 否则（光标在同一表格内移动、或始终在所有表格外移动）原样复用，零语法树访问。
+ * 仅当主选区触及的表格块集合实际变化（进块 ↔ 出块 ↔ 换块 ↔ 多行选区跨表）才重建——驱动 D-06 整块
+ * 还原切换；否则（选区在同一表格内移动、或始终在所有表格外移动）原样复用，零语法树访问。
  *
- * 表格 range 取自上一次全文扫描固化的 `prev.tables`（doc 未变故仍准确）；旧/新 head 各 O(blocks) 查表。
+ * 表格 range 取自上一次全文扫描固化的 `prev.tables`（doc 未变故仍准确）；旧/新各 O(blocks) 行号比对。
  */
 function selectionCrossesBoundary(prev: BlockState, tr: { startState: EditorState; state: EditorState }): boolean {
-  const oldHead = tr.startState.selection.main.head;
-  const newHead = tr.state.selection.main.head;
-  return tableAtHead(prev.tables, oldHead) !== tableAtHead(prev.tables, newHead);
+  const oldFp = touchedTablesFingerprint(prev.tables, tr.startState);
+  const newFp = touchedTablesFingerprint(prev.tables, tr.state);
+  return oldFp !== newFp;
 }
 
 /**
@@ -99,7 +121,7 @@ function selectionCrossesBoundary(prev: BlockState, tr: { startState: EditorStat
  * update 重建判据（按代价升序短路）：
  *   1. docChanged：全文扫描重建（doc 结构可能变，表格 range 须刷新）——组合期 docChange 亦走此路
  *      （CM6 6.43.1 内置合成保护，无需自建闸门，EDIT-06 Option 1）。
- *   2. 选区变化：仅当 head 跨越表格块边界才重建（O(blocks) 判定）；普通移动原样复用——
+ *   2. 选区变化：仅当主选区触及的表格块集合变化才重建（O(blocks) 行号判定）；普通移动原样复用——
  *      消除每次点击的 O(doc) 全树重算（UAT #8 卡顿根因，与 IME 正交的纯性能优化，照旧保留）。
  */
 export const blockField = StateField.define<BlockState>({
