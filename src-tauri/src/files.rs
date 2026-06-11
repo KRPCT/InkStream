@@ -1,5 +1,5 @@
-use crate::path_guard::canonicalize_in_root;
-use std::path::Path;
+use crate::path_guard::{canonicalize_in_root, resolve_new_target_in_root};
+use std::path::{Path, PathBuf};
 
 /// 单次 invoke 负载红线阈值（字节）。
 ///
@@ -24,10 +24,120 @@ pub fn read_file(root: String, path: String) -> Result<String, String> {
     std::fs::read_to_string(&target).map_err(|e| format!("无法读取文件: {e}"))
 }
 
+/// 同目录隐藏 temp 文件名（A5：同卷 rename 才原子）。
+///
+/// 命名含 pid + 纳秒时间戳，避免并发写互撞；`.inkstream-tmp` 前缀使其默认隐藏并便于清理。
+fn temp_sibling(target: &Path) -> PathBuf {
+    let file = target
+        .file_name()
+        .map(|n| n.to_string_lossy().into_owned())
+        .unwrap_or_else(|| "file".to_string());
+    let nanos = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_nanos())
+        .unwrap_or(0);
+    let tmp_name = format!(".inkstream-tmp-{}-{}-{}", std::process::id(), nanos, file);
+    target
+        .parent()
+        .unwrap_or_else(|| Path::new("."))
+        .join(tmp_name)
+}
+
+/// 原子写（T-02-07）：同目录 temp 文件 + rename。写中途崩溃只丢 temp，原文件不动。
+///
+/// 路径经 path_guard 校验落在 vault 根内（目标可不存在，故走 resolve_new_target_in_root）。
+/// 写 temp 或 rename 任一步失败均清理 temp 文件再返回错误。
+#[tauri::command]
+pub fn write_file_atomic(root: String, path: String, content: String) -> Result<(), String> {
+    let canon_root = Path::new(&root)
+        .canonicalize()
+        .map_err(|e| format!("无法解析工作区根: {e}"))?;
+    let target = resolve_new_target_in_root(&canon_root, &path)?;
+    let tmp = temp_sibling(&target);
+
+    if let Err(e) = std::fs::write(&tmp, content.as_bytes()) {
+        let _ = std::fs::remove_file(&tmp);
+        return Err(format!("无法写入临时文件: {e}"));
+    }
+    if let Err(e) = std::fs::rename(&tmp, &target) {
+        let _ = std::fs::remove_file(&tmp);
+        return Err(format!("无法落盘（rename 失败）: {e}"));
+    }
+    Ok(())
+}
+
+/// 新建空文件：已存在则 Err，绝不覆盖（D-12 同名拒绝）。
+#[tauri::command]
+pub fn create_file(root: String, path: String) -> Result<(), String> {
+    let canon_root = Path::new(&root)
+        .canonicalize()
+        .map_err(|e| format!("无法解析工作区根: {e}"))?;
+    let target = resolve_new_target_in_root(&canon_root, &path)?;
+    if target.exists() {
+        return Err("同名文件已存在".to_string());
+    }
+    std::fs::write(&target, b"").map_err(|e| format!("无法创建文件: {e}"))
+}
+
+/// 新建目录：已存在则 Err（同名拒绝）。
+#[tauri::command]
+pub fn create_dir(root: String, path: String) -> Result<(), String> {
+    let canon_root = Path::new(&root)
+        .canonicalize()
+        .map_err(|e| format!("无法解析工作区根: {e}"))?;
+    let target = resolve_new_target_in_root(&canon_root, &path)?;
+    if target.exists() {
+        return Err("同名目录已存在".to_string());
+    }
+    std::fs::create_dir(&target).map_err(|e| format!("无法创建目录: {e}"))
+}
+
+/// 重命名：源须存在且在 root 内；目的地已存在则 Err（绝不覆盖，D-12）。
+#[tauri::command]
+pub fn rename_path(root: String, from: String, to: String) -> Result<(), String> {
+    let canon_root = Path::new(&root)
+        .canonicalize()
+        .map_err(|e| format!("无法解析工作区根: {e}"))?;
+    let src = canonicalize_in_root(&canon_root, &from)?;
+    let dst = resolve_new_target_in_root(&canon_root, &to)?;
+    if dst.exists() {
+        return Err("目标名称已存在".to_string());
+    }
+    std::fs::rename(&src, &dst).map_err(|e| format!("无法重命名: {e}"))
+}
+
+/// 移动：与 rename 同语义（同根内移动），目的地已存在则 Err。
+#[tauri::command]
+pub fn move_path(root: String, from: String, to: String) -> Result<(), String> {
+    let canon_root = Path::new(&root)
+        .canonicalize()
+        .map_err(|e| format!("无法解析工作区根: {e}"))?;
+    let src = canonicalize_in_root(&canon_root, &from)?;
+    let dst = resolve_new_target_in_root(&canon_root, &to)?;
+    if dst.exists() {
+        return Err("目标位置已存在同名项".to_string());
+    }
+    std::fs::rename(&src, &dst).map_err(|e| format!("无法移动: {e}"))
+}
+
+/// 删除到系统回收站（D-09）：路径经 path_guard 校验后交 trash crate。
+#[tauri::command]
+pub fn trash_path(root: String, path: String) -> Result<(), String> {
+    let canon_root = Path::new(&root)
+        .canonicalize()
+        .map_err(|e| format!("无法解析工作区根: {e}"))?;
+    let target = canonicalize_in_root(&canon_root, &path)?;
+    trash::delete(&target).map_err(|e| format!("无法移入回收站: {e}"))
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{read_file, READ_FILE_INLINE_LIMIT_BYTES};
+    use super::{
+        create_dir, create_file, move_path, read_file, rename_path, temp_sibling, trash_path,
+        write_file_atomic, READ_FILE_INLINE_LIMIT_BYTES,
+    };
     use std::fs;
+    use std::path::Path;
 
     fn temp_dir(tag: &str) -> std::path::PathBuf {
         let base = std::env::temp_dir().join(format!(
@@ -63,6 +173,112 @@ mod tests {
         let root = temp_dir("read-escape");
         let root_str = root.to_string_lossy().into_owned();
         let result = read_file(root_str, "../secret.txt".to_string());
+        assert!(result.is_err());
+        fs::remove_dir_all(&root).ok();
+    }
+
+    #[test]
+    fn temp_sibling_stays_in_target_dir() {
+        // A5：temp 须与目标同目录（同卷）才能 rename 原子。
+        let target = Path::new("/vault/sub/note.md");
+        let tmp = temp_sibling(target);
+        assert_eq!(tmp.parent(), target.parent());
+        assert!(tmp
+            .file_name()
+            .unwrap()
+            .to_string_lossy()
+            .starts_with(".inkstream-tmp-"));
+    }
+
+    #[test]
+    fn write_file_atomic_creates_then_overwrites() {
+        let root = temp_dir("write-atomic");
+        let root_str = root.to_string_lossy().into_owned();
+        write_file_atomic(root_str.clone(), "doc.md".to_string(), "v1".to_string()).unwrap();
+        assert_eq!(fs::read_to_string(root.join("doc.md")).unwrap(), "v1");
+        // 再写覆盖既有文件（原子写允许覆盖自身，区别于 create 的同名拒绝）。
+        write_file_atomic(root_str, "doc.md".to_string(), "v2 墨流".to_string()).unwrap();
+        assert_eq!(fs::read_to_string(root.join("doc.md")).unwrap(), "v2 墨流");
+        // 落盘后目录无残留 temp 文件（写成功路径不留 .inkstream-tmp）。
+        let leftover = fs::read_dir(&root)
+            .unwrap()
+            .filter_map(|e| e.ok())
+            .any(|e| e.file_name().to_string_lossy().starts_with(".inkstream-tmp-"));
+        assert!(!leftover, "原子写成功后不应残留 temp 文件");
+        fs::remove_dir_all(&root).ok();
+    }
+
+    #[test]
+    fn write_file_atomic_rejects_parent_escape() {
+        let root = temp_dir("write-escape");
+        let root_str = root.to_string_lossy().into_owned();
+        // 父目录逃逸：../ 越出 vault 根，path_guard 拒绝。
+        let result = write_file_atomic(root_str, "../evil.md".to_string(), "x".to_string());
+        assert!(result.is_err());
+        fs::remove_dir_all(&root).ok();
+    }
+
+    #[test]
+    fn create_file_rejects_same_name() {
+        let root = temp_dir("create-dup");
+        let root_str = root.to_string_lossy().into_owned();
+        create_file(root_str.clone(), "a.md".to_string()).unwrap();
+        // 已存在 → Err，绝不覆盖（D-12）。
+        assert!(create_file(root_str, "a.md".to_string()).is_err());
+        fs::remove_dir_all(&root).ok();
+    }
+
+    #[test]
+    fn create_dir_rejects_same_name() {
+        let root = temp_dir("createdir-dup");
+        let root_str = root.to_string_lossy().into_owned();
+        create_dir(root_str.clone(), "sub".to_string()).unwrap();
+        assert!(create_dir(root_str, "sub".to_string()).is_err());
+        fs::remove_dir_all(&root).ok();
+    }
+
+    #[test]
+    fn rename_path_rejects_existing_target() {
+        let root = temp_dir("rename-dup");
+        let root_str = root.to_string_lossy().into_owned();
+        fs::write(root.join("from.md"), "f").unwrap();
+        fs::write(root.join("to.md"), "t").unwrap();
+        // 目的地已存在 → Err，绝不覆盖目标内容。
+        assert!(rename_path(root_str.clone(), "from.md".to_string(), "to.md".to_string()).is_err());
+        // to.md 内容未被破坏。
+        assert_eq!(fs::read_to_string(root.join("to.md")).unwrap(), "t");
+        // 改名到新名字成功。
+        rename_path(root_str, "from.md".to_string(), "renamed.md".to_string()).unwrap();
+        assert!(root.join("renamed.md").exists());
+        fs::remove_dir_all(&root).ok();
+    }
+
+    #[test]
+    fn move_path_rejects_existing_target() {
+        let root = temp_dir("move-dup");
+        let root_str = root.to_string_lossy().into_owned();
+        fs::create_dir(root.join("dir")).unwrap();
+        fs::write(root.join("x.md"), "x").unwrap();
+        fs::write(root.join("dir").join("x.md"), "y").unwrap();
+        // 移到已存在同名项 → Err。
+        assert!(move_path(
+            root_str.clone(),
+            "x.md".to_string(),
+            "dir/x.md".to_string()
+        )
+        .is_err());
+        // 移到空位成功。
+        move_path(root_str, "x.md".to_string(), "dir/moved.md".to_string()).unwrap();
+        assert!(root.join("dir").join("moved.md").exists());
+        fs::remove_dir_all(&root).ok();
+    }
+
+    #[test]
+    fn trash_path_rejects_parent_escape() {
+        // 越界目标在校验阶段即被 path_guard 拒绝，绝不触达 trash::delete。
+        let root = temp_dir("trash-escape");
+        let root_str = root.to_string_lossy().into_owned();
+        let result = trash_path(root_str, "../outside.md".to_string());
         assert!(result.is_err());
         fs::remove_dir_all(&root).ok();
     }

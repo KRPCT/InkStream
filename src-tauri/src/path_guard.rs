@@ -35,6 +35,32 @@ pub fn canonicalize_in_root(root: &Path, rel: &str) -> Result<PathBuf, String> {
     }
 }
 
+/// 把"尚不存在的目标"（新建文件 / 写入新文件 / rename 目的地）解析为安全绝对路径。
+///
+/// canonicalize 要求目标存在，故对写路径改为：规范化目标**父目录**（须已存在）后拼文件名，
+/// 再断言父目录落在 vault 根内。文件名段不得为 `..`/`.`/空（防经文件名段逃逸）。
+///
+/// 返回的路径未经 canonicalize（目标本不存在），但其父目录已 canonicalize 且在 root 内，
+/// 故整体不越界。调用方据此 path 做 write/rename/create。
+pub fn resolve_new_target_in_root(root: &Path, rel: &str) -> Result<PathBuf, String> {
+    let canon_root = root
+        .canonicalize()
+        .map_err(|e| format!("无法解析 vault 根路径: {e}"))?;
+    let rel_path = Path::new(rel);
+    let file_name = rel_path
+        .file_name()
+        .ok_or_else(|| "目标路径缺少文件名".to_string())?;
+    let parent_rel = rel_path.parent().unwrap_or_else(|| Path::new(""));
+    let canon_parent = canon_root
+        .join(parent_rel)
+        .canonicalize()
+        .map_err(|e| format!("无法解析目标父目录: {e}"))?;
+    if !is_within_root(&canon_root, &canon_parent) {
+        return Err("路径越出工作区根目录".to_string());
+    }
+    Ok(canon_parent.join(file_name))
+}
+
 #[cfg(test)]
 mod tests {
     use super::is_within_root;
