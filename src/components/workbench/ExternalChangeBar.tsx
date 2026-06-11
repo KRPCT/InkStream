@@ -32,8 +32,11 @@ export default function ExternalChangeBar() {
     try {
       await reloadFromDisk(path);
     } catch {
+      // WR-11：重载失败时绝不清冲突态——保持冻结 + 提示条，用户可重试。
       showToast('error', `「${name}」重载失败，请手动重新打开。`);
+      return;
     }
+    // 仅成功后清状态。
     const store = useEditorStore.getState();
     store.unfreezeAutosave(path);
     store.clearExternalChange(path);
@@ -47,10 +50,18 @@ export default function ExternalChangeBar() {
     });
     if (!ok) return;
     const store = useEditorStore.getState();
-    // 先解冻再 flush：flushAutosave 在 frozen 时会跳过落盘
+    // 先临时解冻再 flush：flushAutosave 在 frozen 时会跳过落盘。
     store.unfreezeAutosave(path);
+    try {
+      await flushAutosave(path);
+    } catch {
+      // WR-11：覆盖落盘失败时重新冻结、保留冲突标记 + 提示条，用户可重试。
+      store.freezeAutosave(path);
+      showToast('error', `「${name}」覆盖磁盘失败，你的修改仍保留在编辑器中。`);
+      return;
+    }
+    // 仅成功后清冲突标记。
     store.clearExternalChange(path);
-    await flushAutosave(path);
   };
 
   return (
