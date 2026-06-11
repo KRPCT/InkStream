@@ -110,7 +110,7 @@ pub fn find_repo_root(path: String) -> Result<Option<String>, String> {
 
 #[cfg(test)]
 mod tests {
-    use super::{ascend_for_git, list_dir, open_vault};
+    use super::{ascend_for_git, collect_files, list_dir, open_vault};
     use std::fs;
 
     /// 在 temp 下建唯一目录，返回其规范化路径。
@@ -186,6 +186,58 @@ mod tests {
         // rel 指向父级越界——canonicalize_in_root 应拒绝
         let result = list_dir(root_str, "..".to_string());
         assert!(result.is_err());
+        fs::remove_dir_all(&root).ok();
+    }
+
+    #[test]
+    fn collect_files_enumerates_recursively() {
+        let root = temp_dir("collect-recursive");
+        fs::write(root.join("a.md"), "x").unwrap();
+        fs::create_dir(root.join("sub")).unwrap();
+        fs::write(root.join("sub").join("b.md"), "y").unwrap();
+        let mut out = Vec::new();
+        collect_files(&root, &root, &mut out).unwrap();
+        let paths: Vec<&str> = out.iter().map(|e| e.path.as_str()).collect();
+        // 文件递归枚举（含子目录），不含目录本身
+        assert!(paths.contains(&"a.md"));
+        assert!(paths.contains(&"sub/b.md"));
+        assert!(!paths.contains(&"sub"));
+        fs::remove_dir_all(&root).ok();
+    }
+
+    #[test]
+    fn collect_files_skips_dot_directories() {
+        let root = temp_dir("collect-dot");
+        fs::write(root.join("keep.md"), "x").unwrap();
+        fs::create_dir(root.join(".git")).unwrap();
+        fs::write(root.join(".git").join("config"), "ignored").unwrap();
+        let mut out = Vec::new();
+        collect_files(&root, &root, &mut out).unwrap();
+        let paths: Vec<&str> = out.iter().map(|e| e.path.as_str()).collect();
+        // 点开头目录（.git）整目录被跳过（D-11），其内文件不出现在清单
+        assert!(paths.contains(&"keep.md"));
+        assert!(!paths.iter().any(|p| p.starts_with(".git")));
+        fs::remove_dir_all(&root).ok();
+    }
+
+    #[test]
+    fn collect_files_paths_stay_within_root() {
+        let root = temp_dir("collect-within");
+        fs::write(root.join("a.md"), "x").unwrap();
+        fs::create_dir(root.join("sub")).unwrap();
+        fs::write(root.join("sub").join("b.md"), "y").unwrap();
+        let mut out = Vec::new();
+        collect_files(&root, &root, &mut out).unwrap();
+        // 每项相对路径都不含越界段（不以 ../ 开头、不为绝对路径）
+        for entry in &out {
+            assert!(!entry.path.starts_with("..") && !entry.path.starts_with('/'));
+            // 每项绝对路径仍落在 root 内（path_guard 不变式）
+            let abs = root.join(&entry.path);
+            assert!(crate::path_guard::is_within_root(
+                &root,
+                &abs.canonicalize().unwrap()
+            ));
+        }
         fs::remove_dir_all(&root).ok();
     }
 }
