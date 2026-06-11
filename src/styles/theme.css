@@ -53,6 +53,15 @@ html[data-theme='light'] {
   --cm-link: hsl(221, 87%, 60%);
   --cm-meta: hsl(230, 6%, 44%);
   --cm-invalid: hsl(344, 84%, 43%);
+
+  /* Live Preview 装饰专用 token（Phase 3，UI-SPEC §Color 新增表，取色同源既有中性层/accent）。 */
+  --cm-inline-code-bg: hsl(230, 1%, 92%);
+  --cm-blockquote-border: hsl(230, 4%, 86%);
+  --cm-table-border: hsl(230, 4%, 86%);
+  --cm-table-header-bg: hsl(230, 1%, 92%);
+  --cm-hr: hsl(230, 4%, 86%);
+  --cm-checkbox-checked: hsl(var(--accent-hsl));
+  --cm-image-loading-bg: hsl(230, 1%, 95%);
 }
 
 html[data-theme='dark'] {
@@ -88,6 +97,15 @@ html[data-theme='dark'] {
   --cm-link: hsl(207, 82%, 66%);
   --cm-meta: hsl(220, 9%, 55%);
   --cm-invalid: hsl(355, 65%, 65%);
+
+  /* Live Preview 装饰专用 token（Phase 3，UI-SPEC §Color 新增表，dark 镜像同源 Atom one-dark）。 */
+  --cm-inline-code-bg: hsl(220, 13%, 13%);
+  --cm-blockquote-border: hsl(222, 13%, 11%);
+  --cm-table-border: hsl(222, 13%, 11%);
+  --cm-table-header-bg: hsl(220, 13%, 13%);
+  --cm-hr: hsl(222, 13%, 11%);
+  --cm-checkbox-checked: hsl(var(--accent-hsl));
+  --cm-image-loading-bg: hsl(220, 13%, 16%);
 }
 
 /* ── 层 2 mode：6 组合只覆写 --accent-hsl（3 模式 x 2 亮暗，D-14 一次定型） ── */

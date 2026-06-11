@@ -35,6 +35,17 @@ function accentValue(mode: string, theme: string): string {
   return m[1].trim();
 }
 
+/** Phase 3 Live Preview 装饰专用 token（UI-SPEC §Color 新增表，亮暗双套）。 */
+const LIVE_PREVIEW_TOKENS = [
+  '--cm-inline-code-bg',
+  '--cm-blockquote-border',
+  '--cm-table-border',
+  '--cm-table-header-bg',
+  '--cm-hr',
+  '--cm-checkbox-checked',
+  '--cm-image-loading-bg',
+];
+
 const NEUTRAL_VARS = [
   '--background-primary',
   '--background-primary-alt',
@@ -80,6 +91,27 @@ describe('theme.css 变量架构（D-14 立约）', () => {
   it('--background-modifier-border 照抄 UI-SPEC：light 含 230、dark 含 222', () => {
     expect(varValue(themeBlock('light'), '--background-modifier-border')).toContain('230');
     expect(varValue(themeBlock('dark'), '--background-modifier-border')).toContain('222');
+  });
+
+  it('7 个 Live Preview 装饰 token 在 light 与 dark 块均定义（Phase 3）', () => {
+    const light = themeBlock('light');
+    const dark = themeBlock('dark');
+    for (const name of LIVE_PREVIEW_TOKENS) {
+      expect(light.match(new RegExp(`${name}:`, 'g')), `${name} 应在 light 块出现一次`).toHaveLength(1);
+      expect(dark.match(new RegExp(`${name}:`, 'g')), `${name} 应在 dark 块出现一次`).toHaveLength(1);
+    }
+  });
+
+  it('装饰底纹 token 同源既有中性层（不引新色相）', () => {
+    // UI-SPEC：底纹/边框复用 --background-secondary-alt / --background-modifier-border 同源取值，
+    // 不引新色相。底纹背景同源既有中性层（亮 230 系 / 暗 220 系），与正文背景仅轻凹陷区分。
+    const light = themeBlock('light');
+    const dark = themeBlock('dark');
+    expect(varValue(light, '--cm-inline-code-bg')).toContain('230');
+    expect(varValue(dark, '--cm-inline-code-bg')).toContain('220');
+    // checkbox 勾选态复用 accent（保留清单第 7 条「激活状态」语义）。
+    expect(varValue(light, '--cm-checkbox-checked')).toContain('--accent-hsl');
+    expect(varValue(dark, '--cm-checkbox-checked')).toContain('--accent-hsl');
   });
 
   it('派生层与镜像别名存在（--accent / --text-selection / --titlebar-background）', () => {
