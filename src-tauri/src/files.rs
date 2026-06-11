@@ -1,4 +1,5 @@
 use crate::path_guard::{canonicalize_in_root, resolve_new_target_in_root};
+use std::io::{ErrorKind, Write};
 use std::path::{Path, PathBuf};
 
 /// 单次 invoke 负载红线阈值（字节）。
@@ -47,6 +48,11 @@ fn temp_sibling(target: &Path) -> PathBuf {
 ///
 /// 路径经 path_guard 校验落在 vault 根内（目标可不存在，故走 resolve_new_target_in_root）。
 /// 写 temp 或 rename 任一步失败均清理 temp 文件再返回错误。
+///
+/// WR-04 持久性：temp 写入后 `sync_all()` 把数据块刷盘**再** rename，避免掉电后
+/// rename 已记账而数据块未落致零长/截断。Unix 上额外 fsync 父目录 fd，确保 rename
+/// 这条目录项本身持久化；Windows 无等价父目录 fsync API，temp 的 sync_all 已足够
+/// （NTFS 元数据日志保证 rename 顺序），故平台差异化处理。
 #[tauri::command]
 pub fn write_file_atomic(root: String, path: String, content: String) -> Result<(), String> {
     let canon_root = Path::new(&root)
@@ -55,41 +61,71 @@ pub fn write_file_atomic(root: String, path: String, content: String) -> Result<
     let target = resolve_new_target_in_root(&canon_root, &path)?;
     let tmp = temp_sibling(&target);
 
-    if let Err(e) = std::fs::write(&tmp, content.as_bytes()) {
+    // temp 写入 + 数据块刷盘（sync_all）。任一步失败清理 temp 再返回。
+    let write_result = (|| -> std::io::Result<()> {
+        let mut f = std::fs::File::create(&tmp)?;
+        f.write_all(content.as_bytes())?;
+        f.sync_all()?;
+        Ok(())
+    })();
+    if let Err(e) = write_result {
         let _ = std::fs::remove_file(&tmp);
         return Err(format!("无法写入临时文件: {e}"));
     }
+
     if let Err(e) = std::fs::rename(&tmp, &target) {
         let _ = std::fs::remove_file(&tmp);
         return Err(format!("无法落盘（rename 失败）: {e}"));
     }
+
+    // Unix：fsync 父目录 fd，使 rename 的目录项变更持久化（尽力而为，失败不回滚已落盘的数据）。
+    #[cfg(unix)]
+    {
+        if let Some(parent) = target.parent() {
+            if let Ok(dir) = std::fs::File::open(parent) {
+                let _ = dir.sync_all();
+            }
+        }
+    }
+
     Ok(())
 }
 
 /// 新建空文件：已存在则 Err，绝不覆盖（D-12 同名拒绝）。
+///
+/// WR-05：用 `create_new(true)` 原子创建——内核层保证「不存在才建、存在即 AlreadyExists」，
+/// 消除 `exists()` 预检与 write 之间的 TOCTOU 窗口（并发/外部抢建不会被静默覆盖）。
 #[tauri::command]
 pub fn create_file(root: String, path: String) -> Result<(), String> {
     let canon_root = Path::new(&root)
         .canonicalize()
         .map_err(|e| format!("无法解析工作区根: {e}"))?;
     let target = resolve_new_target_in_root(&canon_root, &path)?;
-    if target.exists() {
-        return Err("同名文件已存在".to_string());
+    match std::fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(&target)
+    {
+        Ok(_) => Ok(()),
+        Err(e) if e.kind() == ErrorKind::AlreadyExists => Err("同名文件已存在".to_string()),
+        Err(e) => Err(format!("无法创建文件: {e}")),
     }
-    std::fs::write(&target, b"").map_err(|e| format!("无法创建文件: {e}"))
 }
 
 /// 新建目录：已存在则 Err（同名拒绝）。
+///
+/// WR-05：依赖 `create_dir` 自身的 AlreadyExists 错误而非 `exists()` 预检（消除 TOCTOU）。
 #[tauri::command]
 pub fn create_dir(root: String, path: String) -> Result<(), String> {
     let canon_root = Path::new(&root)
         .canonicalize()
         .map_err(|e| format!("无法解析工作区根: {e}"))?;
     let target = resolve_new_target_in_root(&canon_root, &path)?;
-    if target.exists() {
-        return Err("同名目录已存在".to_string());
+    match std::fs::create_dir(&target) {
+        Ok(()) => Ok(()),
+        Err(e) if e.kind() == ErrorKind::AlreadyExists => Err("同名目录已存在".to_string()),
+        Err(e) => Err(format!("无法创建目录: {e}")),
     }
-    std::fs::create_dir(&target).map_err(|e| format!("无法创建目录: {e}"))
 }
 
 /// 重命名：源须存在且在 root 内；目的地已存在则 Err（绝不覆盖，D-12）。
