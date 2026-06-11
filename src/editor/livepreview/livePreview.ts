@@ -27,7 +27,8 @@ import { tableGesture } from './tableGesture';
  * tableGesture 紧随其后：截获落在表格 widget 上的点击，程序化派发光标进块 → 整块还原源码可编辑（UAT #1）。
  *   顺序关键——linkGesture 在前：Ctrl/Cmd+外链点击它返回 true 短路，tableGesture 不劫持导航；
  *   普通点击命中表格时 linkGesture 无链接返回 false，轮到 tableGesture（CM6 按注册序短路 domEventHandlers）。
- * composingGuard 是全局护栏：后续装饰只要走同一 isFrozen / view.composing / frozenField 短路即自动受保护（D-13）。
+ * composingGuard 是全局护栏：后续装饰只要走同一 isFrozen / view.composing（行内层）或 CM6 原生
+ * `input.type.compose` userEvent（块级 StateField）短路即自动受保护（D-13）。
  */
 export function livePreviewExtensions(): Extension[] {
   return [inlinePlugin, blockExtensions, linkGesture, tableGesture, composingGuard];

@@ -47,11 +47,27 @@ describe('livePreviewExtensions 组合根', () => {
     }
     expect(hiddenAtStart).toBe(true);
 
-    // composingGuard 生效：compositionstart 后 docChanged 短路（decorations 引用不变）。
+    // composingGuard 生效：compositionstart 后组合期 docChanged 不重算语法树，但旧装饰经 changes 映射
+    // 跟随位移（root cause B 修复后契约）。此处在文末插入、所有装饰之前位置不变，故映射后 (from,to) 不变。
     const before = view.plugin(inlinePlugin)!.decorations;
+    const flat = (set: typeof before) => {
+      const out: Array<{ from: number; to: number }> = [];
+      const it = set.iter();
+      while (it.value) {
+        out.push({ from: it.from, to: it.to });
+        it.next();
+      }
+      return out;
+    };
+    const beforeRanges = flat(before);
     dispatchComposition(view, { phase: 'compositionstart', data: '你' });
-    view.dispatch({ changes: { from: view.state.doc.length, insert: '你' } });
-    expect(view.plugin(inlinePlugin)!.decorations).toBe(before);
+    const changes = view.state.changes({ from: view.state.doc.length, insert: '你' });
+    const expected = flat(before.map(changes));
+    view.dispatch({ changes: { from: view.state.doc.length, insert: '你' }, userEvent: 'input.type.compose' });
+    const after = view.plugin(inlinePlugin)!.decorations;
+    // 组合期未重算（条数守恒），位置等于映射结果（文末插入：装饰位置不变）。
+    expect(flat(after)).toEqual(expected);
+    expect(flat(after)).toEqual(beforeRanges);
   });
 });
 

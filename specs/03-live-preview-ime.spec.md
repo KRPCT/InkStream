@@ -79,10 +79,20 @@
 
 ## 5. 自动回归桩（减负，非硬门）
 
-- [ ] 模拟 `compositionstart` → 输入 → `compositionend` 的 Vitest 桩存在并通过：断言组合期装饰暂停重建、
-  `compositionend` 后统一刷新（覆盖 `view.composing` 短路路径）。
+- [ ] 模拟 `compositionstart` → 输入 → `compositionend` 的 Vitest 桩存在并通过：断言组合期装饰暂停**语法树重算**、
+  组合期 docChanged 时旧装饰经 `tr.changes` **映射跟随位移**（非返回未映射旧集）、`compositionend` 后推迟一个
+  微任务统一刷新一次（覆盖 `view.composing` / `isFrozen` 双判 + CM6 原生 `input.type.compose` userEvent 路径）。
   - 验证：自动（对应 CM 装饰扩展的配对测试，`pnpm test` 全绿即覆盖）。
   - 说明：此桩仅减少人工负担，**不替代**第 4 节真机矩阵；自动桩绿不构成回归门通过。
+
+> **⚠️ 真机为 EDIT-06 唯一验收门（jsdom 无法复现 composition，这正是本 bug 曾经带病上线的原因）。**
+> jsdom 的 `CompositionEvent` 桩**不驱动**浏览器真实 IME 组合状态机：它无法复现「合成中文本节点」、
+> 候选窗锚点、`compositionend` 上屏 flush 与 `observer.clear()` 的竞态——而本 bug 的两处根因恰好只在
+> 真实 composition 下暴露：(B) 组合期返回**未映射**的旧装饰集 → CM6 `findChangedDeco` 伪重建合成中 DOM →
+> Chromium 中止 IME 吞字；(A) `compositionend` **同步**派发事务 → `observer.clear()` 丢弃尚未 flush 的上屏
+> mutation → 已选候选字反被吞。自动桩只能断言「映射语义」与「无同步派发 / 推迟一次刷新」的**契约**，
+> **不能**断言真实候选窗不吞字。故 **Windows + WebView2 真机、微软拼音 / 搜狗拼音跨装饰内容多候选连续输入
+> 必须逐项手测**（第 4 节矩阵），方可判 EDIT-06 通过。
 
 ## 6. 失败处置
 

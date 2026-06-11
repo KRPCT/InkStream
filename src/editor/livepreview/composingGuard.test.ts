@@ -7,9 +7,11 @@ import { composingGuard, isFrozen, refreshLivePreview } from './composingGuard';
  * IME 冻结闸门回归门（EDIT-06，全项目最高风险件 / RESEARCH Pitfall 1）。
  *
  * 用 Wave 0 的 CompositionEvent jsdom 桩驱动真实 compositionstart/end，断言：
- *   1. compositionstart 后 isFrozen(view) === true（此后装饰层 update 须短路保旧 RangeSet）；
- *   2. compositionend 后 isFrozen(view) === false 且派发一次 refreshLivePreview effect
- *      （compositionend 后 view.composing 可能残留 true，故须叠加原生事件 + 强制刷新一次）。
+ *   1. compositionstart 后 isFrozen(view) === true（此后装饰层 update 须保旧 RangeSet、docChanged 时 map）；
+ *   2. compositionstart/compositionend 处理器内**绝无同步 view.dispatch**——组合期注入同步事务会破坏
+ *      CM6 的 IME 上屏 flush（observer.clear 丢弃尚未 flush 的上屏 mutation，root cause A）；
+ *   3. compositionend 后 isFrozen(view) === false，且**推迟一个微任务**派发恰好一次 refreshLivePreview
+ *      （await Promise.resolve() flush 微任务后才出现，且守 !view.composing）。
  */
 
 let view: EditorView | null = null;
@@ -18,6 +20,16 @@ afterEach(() => {
   destroyTestView(view);
   view = null;
 });
+
+/** 过滤出携带 refreshLivePreview effect 的 dispatch 调用。 */
+function refreshCalls(spy: ReturnType<typeof vi.spyOn>): unknown[] {
+  return spy.mock.calls.filter((call: unknown[]) => {
+    const arg = call[0];
+    const effects = arg && typeof arg === 'object' && 'effects' in arg ? arg.effects : undefined;
+    const list = Array.isArray(effects) ? effects : effects ? [effects] : [];
+    return list.some((e) => e.is(refreshLivePreview));
+  });
+}
 
 describe('composingGuard（IME 冻结闸门）', () => {
   it('compositionstart 后 isFrozen 翻为 true', () => {
@@ -28,7 +40,20 @@ describe('composingGuard（IME 冻结闸门）', () => {
     expect(isFrozen(view)).toBe(true);
   });
 
-  it('compositionend 后 isFrozen 翻回 false 且派发一次 refreshLivePreview', () => {
+  it('compositionstart/compositionend 处理器内绝无同步 view.dispatch（root cause A 防回归）', () => {
+    view = makeTestView('文档', [composingGuard]);
+    const spy = vi.spyOn(view, 'dispatch');
+
+    dispatchComposition(view, { phase: 'compositionstart', data: '你' });
+    // compositionstart 处理器只置同步 WeakMap 标志，绝不派发事务。
+    expect(spy).not.toHaveBeenCalled();
+
+    dispatchComposition(view, { phase: 'compositionend', data: '你好' });
+    // compositionend 处理器同步窗口内也绝不派发——强刷被推迟到微任务，此刻尚未触发。
+    expect(spy).not.toHaveBeenCalled();
+  });
+
+  it('compositionend 后 isFrozen 翻回 false，强刷推迟一个微任务恰好派发一次', async () => {
     view = makeTestView('文档', [composingGuard]);
     const spy = vi.spyOn(view, 'dispatch');
 
@@ -37,14 +62,12 @@ describe('composingGuard（IME 冻结闸门）', () => {
 
     dispatchComposition(view, { phase: 'compositionend', data: '你好' });
     expect(isFrozen(view)).toBe(false);
+    // 同步窗口内尚无强刷。
+    expect(refreshCalls(spy)).toHaveLength(0);
 
-    // 强制刷新恰好一次：派发一个携带 refreshLivePreview effect 的事务。
-    const refreshDispatches = spy.mock.calls.filter(([arg]) => {
-      const effects = arg && typeof arg === 'object' && 'effects' in arg ? arg.effects : undefined;
-      const list = Array.isArray(effects) ? effects : effects ? [effects] : [];
-      return list.some((e) => e.is(refreshLivePreview));
-    });
-    expect(refreshDispatches).toHaveLength(1);
+    // flush 微任务：jsdom view.composing 不为 true，守卫放行 → 恰好一次 refreshLivePreview。
+    await Promise.resolve();
+    expect(refreshCalls(spy)).toHaveLength(1);
   });
 
   it('组合期内多次 compositionupdate 不解冻（仍冻结）', () => {
@@ -70,5 +93,21 @@ describe('composingGuard（IME 冻结闸门）', () => {
     } finally {
       destroyTestView(other);
     }
+  });
+
+  it('CM6 原生 input.type.compose userEvent 被识别（块级层据此短路）', () => {
+    view = makeTestView('文档', [composingGuard]);
+    const composeTr = view.state.update({
+      changes: { from: view.state.doc.length, insert: '你' },
+      userEvent: 'input.type.compose',
+    });
+    expect(composeTr.isUserEvent('input.type.compose')).toBe(true);
+
+    // 普通输入事务不应误判为组合事务。
+    const plain = view.state.update({
+      changes: { from: view.state.doc.length, insert: 'a' },
+      userEvent: 'input.type',
+    });
+    expect(plain.isUserEvent('input.type.compose')).toBe(false);
   });
 });

@@ -1,18 +1,26 @@
-import { StateEffect, StateField, type Extension } from '@codemirror/state';
+import { StateEffect, type Extension } from '@codemirror/state';
 import { EditorView } from '@codemirror/view';
 
 /**
  * IME 冻结闸门（EDIT-06，全项目最高风险件 / RESEARCH Pitfall 1）。
  *
  * 背景（CONTEXT：无完整公开实现可抄，中文 IME × Live Preview 须本阶段自建）：
- * 中文 IME 组合期（compositionstart→compositionend），每次候选变化都触发 docChanged，
- * 若装饰层照常重算并改 DOM，会破坏浏览器的 composition 锚点 → 吞字 / 候选窗跳位 / 上屏错乱。
+ * 中文 IME 组合期（compositionstart→compositionend），每次候选变化都触发 docChanged。
+ * 装饰层此刻**不得重算语法树重建 DOM**（会破坏浏览器 composition 锚点 → 吞字 / 候选窗跳位 /
+ * 上屏错乱），但**必须把已有 RangeSet 经 changes 映射跟随文档位移**——否则返回的旧装饰集相对
+ * 已变文档错位，CM6 docView.update 的 findChangedDeco 会把插入点后所有 chunk 判为「未共享」，
+ * 派生伪 changedRanges → 在正在合成的文本节点上重建 DOM → Chromium 中止 IME（吞字 root cause B）。
  *
- * 闸门时序（RESEARCH Pitfall 1，社区共识「composing + 原生 compositionend 双判」）：
- *   1. compositionstart → frozen = true；此后所有装饰层 update() 短路（保旧 RangeSet，绝不重算）。
- *   2. compositionend → frozen = false，并派发**恰好一次** refreshLivePreview 强制刷新事务，
- *      使装饰在组合彻底结束后重建一次（补回组合期跳过的更新）。
- *   3. 装饰层判定须叠加 `view.composing || isFrozen(view)`——view.composing 在 compositionend 后
+ * 闸门时序（社区共识「composing + 原生 compositionend 双判」，本次修复为 CM6 惯用法对齐）：
+ *   1. compositionstart → 仅置同步 WeakMap 冻结标志（**绝不派发事务**，避免组合期注入同步事务）。
+ *      此后装饰层 update() 检测组合态：保旧 RangeSet 不重算，但 docChanged 时 map 跟随位移。
+ *   2. 组合期文档变更由 CM6 原生打 userEvent `input.type.compose` 标记——块级 StateField（无 view、
+ *      查不到 WeakMap）即据此 CM6-原生标记识别组合事务并 map 旧装饰，无需自注入冻结态。
+ *   3. compositionend → 清同步标志，并把**恰好一次** refreshLivePreview 强刷推迟到一个微任务：
+ *      它必须在 CM6 自身 compositionend 上屏 flush 之后、且 view.composing 归 false 之后才派发，
+ *      否则会撞上 EditorView.update 内的 observer.clear() 丢弃尚未 flush 的上屏 mutation（root cause A，
+ *      已上屏的字反被吞）。微任务 + `!view.composing` 守卫确保只在组合彻底结束后强刷一次。
+ *   4. 装饰层判定叠加 `view.composing || isFrozen(view)`——view.composing 在 compositionend 后
  *      可能残留 true（codemirror/dev#1069），单判任一都会漏；双判才精确。
  *
  * frozen 标志用 WeakMap<EditorView, boolean>（模块级单例，仿 languages.ts:136 switchGeneration），
@@ -20,41 +28,11 @@ import { EditorView } from '@codemirror/view';
  */
 
 /**
- * 强制刷新 effect：compositionend 后派发一次，驱动装饰层在组合结束后重建一次。
+ * 强制刷新 effect：compositionend 后**推迟一个微任务**派发一次，驱动装饰层在组合结束后重建一次。
  *
- * 装饰层（inlinePlugin / 后续块级层）在 update() 内识别此 effect 即重算（即便此刻 docChanged 为 false）。
+ * 装饰层（inlinePlugin / blockField）在 update() 内识别此 effect 即重算（即便此刻 docChanged 为 false）。
  */
 export const refreshLivePreview = StateEffect.define<null>();
-
-/**
- * 设置冻结态的 StateEffect：compositionstart→true / compositionend→false。
- *
- * 行内层（ViewPlugin）经 isFrozen(view) 查 WeakMap 即可短路；但**块级层是 StateField，
- * update() 内只有 transaction/state、拿不到 view**——无法查 WeakMap。故冻结态须经此 effect
- * 入 state（frozenField），块级层经 `tr.state.field(frozenField)` 同步读取并短路（RESEARCH Pitfall 1）。
- */
-export const setFrozen = StateEffect.define<boolean>();
-
-/**
- * 冻结态 StateField（state 级镜像 WeakMap 标志）：供块级层 StateField 同步读取。
- *
- * 与 WeakMap frozenFlags 由同一组 dom 事件驱动、值一致（双轨：ViewPlugin 查 WeakMap、
- * StateField 查此 field）。挂入 composingGuard 一并生效。
- */
-export const frozenField = StateField.define<boolean>({
-  create: () => false,
-  update(value, tr) {
-    for (const e of tr.effects) {
-      if (e.is(setFrozen)) return e.value;
-    }
-    return value;
-  },
-});
-
-/** 某 state 是否处于 IME 冻结期（块级 StateField 短路用，与 isFrozen(view) 同值）。 */
-export function isFrozenState(state: { field: (f: typeof frozenField) => boolean }): boolean {
-  return state.field(frozenField);
-}
 
 /** 每 view 的 IME 冻结标志（WeakMap 随 view 释放，不进 store）。 */
 const frozenFlags = new WeakMap<EditorView, boolean>();
@@ -62,35 +40,39 @@ const frozenFlags = new WeakMap<EditorView, boolean>();
 /**
  * 查询某 view 是否处于 IME 冻结期（compositionstart 后、compositionend 前）。
  *
- * 装饰层 update() 首行短路用：`if (update.view.composing || isFrozen(update.view)) return;`。
+ * 行内层 ViewPlugin update() 短路用：`if (u.view.composing || isFrozen(u.view)) { map; return; }`。
+ * 块级 StateField 无 view，改据 CM6 原生 `tr.isUserEvent('input.type.compose')` 识别组合事务。
  */
 export function isFrozen(view: EditorView): boolean {
   return frozenFlags.get(view) ?? false;
 }
 
 /**
- * IME 冻结闸门扩展：维护 frozen 标志 + compositionend 强制刷新一次。
+ * IME 冻结闸门扩展：仅维护同步 WeakMap 冻结标志 + compositionend 推迟一次强刷。
  *
- * 挂入 livePreviewExtensions()，作为全局护栏供所有装饰层共用（前向兼容扩展点 3：
- * 后续装饰只要走同一 isFrozen / view.composing 短路即自动受保护）。
+ * 关键纪律：compositionstart/compositionend 处理器内**绝不同步 view.dispatch**——组合期注入同步
+ * 事务会破坏 CM6 的 IME 上屏 flush（root cause A）。compositionend 的强刷推迟到微任务并守 !composing。
  */
 const compositionDomHandlers = EditorView.domEventHandlers({
   compositionstart(_event, view) {
     frozenFlags.set(view, true);
-    // 镜像入 state：块级 StateField 经 frozenField 同步读取并短路（行内层走 WeakMap）。
-    view.dispatch({ effects: setFrozen.of(true) });
     return false;
   },
   compositionend(_event, view) {
     frozenFlags.set(view, false);
-    // 解冻 + 强制刷新一次：组合彻底结束后让装饰层重建（补回组合期跳过的更新）。
-    view.dispatch({ effects: [setFrozen.of(false), refreshLivePreview.of(null)] });
+    // 推迟一个微任务再强刷：必须在 CM6 自身 compositionend 上屏 flush 之后、view.composing 归 false
+    // 之后才派发，否则会撞 observer.clear() 丢弃尚未 flush 的上屏 mutation（root cause A）。
+    // !view.composing 守卫 + 微任务确保只在组合彻底结束后强刷恰好一次（CR-01）。
+    Promise.resolve().then(() => {
+      if (!view.composing) view.dispatch({ effects: refreshLivePreview.of(null) });
+    });
     return false;
   },
 });
 
 /**
- * IME 冻结闸门扩展（dom 事件 + state 级 frozenField）：
- * compositionstart→冻结、compositionend→解冻 + 强刷一次。供行内层（WeakMap）与块级层（frozenField）共用。
+ * IME 冻结闸门扩展（仅 dom 事件处理器）：compositionstart→置标志、compositionend→清标志 + 推迟强刷。
+ *
+ * 供行内层（WeakMap isFrozen）与块级层（CM6 原生 `input.type.compose` userEvent）共用全局护栏。
  */
-export const composingGuard: Extension = [compositionDomHandlers, frozenField];
+export const composingGuard: Extension = compositionDomHandlers;

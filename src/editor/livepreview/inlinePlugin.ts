@@ -340,9 +340,15 @@ class InlinePluginValue {
     const refreshed = u.transactions.some((tr) =>
       tr.effects.some((e) => e.is(refreshLivePreview)),
     );
-    // IME 闸门（EDIT-06）：组合期保旧 RangeSet，绝不重算——唯 refreshLivePreview 例外（仅 compositionend
-    // 后派发，放行安全；view.composing 残留 true 由 isFrozen 兜底双判）。
-    if (!refreshed && (u.view.composing || isFrozen(u.view))) return;
+    // IME 闸门（EDIT-06）：组合期保旧装饰、绝不重算语法树（避免破坏 composition 锚点）——唯 refreshLivePreview
+    // 例外（仅 compositionend 后推迟派发，放行安全；view.composing 残留 true 由 isFrozen 兜底双判）。
+    // 但 docChanged 时**必须把旧 RangeSet 经 changes 映射跟随位移**：返回未映射的旧集会让 CM6 的
+    // findChangedDeco 把插入点后所有 chunk 判为未共享 → 伪 changedRanges → 在合成中的文本节点重建 DOM
+    // → Chromium 中止 IME（吞字 root cause B）。映射只是 O(chunks) 位移，不重算语法树，性能守恒。
+    if (!refreshed && (u.view.composing || isFrozen(u.view))) {
+      if (u.docChanged) this.decorations = this.decorations.map(u.changes);
+      return;
+    }
     // 仅文档/视口/选区变化时重算（选区变化驱动光标行还原）；refreshLivePreview effect 亦触发一次重建。
     if (u.docChanged || u.viewportChanged || u.selectionSet || refreshed) {
       this.decorations = buildInlineDecorations(u.view);

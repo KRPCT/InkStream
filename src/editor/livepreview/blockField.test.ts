@@ -213,16 +213,53 @@ describe('blockField atomicRanges（Pattern 4）', () => {
   });
 });
 
-describe('blockField IME 短路', () => {
-  it('compositionstart 后一次 docChanged 不重建块级 deco（保旧 RangeSet）', () => {
+describe('blockField IME 短路（input.type.compose 组合事务）', () => {
+  /** 把表格替换 DecorationSet 摊为 (from,to) 数组。 */
+  function blockRanges(set: { iter: () => { from: number; to: number; value: unknown; next: () => void } }): Array<{ from: number; to: number }> {
+    const out: Array<{ from: number; to: number }> = [];
+    const it = set.iter();
+    while (it.value) {
+      out.push({ from: it.from, to: it.to });
+      it.next();
+    }
+    return out;
+  }
+
+  it('组合事务 docChanged：不重建语法树，但 deco 经 changes 映射跟随位移（root cause B 防回归）', () => {
+    view = bfView(TABLE_DOC);
+    view.dispatch({ selection: EditorSelection.cursor(0) });
+    const before = view.state.field(blockField);
+    const beforeRanges = blockRanges(before.deco);
+    expect(beforeRanges.length).toBeGreaterThan(0); // 表格被替换装饰存在。
+
+    // 在表格**之前**（文首）的组合插入：插入点后表格替换装饰须整体右移，否则 atomicRanges 错位。
+    dispatchComposition(view, { phase: 'compositionstart', data: '你' });
+    const changes = view.state.changes({ from: 0, insert: '你' });
+    const expectedDeco = blockRanges(before.deco.map(changes));
+    const expectedTables = before.tables.map((t) => ({
+      from: changes.mapPos(t.from),
+      to: changes.mapPos(t.to),
+    }));
+    view.dispatch({ changes: { from: 0, insert: '你' }, userEvent: 'input.type.compose' });
+
+    const after = view.state.field(blockField);
+    // deco 经映射跟随位移（值同、位移），非未映射旧集。
+    expect(blockRanges(after.deco)).toEqual(expectedDeco);
+    expect(blockRanges(after.deco)).not.toEqual(beforeRanges);
+    // 表格 range 同步映射，保持与 deco 对齐（atomicRanges 据 deco，tables 据此判边界跨越）。
+    expect(after.tables.map((t) => ({ from: t.from, to: t.to }))).toEqual(expectedTables);
+  });
+
+  it('组合事务但 docChanged 为 false（纯组合更新无文档变）：原样复用 BlockState 引用', () => {
     view = bfView(TABLE_DOC);
     view.dispatch({ selection: EditorSelection.cursor(0) });
     const before = view.state.field(blockField);
 
-    dispatchComposition(view, { phase: 'compositionstart', data: '你' });
-    // 组合期在表格外插入一字：blockField update 短路 → DecorationSet 引用不变。
-    view.dispatch({ changes: { from: 0, insert: '你' } });
-
+    // 组合事务但仅带 selection 无 changes：不重算、原样复用。
+    view.dispatch({
+      selection: EditorSelection.cursor(1),
+      userEvent: 'input.type.compose',
+    });
     expect(view.state.field(blockField)).toBe(before);
   });
 });
@@ -246,7 +283,9 @@ describe('blockField 源纪律', () => {
     expect(src).toContain('EditorView.atomicRanges');
   });
 
-  it('update 含 isFrozen/composing 短路', () => {
-    expect(src).toMatch(/isFrozen|composing/);
+  it('update 据 CM6 原生 input.type.compose userEvent 识别组合事务（不再自注入冻结态）', () => {
+    expect(src).toContain("isUserEvent('input.type.compose')");
+    // 已退役 setFrozen/frozenField/isFrozenState：源中不应再引用。
+    expect(src).not.toMatch(/isFrozenState|frozenField|setFrozen/);
   });
 });

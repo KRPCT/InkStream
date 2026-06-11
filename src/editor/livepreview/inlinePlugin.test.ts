@@ -278,22 +278,45 @@ describe('inlinePlugin 列表 / 引用逐行还原（D-06）', () => {
 });
 
 describe('inlinePlugin IME 短路', () => {
-  it('compositionstart 后一次 docChanged 不改变 decorations（保旧 RangeSet）', () => {
-    // 须含 composingGuard：compositionstart 经其置 isFrozen=true，inlinePlugin update 才短路。
-    view = makeTestView('# H1\n\n正文', [
+  /** 把某 DecorationSet 摊为 (from,to) 数组（位置契约比对用，忽略 spec 引用）。 */
+  function flatten(set: { iter: () => { from: number; to: number; value: unknown; next: () => void } }): Array<{ from: number; to: number }> {
+    const out: Array<{ from: number; to: number }> = [];
+    const it = set.iter();
+    while (it.value) {
+      out.push({ from: it.from, to: it.to });
+      it.next();
+    }
+    return out;
+  }
+
+  it('组合期 docChanged 不重算语法树，但把旧装饰经 changes 映射跟随位移（root cause B 防回归）', () => {
+    // 须含 composingGuard：compositionstart 经其置 isFrozen=true，inlinePlugin update 才走冻结分支。
+    // 在被装饰内容**之前**插入字符：若返回未映射旧集（旧 bug），装饰位置相对新文档错位 →
+    // CM6 findChangedDeco 伪重建合成中 DOM → 吞字。修复后装饰必须 == before.map(changes)（值同、位移）。
+    view = makeTestView('正文\n\n# H1', [
       extensionsForLanguage('markdown'),
       composingGuard,
       inlinePlugin,
     ]);
-    view.dispatch({ selection: EditorSelection.cursor(view.state.doc.length) });
+    // 光标置于「正文」行内（非标题行），使标题处于渲染态、其标记被隐藏装饰。
+    view.dispatch({ selection: EditorSelection.cursor(0) });
     const before = view.plugin(inlinePlugin)!.decorations;
+    const beforeRanges = flatten(before);
+    expect(beforeRanges.length).toBeGreaterThan(0); // 标题标记隐藏装饰存在。
 
+    // 期望：旧集经同一 changes 映射后的位置（标题行整体右移 1，标记装饰随之位移）。
+    const insertAt = 0; // 在文首插入，位于所有装饰之前 → 全部 +1。
     dispatchComposition(view, { phase: 'compositionstart', data: '你' });
-    // 组合期插入一字：update.docChanged 为 true，但闸门短路 → decorations 引用不变。
-    view.dispatch({ changes: { from: view.state.doc.length, insert: '你' } });
+    const changes = view.state.changes({ from: insertAt, insert: '你' });
+    const expected = flatten(before.map(changes));
+    view.dispatch({ changes: { from: insertAt, insert: '你' }, userEvent: 'input.type.compose' });
 
     const after = view.plugin(inlinePlugin)!.decorations;
-    expect(after).toBe(before);
+    const afterRanges = flatten(after);
+    // 装饰条数不变（未重算、未丢失），位置等于映射结果（跟随位移，非未映射旧集）。
+    expect(afterRanges).toEqual(expected);
+    // 关键反断言：未映射的旧集（旧 bug 行为）与新文档错位，afterRanges 不应等于 beforeRanges。
+    expect(afterRanges).not.toEqual(beforeRanges);
   });
 
   it('compositionend 残留 composing 时 refreshLivePreview 仍强刷重建（CR-01）', () => {
