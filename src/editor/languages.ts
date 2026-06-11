@@ -127,13 +127,26 @@ export function extensionsForLanguage(lang: string): Extension {
 }
 
 /**
+ * 每 view 的语言切换代际计数（WR-10）：每次 switchLanguage 递增。
+ *
+ * typst 动态 import 是异步的；若 import 解析前用户已再次切换语言/文档（generation 变化），
+ * 迟到的 `reconfigure(typst())` 不得落到当前（已非 typst）文档上。
+ */
+const switchGeneration = new WeakMap<EditorView, number>();
+
+/**
  * 懒加载 Typst 语言支持并热切进 compartment。
  *
  * codemirror-lang-typst 顶层有 __wbindgen_start() 副作用（实例化 320KB wasm），
  * 故必须 dynamic import()——只有打开 .typ 文档调用本函数时才付出该体积。
+ *
+ * WR-10：以 import 发起时的 generation 为意图基线，await 后若 view 的 generation 已变
+ * （用户切走了语言/文档），放弃 reconfigure，避免把 typst 高亮强加到错误文档。
  */
-async function loadTypst(view: EditorView): Promise<void> {
+async function loadTypst(view: EditorView, intendedGeneration: number): Promise<void> {
   const mod = await import('codemirror-lang-typst');
+  // 解析期间用户已切换语言/文档：意图作废，绝不在错误文档上 reconfigure。
+  if (switchGeneration.get(view) !== intendedGeneration) return;
   view.dispatch({ effects: langCompartment.reconfigure(mod.typst()) });
 }
 
@@ -143,9 +156,11 @@ async function loadTypst(view: EditorView): Promise<void> {
  * typst 先切到占位（空扩展），随后异步 load 真实高亮再二次 reconfigure。
  */
 export function switchLanguage(view: EditorView, lang: string): void {
+  const generation = (switchGeneration.get(view) ?? 0) + 1;
+  switchGeneration.set(view, generation);
   view.dispatch({ effects: langCompartment.reconfigure(extensionsForLanguage(lang)) });
   if (lang === 'typst') {
-    void loadTypst(view);
+    void loadTypst(view, generation);
   }
 }
 
