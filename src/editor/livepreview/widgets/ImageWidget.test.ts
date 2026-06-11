@@ -65,6 +65,21 @@ describe('resolveVaultImage（vault 内路径解析 + 越界守门 T-03-19）', 
     expect(resolveVaultImage('/etc/passwd', VAULT).kind).toBe('invalid');
   });
 
+  it('Windows 反斜杠相对路径越界 → invalid（WR-01 path traversal 守门）', () => {
+    // `..\..\secret.png` 无前导斜杠/scheme，过 line-52 守门；反斜杠须当分隔符折叠才能识破上跳。
+    expect(resolveVaultImage('..\\..\\secret.png', VAULT).kind).toBe('invalid');
+    // 混合分隔符上跳越界同样拒绝。
+    expect(resolveVaultImage('sub\\..\\..\\..\\x.png', VAULT).kind).toBe('invalid');
+  });
+
+  it('反斜杠分隔的界内相对路径仍解析为 vault 内绝对路径（local）', () => {
+    // notes/post.md 同目录 sub\img.png → /vault/notes/sub/img.png（反斜杠当 POSIX `/` 段折叠）。
+    expect(resolveVaultImage('sub\\img.png', VAULT)).toEqual({
+      kind: 'local',
+      absPath: '/vault/notes/sub/img.png',
+    });
+  });
+
   it('无 vault 上下文时本地路径不解析（invalid）', () => {
     expect(resolveVaultImage('img.png', null).kind).toBe('invalid');
   });

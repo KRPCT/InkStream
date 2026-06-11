@@ -3,9 +3,15 @@ import { resolve } from 'node:path';
 import { EditorSelection } from '@codemirror/state';
 import { afterEach, describe, expect, it } from 'vitest';
 import { EditorView } from '@codemirror/view';
-import { destroyTestView, dispatchComposition, makeTestView } from '../../test/composition';
+import { StateEffect } from '@codemirror/state';
+import {
+  destroyTestView,
+  dispatchComposition,
+  makeTestView,
+  mockComposing,
+} from '../../test/composition';
 import { extensionsForLanguage } from '../languages';
-import { composingGuard } from './composingGuard';
+import { composingGuard, refreshLivePreview } from './composingGuard';
 import { inlinePlugin } from './inlinePlugin';
 
 /**
@@ -259,6 +265,50 @@ describe('inlinePlugin IME 短路', () => {
 
     const after = view.plugin(inlinePlugin)!.decorations;
     expect(after).toBe(before);
+  });
+
+  it('compositionend 残留 composing 时 refreshLivePreview 仍强刷重建（CR-01）', () => {
+    // 回归 codemirror/dev#1069：compositionend 解冻派发 refreshLivePreview，
+    // 但 view.composing 可能残留 true，若先短路则强刷被吞、行内装饰留旧。
+    view = makeTestView('# H1\n\n正文', [
+      extensionsForLanguage('markdown'),
+      composingGuard,
+      inlinePlugin,
+    ]);
+    view.dispatch({ selection: EditorSelection.cursor(view.state.doc.length) });
+
+    // 组合期插入一个新标题字符：闸门短路，装饰保旧（不含新行的隐藏标记）。
+    mockComposing(view, true);
+    dispatchComposition(view, { phase: 'compositionstart', data: '你' });
+    view.dispatch({ changes: { from: view.state.doc.length, insert: '\n\n## 二级' } });
+    const stale = collectDecos(view).filter((d) => d.class === 'cm-ink-h2');
+    expect(stale.length).toBe(0); // 组合期未重建：新标题尚无 h2 行级 class。
+
+    // compositionend 派发 refreshLivePreview，但 view.composing 仍残留 true：必须强刷。
+    view.dispatch({ effects: refreshLivePreview.of(null) });
+    const refreshed = collectDecos(view).filter((d) => d.class === 'cm-ink-h2');
+    expect(refreshed.length).toBeGreaterThan(0); // 强刷后新标题得 cm-ink-h2。
+  });
+
+  it('refreshLivePreview 越过 isFrozen 冻结态强刷重建（CR-01）', () => {
+    view = makeTestView('# H1\n\n正文', [
+      extensionsForLanguage('markdown'),
+      composingGuard,
+      inlinePlugin,
+    ]);
+    view.dispatch({ selection: EditorSelection.cursor(view.state.doc.length) });
+
+    // 冻结态（isFrozen=true）下插入新标题：短路保旧。
+    dispatchComposition(view, { phase: 'compositionstart', data: '你' });
+    view.dispatch({
+      changes: { from: view.state.doc.length, insert: '\n\n## 二级' },
+      effects: StateEffect.appendConfig.of([]),
+    });
+    expect(collectDecos(view).filter((d) => d.class === 'cm-ink-h2').length).toBe(0);
+
+    // 仍处冻结态下派发 refreshLivePreview：必须越过 isFrozen 强刷。
+    view.dispatch({ effects: refreshLivePreview.of(null) });
+    expect(collectDecos(view).filter((d) => d.class === 'cm-ink-h2').length).toBeGreaterThan(0);
   });
 });
 
