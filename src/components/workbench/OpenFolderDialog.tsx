@@ -58,6 +58,8 @@ function OpenFolderPanel() {
         </p>
         <input
           ref={inputRef}
+          id="open-folder-path-input"
+          name="open-folder-path"
           type="text"
           value={value}
           onChange={(e) => setValue(e.target.value)}

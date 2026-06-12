@@ -20,6 +20,8 @@ export default function PaletteInput({ value, onChange, onKeyDown }: PaletteInpu
   return (
     <input
       ref={ref}
+      id="command-palette-input"
+      name="command-palette"
       type="text"
       value={value}
       placeholder="输入命令名称"

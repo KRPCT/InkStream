@@ -40,6 +40,8 @@ function visibleSorted(nodes: TreeNode[]): TreeNode[] {
 function RowInput({ node }: { node: NodeApi<TreeNode> }) {
   return (
     <input
+      id="filetree-rename-input"
+      name="filetree-rename"
       autoFocus
       aria-label="文件名"
       defaultValue={node.data.name}
