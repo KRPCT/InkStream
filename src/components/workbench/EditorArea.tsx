@@ -1,11 +1,14 @@
 import { FileText, FolderOpen } from 'lucide-react';
-import { useRef } from 'react';
+import { useRef, useState, type MouseEvent } from 'react';
 import EmptyState from '../common/EmptyState';
 import EditorTabs from './EditorTabs';
+import EditorContextMenu, { type MenuPosition } from './EditorContextMenu';
 import ExternalChangeBar from './ExternalChangeBar';
 import Toolbar from '../../editor/richtext/Toolbar';
+import { isComposing } from '../../editor/composition';
 import { useCodeMirror } from '../../editor/useCodeMirror';
 import { requestOpenFolder } from '../../editor/vaultFlow';
+import { getView } from '../../editor/viewHandle';
 import { useEditorStore } from '../../stores/useEditorStore';
 import { useVaultStore } from '../../stores/useVaultStore';
 
@@ -34,6 +37,20 @@ export default function EditorArea() {
   const vault = useVaultStore((s) => s.vault);
   const activePath = useEditorStore((s) => s.activePath);
   const hasTabs = useEditorStore((s) => s.tabs.length > 0);
+  const [menuPos, setMenuPos] = useState<MenuPosition | null>(null);
+
+  /**
+   * 编辑器右键：组合期（isComposing）一律不开菜单——铁律「组合期不 dispatch 破坏性操作」，
+   * 菜单项都会 dispatch 文本变换/剪贴板，组合中开菜单可能诱发组合期 dispatch，故组合中放行
+   * 浏览器默认（不 preventDefault、不 setMenuPos）。非组合期 + 有活动文件才弹自绘菜单。
+   */
+  const onContextMenu = (e: MouseEvent<HTMLDivElement>): void => {
+    if (!activePath) return;
+    const view = getView();
+    if (view && isComposing(view)) return;
+    e.preventDefault();
+    setMenuPos({ x: e.clientX, y: e.clientY });
+  };
 
   return (
     <div className="flex h-full flex-col bg-[var(--background-primary)]">
@@ -44,8 +61,17 @@ export default function EditorArea() {
       {/* richtext 工具条：frontmatter language=richtext 时显示（D-14，自身条件渲染） */}
       <Toolbar />
       <div className="relative min-h-0 flex-1">
-        {/* 单内核 DOM 挂载点：始终存在；无活动文件时由空态覆盖层遮住 */}
-        <div ref={parentRef} className="h-full overflow-auto" data-testid="cm-mount" />
+        {/* 单内核 DOM 挂载点：始终存在；无活动文件时由空态覆盖层遮住。
+            右键挂此容器（R4 §4.3）：组合期防御见 onContextMenu。 */}
+        <div
+          ref={parentRef}
+          className="h-full overflow-auto"
+          data-testid="cm-mount"
+          onContextMenu={onContextMenu}
+        />
+        {menuPos ? (
+          <EditorContextMenu position={menuPos} onClose={() => setMenuPos(null)} />
+        ) : null}
         {!vault ? (
           <div className="absolute inset-0 bg-[var(--background-primary)]">
             <EmptyState

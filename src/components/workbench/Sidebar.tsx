@@ -1,4 +1,5 @@
 import { FilePlus, FolderOpen, FolderPlus, ListCollapse, RefreshCw, type LucideIcon } from 'lucide-react';
+import { useState } from 'react';
 import EmptyState from '../common/EmptyState';
 import { requestOpenFolder } from '../../editor/vaultFlow';
 import { refreshTree } from '../../editor/fileTreeData';
@@ -6,6 +7,7 @@ import { useVaultStore } from '../../stores/useVaultStore';
 import FileTree from './FileTree';
 import GitGuidanceBar from './GitGuidanceBar';
 import RecentVaults from './RecentVaults';
+import { SearchResults, SidebarSearch } from './SidebarSearch';
 import { collapseAllInTree, newFileInTree, newFolderInTree } from './fileTreeController';
 
 /** 空态「打开文件夹」按钮（与 EditorArea 同构）。 */
@@ -42,6 +44,8 @@ function HeaderAction({ icon: Icon, label, onClick }: { icon: LucideIcon; label:
  */
 export default function Sidebar() {
   const vault = useVaultStore((s) => s.vault);
+  const [query, setQuery] = useState('');
+  const searching = query.trim().length > 0;
 
   if (!vault) {
     return (
@@ -70,9 +74,11 @@ export default function Sidebar() {
         <HeaderAction icon={ListCollapse} label="折叠全部" onClick={collapseAllInTree} />
         <HeaderAction icon={RefreshCw} label="刷新" onClick={() => void refreshTree()} />
       </div>
+      <SidebarSearch query={query} onQueryChange={setQuery} />
       <GitGuidanceBar />
-      <div className="min-h-0 flex-1">
-        <FileTree />
+      {/* 有查询 → 扁平递归结果列表（R4 §4.2）；清空 → 恢复受控折叠树 */}
+      <div className="min-h-0 flex-1 overflow-auto">
+        {searching ? <SearchResults query={query} /> : <FileTree />}
       </div>
     </div>
   );

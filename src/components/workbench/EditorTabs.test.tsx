@@ -1,6 +1,8 @@
 import { fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import * as registry from '../../commands/registry';
 import { useEditorStore } from '../../stores/useEditorStore';
+import { useWorkbenchStore } from '../../stores/useWorkbenchStore';
 import EditorTabs from './EditorTabs';
 
 /** 关 tab 时序记录：flush 必须在 dispose/closeTab 之前完成（CR-02）。 */
@@ -37,6 +39,7 @@ describe('EditorTabs', () => {
     releaseFlush = null;
     flushAutosave.mockResolvedValue(undefined);
     reset();
+    useWorkbenchStore.setState(useWorkbenchStore.getInitialState(), true);
     useEditorStore.getState().openTab({ path: 'a.md', name: 'a.md' });
     useEditorStore.getState().openTab({ path: 'b.md', name: 'b.md' });
     useEditorStore.getState().setActive('a.md');
@@ -44,6 +47,7 @@ describe('EditorTabs', () => {
 
   afterEach(() => {
     reset();
+    useWorkbenchStore.setState(useWorkbenchStore.getInitialState(), true);
   });
 
   it('渲染所有打开的 tab', () => {
@@ -109,5 +113,33 @@ describe('EditorTabs', () => {
     expect(closeOrder).toEqual(['flush-start:a.md', 'flush-end', 'dispose:a.md']);
     expect(disposeStateSpy).toHaveBeenCalledWith('a.md');
     expect(useEditorStore.getState().tabs.map((t) => t.path)).toEqual(['b.md']);
+  });
+
+  // ---- R4 §3.2 侧栏 / 右栏一键开关按钮 ----
+
+  it('渲染两端贴边面板开关，默认展开态 aria-pressed=true', () => {
+    render(<EditorTabs />);
+    const left = screen.getByRole('button', { name: /侧边栏/ });
+    const right = screen.getByRole('button', { name: /右侧面板/ });
+    // DEFAULT_LAYOUT 两侧均展开（collapsed=false）→ pressed=true
+    expect(left).toHaveAttribute('aria-pressed', 'true');
+    expect(right).toHaveAttribute('aria-pressed', 'true');
+  });
+
+  it('点左开关走 view.toggle-sidebar 命令、右开关走 view.toggle-right-panel', () => {
+    const exec = vi.spyOn(registry, 'execute').mockResolvedValue(undefined);
+    render(<EditorTabs />);
+    fireEvent.click(screen.getByRole('button', { name: /侧边栏/ }));
+    fireEvent.click(screen.getByRole('button', { name: /右侧面板/ }));
+    expect(exec).toHaveBeenCalledWith('view.toggle-sidebar');
+    expect(exec).toHaveBeenCalledWith('view.toggle-right-panel');
+    exec.mockRestore();
+  });
+
+  it('折叠态 → aria-pressed=false 且 aria-label/标题切到“展开”', () => {
+    useWorkbenchStore.getState().toggleSidebar();
+    render(<EditorTabs />);
+    const left = screen.getByRole('button', { name: /展开侧边栏/ });
+    expect(left).toHaveAttribute('aria-pressed', 'false');
   });
 });

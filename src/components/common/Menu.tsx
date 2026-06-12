@@ -3,6 +3,7 @@ import {
   useEffect,
   useRef,
   useState,
+  type CSSProperties,
   type KeyboardEvent,
   type ReactNode,
   type RefObject,
@@ -31,6 +32,8 @@ interface MenuProps {
   onSelectClose?: () => void;
   /** 锚定定位类（调用方给绝对定位，如 'absolute bottom-full right-0 mb-1'）。 */
   className?: string;
+  /** 内联定位（右键菜单按 contextmenu 坐标固定定位，动态值不进 Tailwind 类）。 */
+  style?: CSSProperties;
   /** 锚元素：outside-click 判定豁免（锚的开合由其自身 onClick 切换）。 */
   anchorRef?: RefObject<HTMLElement | null>;
   label?: string;
@@ -57,6 +60,7 @@ export default function Menu({
   onClose,
   onSelectClose,
   className = '',
+  style,
   anchorRef,
   label,
 }: MenuProps) {
@@ -129,6 +133,7 @@ export default function Menu({
       aria-label={label}
       tabIndex={-1}
       onKeyDown={onKeyDown}
+      style={style}
       className={`menu-pop z-50 min-w-40 rounded-[8px] border border-[var(--background-modifier-border)] bg-[var(--background-primary)] py-1 [box-shadow:var(--shadow-popup)] ${className}`}
     >
       {items.map((item, index) =>

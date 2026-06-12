@@ -1,7 +1,9 @@
-import { X } from 'lucide-react';
+import { PanelLeft, PanelLeftClose, PanelRight, PanelRightClose, X, type LucideIcon } from 'lucide-react';
+import { execute } from '../../commands/registry';
 import { flushAutosave } from '../../stores/autosave';
 import { disposeState, switchToTab } from '../../editor/editorState';
 import { useEditorStore } from '../../stores/useEditorStore';
+import { useWorkbenchStore } from '../../stores/useWorkbenchStore';
 
 /**
  * 编辑器 tab 栏（D-01 标签页模型）：tab 并存、可关闭、带脏标记。
@@ -22,10 +24,45 @@ async function closeTabFlow(path: string): Promise<void> {
   useEditorStore.getState().closeTab(path);
 }
 
+/**
+ * tab 栏贴边面板开关（R4 §3.2）：复用 Sidebar HeaderAction 几何（32px 命中区 / 16px 图标 /
+ * strokeWidth 1.75 / rounded-[4px]）。图标随开关态切换给视觉反馈，面板已开时高亮（aria-pressed）。
+ * onClick 走既有 view.toggle-sidebar / view.toggle-right-panel 命令（零新命令，R4 §3.2 接线）。
+ */
+function PanelToggle({
+  icon: Icon,
+  label,
+  commandId,
+  pressed,
+}: {
+  icon: LucideIcon;
+  label: string;
+  commandId: string;
+  pressed: boolean;
+}) {
+  return (
+    <button
+      type="button"
+      aria-label={label}
+      aria-pressed={pressed}
+      title={label}
+      onClick={() => void execute(commandId)}
+      className={
+        'flex h-8 w-8 shrink-0 items-center justify-center rounded-[4px] text-[var(--text-muted)] hover:bg-[var(--background-modifier-hover)] hover:text-[var(--text-normal)] ' +
+        (pressed ? 'bg-[var(--background-modifier-active)] text-[var(--text-normal)]' : '')
+      }
+    >
+      <Icon size={16} strokeWidth={1.75} aria-hidden="true" />
+    </button>
+  );
+}
+
 export default function EditorTabs() {
   const tabs = useEditorStore((s) => s.tabs);
   const activePath = useEditorStore((s) => s.activePath);
   const dirty = useEditorStore((s) => s.dirty);
+  const sidebarCollapsed = useWorkbenchStore((s) => s.layouts[s.mode].sidebarCollapsed);
+  const rightPanelCollapsed = useWorkbenchStore((s) => s.layouts[s.mode].rightPanelCollapsed);
 
   if (tabs.length === 0) return null;
 
@@ -34,6 +71,15 @@ export default function EditorTabs() {
       role="tablist"
       className="flex h-9 shrink-0 items-stretch overflow-x-auto border-b border-[var(--background-modifier-border)] bg-[var(--background-secondary)]"
     >
+      {/* 左端贴边：切换左侧栏（图标随开关态 PanelLeft↔PanelLeftClose） */}
+      <div className="flex shrink-0 items-center px-1">
+        <PanelToggle
+          icon={sidebarCollapsed ? PanelLeft : PanelLeftClose}
+          label={sidebarCollapsed ? '展开侧边栏（Ctrl+\\）' : '收起侧边栏（Ctrl+\\）'}
+          commandId="view.toggle-sidebar"
+          pressed={!sidebarCollapsed}
+        />
+      </div>
       {tabs.map((tab) => {
         const active = tab.path === activePath;
         const isDirty = dirty[tab.path] === true;
@@ -81,6 +127,15 @@ export default function EditorTabs() {
           </div>
         );
       })}
+      {/* 右端贴边：ml-auto 把开关推到 tab 组之后、靠窗口右上（不随 tab 横向滚动消失） */}
+      <div className="ml-auto flex shrink-0 items-center px-1">
+        <PanelToggle
+          icon={rightPanelCollapsed ? PanelRight : PanelRightClose}
+          label={rightPanelCollapsed ? '展开右侧面板（Ctrl+Alt+B）' : '收起右侧面板（Ctrl+Alt+B）'}
+          commandId="view.toggle-right-panel"
+          pressed={!rightPanelCollapsed}
+        />
+      </div>
     </div>
   );
 }
