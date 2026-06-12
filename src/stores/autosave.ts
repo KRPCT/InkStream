@@ -1,3 +1,4 @@
+import { queueAfterComposition } from '../editor/composition';
 import { getDocForPath } from '../editor/editorState';
 import { getView } from '../editor/viewHandle';
 import { writeFileAtomic } from '../ipc/files';
@@ -34,11 +35,6 @@ const SUPPRESS_WINDOW_MS = 600;
 /** 单调时钟（与 perf.test/blockField.test 同源，禁 Date.now 语境下安全）。 */
 function now(): number {
   return performance.now();
-}
-
-/** 组合期判定：单内核 view 正在 IME 组合（jsdom 测试经 mockComposing 覆写）。 */
-function isComposing(): boolean {
-  return getView()?.composing === true;
 }
 
 export const AUTOSAVE_ERROR_PREFIX = '「';
@@ -132,14 +128,12 @@ export function scheduleAutosave(path: string): void {
     path,
     setTimeout(() => {
       timers.delete(path);
-      // Layer 3 防御纵深：定时器触发时若仍在 IME 组合期，绝不写盘——写盘会经
-      // watcher→reload→setState 撕掉组合锚点（吞字）。重新武装定时器，把落盘推到
-      // 组合结束之后，从源头掐断"组合期磁盘写"这条链。
-      if (isComposing()) {
-        scheduleAutosave(path);
-        return;
-      }
-      void enqueueWrite(path);
+      // 组合期磁盘写经 watcher→reload→setState 撕掉组合锚点（吞字，铁律 2）。统一冻结门收口：
+      // 非组合期立即 enqueueWrite（行为同今天非组合路径）；组合期按 path 去重挂起，compositionend
+      // drain 写一次——消除旧 Layer 3 的 500ms 轮询自旋，组合结束即落盘。
+      const view = getView();
+      if (view) queueAfterComposition(view, 'autosave:' + path, () => enqueueWrite(path));
+      else void enqueueWrite(path); // 无 view（测试/未挂载）直接写
     }, DEBOUNCE_MS),
   );
 }

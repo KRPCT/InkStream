@@ -3,6 +3,7 @@ import { consumeSuppressedWatch, freezeAutosave } from '../stores/autosave';
 import { showToast } from '../stores/useToastStore';
 import { useEditorStore } from '../stores/useEditorStore';
 import { useVaultStore } from '../stores/useVaultStore';
+import { isComposing, queueAfterComposition } from './composition';
 import { reloadFromDisk } from './editorState';
 import { getView } from './viewHandle';
 import { refreshTree } from './vaultFlow';
@@ -35,43 +36,6 @@ function baseName(path: string): string {
   return i === -1 ? path : path.slice(i + 1);
 }
 
-/**
- * 组合期延迟重放守卫（EDIT-06 Layer 1，吞字根因修复）。
- *
- * 根因：干净活动文件的静默重载分支会调 reloadFromDisk → openFile → view.setState()，
- * 而 CM6 6.43.1 的 setState 零组合感知——它 destroy 整个 DocView 再重建 contentDOM 文本节点，
- * IME 锚定的节点被抽走 → Chromium 中止组合 / 丢上屏（任何语言）。CM6 的组合保护
- * （findCompositionRange）只在正常 update 路径，setState 完全绕过它。
- *
- * 守卫：组合期绝不 reload；改在 contentDOM 上注册一次性 compositionend，组合结束后重放
- * 仲裁（genuine 外部编辑不丢）。pending 集合去重——同一 path 组合期内的多个事件只挂一个 handler。
- */
-const pendingComposingReplay = new Set<string>();
-
-/** 该 path 的活动 view 是否正在 IME 组合（无 view 视为非组合）。 */
-function isActiveComposing(rel: string): boolean {
-  if (useEditorStore.getState().activePath !== rel) return false;
-  return getView()?.composing === true;
-}
-
-/**
- * 注册一次性 compositionend：组合结束后重新仲裁该 path（重放被推迟的 reload）。
- * 去重：同一 path 已挂 handler 则不重复挂（pending 集合守卫）。
- */
-function deferReplayAfterComposition(payload: VaultChangePayload, rel: string): void {
-  if (pendingComposingReplay.has(rel)) return;
-  const view = getView();
-  if (!view) return;
-  pendingComposingReplay.add(rel);
-  const onEnd = (): void => {
-    view.contentDOM.removeEventListener('compositionend', onEnd);
-    pendingComposingReplay.delete(rel);
-    // 组合已结束（composing 归 false）：重跑仲裁，此时 setState 安全。
-    void arbitrateVaultChange(payload);
-  };
-  view.contentDOM.addEventListener('compositionend', onEnd, { once: true });
-}
-
 /** 单次仲裁（导出供测试直接驱动；订阅回调内部调用）。 */
 export async function arbitrateVaultChange(payload: VaultChangePayload): Promise<void> {
   const vault = useVaultStore.getState().vault;
@@ -95,10 +59,12 @@ export async function arbitrateVaultChange(payload: VaultChangePayload): Promise
 
   // 当前活动文件且干净：静默重载 + 轻提示（D-04 干净路径）。
   if (rel === activePath) {
-    // EDIT-06 Layer 1（吞字根因）：组合期绝不 reloadFromDisk——它经 openFile→view.setState()
-    // 撕掉 IME 锚定的 DocView。推迟到 compositionend 后重放仲裁，genuine 外部编辑不丢。
-    if (isActiveComposing(rel)) {
-      deferReplayAfterComposition(payload, rel);
+    // 组合期绝不 reloadFromDisk——它经 openFile→view.setState() 撕掉 IME 锚定的 DocView（吞字，铁律 2）。
+    // 统一冻结门收口：组合期按 rel 去重排队（同 path 多 watcher 事件只重放一次），compositionend
+    // drain 后执行整条仲裁。Toast 不撒谎——「已自动重载」在 task 体内 reload 实际成功后才弹。
+    const view = getView();
+    if (view && isComposing(view)) {
+      queueAfterComposition(view, rel, () => arbitrateVaultChange(payload));
       return;
     }
     try {
@@ -146,9 +112,4 @@ export function stopExternalChangeArbiter(): void {
     unlisten();
     unlisten = null;
   }
-}
-
-/** 仅供测试：清空组合期待重放集合以隔离用例。 */
-export function __clearPendingReplayForTest(): void {
-  pendingComposingReplay.clear();
 }

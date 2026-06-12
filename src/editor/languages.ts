@@ -12,6 +12,7 @@ import { html } from '@codemirror/lang-html';
 import { css } from '@codemirror/lang-css';
 import { stex } from '@codemirror/legacy-modes/mode/stex';
 import { shell } from '@codemirror/legacy-modes/mode/shell';
+import { queueAfterComposition } from './composition';
 import { readLanguage } from './frontmatter';
 import { richtextKeymap } from './richtext/keymap';
 import { richtextPasteHandler } from './richtext/commands';
@@ -148,18 +149,27 @@ async function loadTypst(view: EditorView, intendedGeneration: number): Promise<
   const mod = await import('codemirror-lang-typst');
   // 解析期间用户已切换语言/文档：意图作废，绝不在错误文档上 reconfigure。
   if (switchGeneration.get(view) !== intendedGeneration) return;
-  view.dispatch({ effects: langCompartment.reconfigure(mod.typst()) });
+  // 组合期 reconfigure 同撕 DocView 风险（铁律 2）：经门排队，compositionend drain 时执行；
+  // 排队任务体内复检 generation，组合结束后用户已切走则不落到错误文档。
+  queueAfterComposition(view, 'lang', () => {
+    if (switchGeneration.get(view) !== intendedGeneration) return;
+    view.dispatch({ effects: langCompartment.reconfigure(mod.typst()) });
+  });
 }
 
 /**
  * 热切当前语言（Pattern 5）：只 reconfigure compartment，不重建 state。
  *
  * typst 先切到占位（空扩展），随后异步 load 真实高亮再二次 reconfigure。
+ * 组合期 reconfigure 经统一冻结门排队（key 'lang'，单内核单 doc 去重天然）——
+ * compositionend drain 后执行一次，避免组合期 reconfigure 撕 DocView 吞字（铁律 2）。
  */
 export function switchLanguage(view: EditorView, lang: string): void {
   const generation = (switchGeneration.get(view) ?? 0) + 1;
   switchGeneration.set(view, generation);
-  view.dispatch({ effects: langCompartment.reconfigure(extensionsForLanguage(lang)) });
+  queueAfterComposition(view, 'lang', () => {
+    view.dispatch({ effects: langCompartment.reconfigure(extensionsForLanguage(lang)) });
+  });
   if (lang === 'typst') {
     void loadTypst(view, generation);
   }

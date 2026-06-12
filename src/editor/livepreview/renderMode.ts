@@ -1,4 +1,5 @@
 import type { EditorView } from '@codemirror/view';
+import { queueAfterComposition } from '../composition';
 import { getView } from '../viewHandle';
 import { languageFromDoc } from '../languages';
 import { useEditorStore } from '../../stores/useEditorStore';
@@ -29,10 +30,14 @@ export function isMarkdownDoc(doc: string, path: string): boolean {
  * 热切渲染模式：'live' 装 livePreviewExtensions()，'source' 装空（[]）。
  *
  * reconfigure 只换 compartment 内容、不动 doc——切换前后 doc/选区/undo 全保留（热切非重建）。
+ * 组合期 reconfigure 同撕 DocView 风险（铁律 2）：经统一冻结门排队（key 'renderMode'），
+ * compositionend drain 后执行一次，避免组合期切渲染模式吞字。
  */
 export function setRenderMode(view: EditorView, mode: RenderMode): void {
-  view.dispatch({
-    effects: renderModeCompartment.reconfigure(mode === 'live' ? livePreviewExtensions() : []),
+  queueAfterComposition(view, 'renderMode', () => {
+    view.dispatch({
+      effects: renderModeCompartment.reconfigure(mode === 'live' ? livePreviewExtensions() : []),
+    });
   });
 }
 

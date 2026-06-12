@@ -2,18 +2,19 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { EditorState } from '@codemirror/state';
 import { EditorView } from '@codemirror/view';
 import { setView } from './viewHandle';
-import { dispatchComposition, mockComposing } from '../test/composition';
+import { __resetCompositionForTest, compositionGate } from './composition';
+import { dispatchComposition } from '../test/composition';
 
 /**
- * EDIT-06 吞字根因回归：组合期绝不 setState/reload/write，结束后恰好重放一次。
+ * 统一冻结门单一不变量回归（重构设计 §7.2）。
  *
- * 锁定的契约（jsdom 无法复现真实 IME，故只锁"组合期无 setState/reload/write"这条不变量；
- * 真验收是手动 Windows+WebView2 拼音：咕咕咕 + 长句 + 英文 via IME + Enter 上屏）：
- *   - Layer 1：活动文件干净外部变更，组合期 → 不 reloadFromDisk，挂一次性 compositionend；
- *     组合结束后重放仲裁，reload 恰好一次（genuine 外部编辑不丢）。
- *   - Layer 1：非组合期活动文件外部变更 → 照常立即 reload。
- *   - Layer 2：自激抑制窗口吞掉一次自身写的多个重复事件。
- *   - Layer 3：armed autosave 定时器组合期触发 → 重新武装而非写盘。
+ * 丢弃旧 Layer-by-Layer 结构：所有组合期防护现由 composition.ts 一处的 queueAfterComposition
+ * 驱动（externalChange reload / autosave write / 装饰强刷全经门），故只锁单一门不变量——
+ * **组合期任一消费点零 reload / 零磁盘写；compositionend drain 后恰好执行一次；drain 顺序固定**。
+ *
+ * 铁律 5：jsdom 无 inputState.composing 三态 / MutationObserver，门的 observer.clear 时序、
+ * setState 撕 DocView、composing===0 盲区全测不到。本套只锁副作用契约，真验收=Windows+WebView2
+ * 真机 specs/03 拼音矩阵（咕咕咕 + 长句 + 英文 via IME + Enter 上屏）。
  */
 
 const reloadFromDisk = vi.fn().mockResolvedValue(undefined);
@@ -23,17 +24,14 @@ vi.mock('./editorState', () => ({
   getDocForPath: () => '',
 }));
 vi.mock('./vaultFlow', () => ({ refreshTree: vi.fn().mockResolvedValue(undefined) }));
-vi.mock('../stores/useToastStore', () => ({ showToast: vi.fn() }));
 
-import { arbitrateVaultChange, __clearPendingReplayForTest } from './externalChange';
+const showToast = vi.fn();
+vi.mock('../stores/useToastStore', () => ({ showToast: (...args: unknown[]) => showToast(...args) }));
+
+import { arbitrateVaultChange } from './externalChange';
 import { useEditorStore } from '../stores/useEditorStore';
 import { useVaultStore } from '../stores/useVaultStore';
-import {
-  consumeSuppressedWatch,
-  resetAutosave,
-  scheduleAutosave,
-  suppressNextWatch,
-} from '../stores/autosave';
+import { resetAutosave, scheduleAutosave } from '../stores/autosave';
 import { writeFileAtomic } from '../ipc/files';
 
 vi.mock('../ipc/files', () => ({ writeFileAtomic: vi.fn().mockResolvedValue(null) }));
@@ -42,11 +40,12 @@ const VAULT_ROOT = '/vault';
 const REL = 'note.md';
 const ABS = `${VAULT_ROOT}/${REL}`;
 
+/** 挂载真实单内核 view（含 compositionGate）：组合事件经门驱动 frozenFlags/drain，非 mock。 */
 function mountView(): EditorView {
   const parent = document.createElement('div');
   document.body.appendChild(parent);
   const view = new EditorView({
-    state: EditorState.create({ doc: '初始' }),
+    state: EditorState.create({ doc: '初始', extensions: [compositionGate] }),
     parent,
   });
   setView(view);
@@ -71,32 +70,29 @@ function resetStores(): void {
   });
 }
 
-describe('EDIT-06 组合期不 setState/reload/write 回归', () => {
+describe('统一冻结门：组合期零 setState/reload/write，end 后恰好一次', () => {
   let view: EditorView;
 
   beforeEach(() => {
     vi.clearAllMocks();
     resetStores();
     resetAutosave();
-    __clearPendingReplayForTest();
     view = mountView();
   });
 
   afterEach(() => {
+    __resetCompositionForTest(view);
     resetAutosave();
-    __clearPendingReplayForTest();
     view.destroy();
     setView(null);
   });
 
-  it('Layer 1：组合期活动文件外部变更不 reload，compositionend 后恰好重放一次', async () => {
-    mockComposing(view, true);
+  it('外部变更：组合期不 reload，compositionend drain 后恰好一次', async () => {
+    dispatchComposition(view, { phase: 'compositionstart', data: '咕' });
     await arbitrateVaultChange({ path: ABS, kind: 'modify' });
-    // 组合期：绝不 reloadFromDisk（不 setState 撕 DocView）
+    // 组合期：绝不 reloadFromDisk（不 setState 撕 DocView）。
     expect(reloadFromDisk).not.toHaveBeenCalled();
 
-    // 组合结束 → 重放仲裁，此时 setState 安全
-    mockComposing(view, false);
     dispatchComposition(view, { phase: 'compositionend', data: '咕咕咕' });
     await Promise.resolve();
     await Promise.resolve();
@@ -104,50 +100,96 @@ describe('EDIT-06 组合期不 setState/reload/write 回归', () => {
     expect(reloadFromDisk).toHaveBeenCalledWith(REL);
   });
 
-  it('Layer 1：组合期同一路径多个事件只挂一个 handler，结束仅重放一次', async () => {
-    mockComposing(view, true);
+  it('外部变更：组合期同一路径多个事件按 rel 去重，drain 仅重放一次', async () => {
+    dispatchComposition(view, { phase: 'compositionstart', data: '长' });
     await arbitrateVaultChange({ path: ABS, kind: 'modify' });
     await arbitrateVaultChange({ path: ABS, kind: 'modify' });
     await arbitrateVaultChange({ path: ABS, kind: 'modify' });
     expect(reloadFromDisk).not.toHaveBeenCalled();
 
-    mockComposing(view, false);
     dispatchComposition(view, { phase: 'compositionend', data: '长句' });
     await Promise.resolve();
     await Promise.resolve();
-    // 去重：只重放一次（不是三次）
     expect(reloadFromDisk).toHaveBeenCalledTimes(1);
   });
 
-  it('Layer 1：非组合期活动文件外部变更照常立即 reload', async () => {
-    mockComposing(view, false);
+  it('外部变更：非组合期照常立即 reload', async () => {
     await arbitrateVaultChange({ path: ABS, kind: 'modify' });
     expect(reloadFromDisk).toHaveBeenCalledTimes(1);
     expect(reloadFromDisk).toHaveBeenCalledWith(REL);
   });
 
-  it('Layer 2：自激抑制窗口吞掉自身写的重复事件（temp+rename 多事件）', () => {
-    suppressNextWatch(REL);
-    // 窗口内多个该路径事件全被吞（旧单 token 只能吞一个）
-    expect(consumeSuppressedWatch(REL)).toBe(true);
-    expect(consumeSuppressedWatch(REL)).toBe(true);
+  it('Toast 不撒谎：组合期排队时不弹，drain 后弹一次', async () => {
+    dispatchComposition(view, { phase: 'compositionstart', data: '你' });
+    await arbitrateVaultChange({ path: ABS, kind: 'modify' });
+    // 组合期排队：reload 未跑，Toast 必不弹（否则「已自动重载」撒谎）。
+    expect(showToast).not.toHaveBeenCalled();
+
+    dispatchComposition(view, { phase: 'compositionend', data: '你好' });
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(reloadFromDisk).toHaveBeenCalledTimes(1);
+    expect(showToast).toHaveBeenCalledTimes(1);
+    expect(showToast).toHaveBeenCalledWith('warning', expect.stringContaining('已自动重载'));
   });
 
-  it('Layer 3：armed autosave 定时器组合期触发 → 重新武装而非写盘', async () => {
+  it('autosave：组合期定时器到期不写盘、排队；compositionend drain 后写一次', async () => {
     vi.useFakeTimers();
     try {
-      mockComposing(view, true);
+      dispatchComposition(view, { phase: 'compositionstart', data: '你' });
       scheduleAutosave(REL);
-      // 定时器触发（500ms）：组合期 → 不写盘，重新武装
+      // 定时器到期（500ms）：组合期 → 不写盘，按 autosave:path 去重挂起（消除旧 500ms 轮询自旋）。
       await vi.advanceTimersByTimeAsync(600);
       expect(writeFileAtomic).not.toHaveBeenCalled();
 
-      // 组合结束后下一次定时器触发才落盘
-      mockComposing(view, false);
+      // 组合结束 drain → 写一次。
+      dispatchComposition(view, { phase: 'compositionend', data: '你好' });
       await vi.runAllTimersAsync();
+      await Promise.resolve();
       expect(writeFileAtomic).toHaveBeenCalledTimes(1);
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  it('autosave：组合期多次定时器到期按 path 去重，drain 后仍只写一次', async () => {
+    vi.useFakeTimers();
+    try {
+      dispatchComposition(view, { phase: 'compositionstart', data: '你' });
+      scheduleAutosave(REL);
+      await vi.advanceTimersByTimeAsync(600);
+      scheduleAutosave(REL);
+      await vi.advanceTimersByTimeAsync(600);
+      expect(writeFileAtomic).not.toHaveBeenCalled();
+
+      dispatchComposition(view, { phase: 'compositionend', data: '你好' });
+      await vi.runAllTimersAsync();
+      await Promise.resolve();
+      expect(writeFileAtomic).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('drain 固定顺序：refreshLivePreview 强刷 → reload（排队任务）', async () => {
+    const seq: string[] = [];
+    reloadFromDisk.mockImplementation(() => {
+      seq.push('reload');
+      return Promise.resolve();
+    });
+    const spy = vi.spyOn(view, 'dispatch').mockImplementation((() => {
+      // 门 drain 派发 refreshLivePreview 强刷：记入顺序（不真正 update，避免触发其它副作用）。
+      seq.push('refresh');
+    }) as never);
+
+    dispatchComposition(view, { phase: 'compositionstart', data: '你' });
+    await arbitrateVaultChange({ path: ABS, kind: 'modify' });
+    dispatchComposition(view, { phase: 'compositionend', data: '你好' });
+
+    await Promise.resolve();
+    await Promise.resolve();
+    // 强刷必先于排队的 reload（解冻还原渲染态在前，副作用在后）。
+    expect(seq).toEqual(['refresh', 'reload']);
+    spy.mockRestore();
   });
 });
