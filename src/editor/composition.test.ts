@@ -9,6 +9,7 @@ import {
   onCompositionEnd,
   queueAfterComposition,
   refreshLivePreview,
+  setRelayComposing,
 } from './composition';
 
 /**
@@ -303,6 +304,36 @@ describe('composition（统一组合冻结门）', () => {
 
       await Promise.resolve();
       expect(refreshCalls(spy)).toHaveLength(1);
+    });
+  });
+
+  describe('冻结起始 state 精确移除（Wave 1 遗留 ①：组合中途事务后不留陈旧条目）', () => {
+    it('组合期内：以冻结起始 state 为 startState 的事务判组合中（对照基线）', () => {
+      view = makeTestView('正文', [compositionGate]);
+      const start = view.state;
+      setRelayComposing(view, true);
+      expect(isComposingTr(start.update({}))).toBe(true);
+      setRelayComposing(view, false);
+    });
+
+    it('组合中途选区事务推进 state 后解冻：起始 state 仍被精确移除', () => {
+      view = makeTestView('正文', [compositionGate]);
+      const start = view.state;
+      setRelayComposing(view, true);
+      view.dispatch({ selection: { anchor: 1 } }); // 组合中途点击：view.state 推进，start 滞留风险。
+      setRelayComposing(view, false);
+      // 起始 state 若滞留在册，它经 swapState 缓存恢复再成为 startState 时会被误判组合中。
+      expect(isComposingTr(start.update({}))).toBe(false);
+      expect(isComposing(view)).toBe(false);
+    });
+
+    it('contentDOM 门同款：组合中途事务后 compositionend 亦精确移除起始 state', () => {
+      view = makeTestView('正文', [compositionGate]);
+      const start = view.state;
+      dispatchComposition(view, { phase: 'compositionstart', data: '你' });
+      view.dispatch({ selection: { anchor: 2 } });
+      dispatchComposition(view, { phase: 'compositionend', data: '你' });
+      expect(isComposingTr(start.update({}))).toBe(false);
     });
   });
 

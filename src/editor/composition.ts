@@ -44,6 +44,38 @@ const pendingTasks = new WeakMap<EditorView, Map<string, () => void | Promise<vo
  */
 const frozenStartStates = new WeakSet<EditorState>();
 
+/**
+ * 每 view 在冻结时记入 frozenStartStates 的那个 state。组合中途若有事务 dispatch（中继下如
+ * 复选框 widget 翻转、组合中途点击的选区事务），view.state 已推进——解冻时 `delete(view.state)`
+ * 删的是新 state，起始 state 滞留在册：该对象若经 swapState 缓存恢复再次成为 tr.startState，
+ * 会被误判组合中。据此精确移除起始 state，不留陈旧条目。
+ */
+const recordedStartStates = new WeakMap<EditorView, EditorState>();
+
+/** 冻结置位（contentDOM 门 compositionstart 与 setRelayComposing(true) 共用同一原子序）。 */
+function freeze(view: EditorView): void {
+  frozenFlags.set(view, true);
+  frozenStartStates.add(view.state);
+  recordedStartStates.set(view, view.state);
+  // 代际自增：作废上一组合在飞的强刷与排队任务（咕咕咕重复同音节根因 / 跨组合竞态守卫）。
+  refreshGen.set(view, (refreshGen.get(view) ?? 0) + 1);
+}
+
+/** 解冻 + 推迟一个微任务 drain（contentDOM 门 compositionend 与 setRelayComposing(false) 共用）。 */
+function unfreeze(view: EditorView): void {
+  frozenFlags.set(view, false);
+  // 精确移除冻结时记入的起始 state（组合中途有事务时 view.state 已推进，删当前 state 是 no-op）；
+  // 空组合（零事务）时 recorded === view.state，二者删的是同一对象，双删等价单删。
+  const recorded = recordedStartStates.get(view);
+  if (recorded) frozenStartStates.delete(recorded);
+  recordedStartStates.delete(view);
+  frozenStartStates.delete(view.state);
+  const gen = refreshGen.get(view) ?? 0;
+  // 推迟一个微任务再 drain：必须在 CM6 自身 compositionend 上屏 flush、view.composing 归 false 之后
+  // 才派发，否则撞 observer.clear() 丢弃尚未 flush 的上屏 mutation（root cause A）。
+  Promise.resolve().then(() => drain(view, gen));
+}
+
 /** 查询某 view 是否处于 IME 冻结期（行内 ViewPlugin / autosave / externalChange 用，铁律 4 双判）。 */
 export function isComposing(view: EditorView): boolean {
   return view.composing || (frozenFlags.get(view) ?? false);
@@ -102,21 +134,11 @@ export function onCompositionEnd(view: EditorView, key: string, cb: () => void):
  */
 const compositionDomHandlers = EditorView.domEventHandlers({
   compositionstart(_event, view) {
-    frozenFlags.set(view, true);
-    frozenStartStates.add(view.state);
-    // 代际自增：作废上一组合在飞的强刷与排队任务（咕咕咕重复同音节根因）。
-    refreshGen.set(view, (refreshGen.get(view) ?? 0) + 1);
+    freeze(view);
     return false;
   },
   compositionend(_event, view) {
-    frozenFlags.set(view, false);
-    // 空组合（零事务）时 view.state 仍是 start 记入的那个 state，同步移除防误判后续普通编辑；
-    // 有事务的组合 view.state 已推进，此删除为 no-op（旧 state 不再作为未来事务的 startState）。
-    frozenStartStates.delete(view.state);
-    const gen = refreshGen.get(view) ?? 0;
-    // 推迟一个微任务再 drain：必须在 CM6 自身 compositionend 上屏 flush、view.composing 归 false 之后
-    // 才派发，否则撞 observer.clear() 丢弃尚未 flush 的上屏 mutation（root cause A）。
-    Promise.resolve().then(() => drain(view, gen));
+    unfreeze(view);
     return false;
   },
 });
@@ -143,18 +165,8 @@ export const compositionGate: Extension = [compositionDomHandlers, compositionTr
  * contentDOM 门 domEventHandlers 保留在册（flag 关回退路径 + 既有测试继续绿）。
  */
 export function setRelayComposing(view: EditorView, on: boolean): void {
-  if (on) {
-    frozenFlags.set(view, true);
-    frozenStartStates.add(view.state);
-    // 代际自增：作废上一组合在飞的强刷与排队任务（跨组合竞态守卫，与 contentDOM 门同款）。
-    refreshGen.set(view, (refreshGen.get(view) ?? 0) + 1);
-    return;
-  }
-  frozenFlags.set(view, false);
-  // 组合期 CM 零事务：view.state 仍是 start 记入的那个 state，同步移除防误判后续普通编辑。
-  frozenStartStates.delete(view.state);
-  const gen = refreshGen.get(view) ?? 0;
-  Promise.resolve().then(() => drain(view, gen));
+  if (on) freeze(view);
+  else unfreeze(view);
 }
 
 /**

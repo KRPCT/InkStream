@@ -51,13 +51,13 @@ function mount(doc = '') {
   const textarea = createRelayTextarea(view);
   host.appendChild(textarea);
   const { defer, flush } = makeDefer();
-  const detach = installRelayInput(view, textarea, defer);
+  const { detach, commitComposition } = installRelayInput(view, textarea, defer);
   cleanups.push(() => {
     detach();
     view.destroy();
     host.remove();
   });
-  return { view, textarea, flush, detach };
+  return { view, textarea, flush, detach, commitComposition };
 }
 
 describe('installRelayInput（事件中继）', () => {
@@ -167,6 +167,46 @@ describe('installRelayInput（统一冻结门喂源，setRelayComposing）', () 
     expect(view.state.doc.toString()).toBe('你好'); // 落子同步完成。
     await Promise.resolve(); // drain 微任务。
     expect(seenDoc).toBe('你好'); // 排队任务在落子之后执行（§2.5 固定序）。
+  });
+
+  it('commitComposition：组合中强制提交（无浏览器 compositionend）→ 落子 + 解冻 + 清空 + 回焦', () => {
+    const { view, textarea, commitComposition } = mount('');
+    textarea.dispatchEvent(new CompositionEvent('compositionstart', { data: '' }));
+    textarea.value = '你好';
+    textarea.dispatchEvent(new Event('input')); // 组合期：不落子。
+    expect(view.state.doc.toString()).toBe('');
+
+    commitComposition(); // jsdom blur 不派发 compositionend → 走强制兜底路径。
+    expect(view.state.doc.toString()).toBe('你好');
+    expect(isComposing(view)).toBe(false);
+    expect(textarea.value).toBe('');
+    expect(document.activeElement).toBe(textarea);
+  });
+
+  it('commitComposition：blur 触发浏览器标准 compositionend（真机序）时不双插', () => {
+    const { view, textarea, commitComposition } = mount('');
+    // 模拟 Chromium：blur 时 IME 同步派发 compositionend（提交当前组合串）。
+    const simulateIme = (): void => {
+      textarea.dispatchEvent(new CompositionEvent('compositionend', { data: '你好' }));
+    };
+    textarea.addEventListener('blur', simulateIme);
+    textarea.focus(); // 先聚焦：jsdom 仅对已聚焦元素的 blur() 派发 blur 事件。
+    textarea.dispatchEvent(new CompositionEvent('compositionstart', { data: '' }));
+    textarea.value = '你好';
+
+    commitComposition();
+    textarea.removeEventListener('blur', simulateIme);
+    expect(view.state.doc.toString()).toBe('你好'); // 仅正常 compositionend 路径落子一次。
+    expect(isComposing(view)).toBe(false);
+    expect(document.activeElement).toBe(textarea);
+  });
+
+  it('commitComposition：非组合期为 no-op（不动文档不动焦点）', () => {
+    const { view, textarea, commitComposition } = mount('ab');
+    textarea.value = '残';
+    commitComposition();
+    expect(view.state.doc.toString()).toBe('ab');
+    expect(document.activeElement).not.toBe(textarea); // 未触发 blur/focus 周期。
   });
 
   it('卸载不留死冻结：组合中 teardown 后 isComposing 归 false', () => {

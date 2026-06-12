@@ -16,6 +16,10 @@ export interface RelayWiring {
   textarea: HTMLTextAreaElement;
   /** textarea 跟随插入点（候选窗锚定）；rAF 体内调用，无布局时静默。 */
   syncCaret: () => void;
+  /** 开始拖拽选区（relayGesture 单击置 anchor 后调用；控制器挂 document mousemove/mouseup）。 */
+  beginDrag: (anchor: number) => void;
+  /** 提交进行中的 IME 组合（组合中途点击的 blur-commit 策略入口）；非组合期为 no-op。 */
+  commitComposition: () => void;
 }
 
 const wirings = new WeakMap<EditorView, RelayWiring>();

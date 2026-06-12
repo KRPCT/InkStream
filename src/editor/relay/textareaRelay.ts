@@ -73,8 +73,16 @@ export function relayInsert(view: EditorView, text: string): void {
   });
 }
 
+/** installRelayInput 的接线句柄：cleanup + 组合提交入口（控制器注入 RelayWiring）。 */
+export interface RelayInputHandle {
+  detach: () => void;
+  /** 提交进行中的组合（组合中途点击用，§2.5 风险对策）；非组合期 no-op。 */
+  commitComposition: () => void;
+}
+
 /**
- * 事件中继：input/composition/keydown 三路，返回 cleanup（与控制器生命周期配对）。
+ * 事件中继：input/composition/keydown 三路，返回 detach（与控制器生命周期配对）+
+ * commitComposition（组合中途点击的 blur-commit 入口）。
  *
  * compositionend 固定序（PROD-RELAY-DESIGN §2.5 裁决）：解冻（setRelayComposing false）→
  * relayInsert 落子（组合已结束的常规提交，装饰层正常重建）→ 微任务 drain 排空队列
@@ -84,7 +92,7 @@ export function installRelayInput(
   view: EditorView,
   textarea: HTMLTextAreaElement,
   defer: RelayDefer = rafDefer,
-): () => void {
+): RelayInputHandle {
   let composing = false;
   let pendingReset: number | null = null;
   let residue = ''; // compositionend 已落子但尚未 reset 的 textarea 残文（防尾随 input 双插）。
@@ -131,11 +139,34 @@ export function installRelayInput(
     if (runScopeHandlers(view, e, 'editor')) e.preventDefault(); // 方向/退格/回车/undo 全桥 keymap。
   };
 
+  /**
+   * 组合中途点击的 blur-commit（PROD-RELAY-DESIGN §2.5 风险对策）：焦点不离 textarea 时浏览器
+   * 不自动 commit，点击 dispatch 会移走插入点 → compositionend 一次性落子错位。先 blur 触发
+   * 浏览器标准 compositionend（onCompositionEnd 按旧选区正常落子）；个别 IME / jsdom 不派发时
+   * 走强制兜底：按当前 value 落子 + 解冻，状态与正常 end 完全一致。最后回焦保持输入面武装。
+   */
+  const commitComposition = (): void => {
+    if (!composing) return;
+    textarea.blur(); // 真机（Chromium/WebView2）：blur 同步触发 compositionend → 正常提交路径。
+    if (composing) {
+      composing = false;
+      setRelayComposing(view, false);
+      relayInsert(view, textarea.value); // 兜底强制落子（空值时 relayInsert 自身 no-op）。
+      textarea.value = '';
+      residue = '';
+      if (pendingReset != null) {
+        defer.cancel(pendingReset);
+        pendingReset = null;
+      }
+    }
+    textarea.focus();
+  };
+
   textarea.addEventListener('compositionstart', onCompositionStart);
   textarea.addEventListener('compositionend', onCompositionEnd);
   textarea.addEventListener('input', onInput);
   textarea.addEventListener('keydown', onKeyDown);
-  return () => {
+  const detach = (): void => {
     textarea.removeEventListener('compositionstart', onCompositionStart);
     textarea.removeEventListener('compositionend', onCompositionEnd);
     textarea.removeEventListener('input', onInput);
@@ -143,4 +174,5 @@ export function installRelayInput(
     if (pendingReset != null) defer.cancel(pendingReset);
     if (composing) setRelayComposing(view, false); // 卸载时绝不留死冻结（门永不失配）。
   };
+  return { detach, commitComposition };
 }
