@@ -1,82 +1,8 @@
 import { useEffect, useRef, useState, type KeyboardEvent } from 'react';
-import { execute, getAll, subscribe } from '../../commands/registry';
-import type { Command } from '../../types/commands';
-import Kbd from '../common/Kbd';
-import Menu, { type MenuEntry } from '../common/Menu';
-
-interface ItemConfig {
-  commandId: string;
-  /** 菜单短标签；缺省用 registry 的命令全称。 */
-  label?: string;
-}
-
-interface GroupConfig {
-  label: string;
-  items: (ItemConfig | { label: string; submenu: ItemConfig[] })[];
-}
-
-/**
- * 菜单配置为纯数据（D-02 同源）：item 只存 commandId 与可选短标签，
- * 行为/标题/快捷键一律取自 registry——不在此定义任何 run。
- * Phase 6 挂 Git Graph 入口 = 注册命令 + 在此加一行。
- */
-const MENUS: GroupConfig[] = [
-  {
-    label: '文件',
-    items: [
-      { commandId: 'file.open-folder', label: '打开文件夹…' },
-      { commandId: 'app.exit', label: '退出' },
-    ],
-  },
-  {
-    label: '视图',
-    items: [
-      { commandId: 'view.command-palette', label: '命令面板' },
-      { commandId: 'view.toggle-sidebar', label: '切换侧边栏' },
-      { commandId: 'view.toggle-right-panel', label: '切换右侧面板' },
-      {
-        label: '外观',
-        submenu: [
-          { commandId: 'theme.light' },
-          { commandId: 'theme.dark' },
-          { commandId: 'theme.system' },
-        ],
-      },
-      {
-        label: '模式',
-        submenu: [
-          { commandId: 'mode.switch-standard' },
-          { commandId: 'mode.switch-academic' },
-          { commandId: 'mode.switch-creative' },
-        ],
-      },
-    ],
-  },
-  { label: '帮助', items: [{ commandId: 'app.about', label: '关于 InkStream' }] },
-];
-
-function toEntry(cfg: ItemConfig, commands: Map<string, Command>): MenuEntry {
-  const cmd = commands.get(cfg.commandId);
-  return {
-    id: cfg.commandId,
-    label: cfg.label ?? cmd?.title ?? cfg.commandId,
-    disabled: cmd === undefined,
-    trailing: cmd?.shortcut ? <Kbd tone="faint">{cmd.shortcut}</Kbd> : undefined,
-    onSelect: () => void execute(cfg.commandId),
-  };
-}
-
-function toEntries(group: GroupConfig, commands: Map<string, Command>): MenuEntry[] {
-  return group.items.map((item) =>
-    'submenu' in item
-      ? {
-          id: `submenu-${item.label}`,
-          label: item.label,
-          submenu: item.submenu.map((sub) => toEntry(sub, commands)),
-        }
-      : toEntry(item, commands),
-  );
-}
+import { getAll, subscribe } from '../../commands/registry';
+import { useVaultStore } from '../../stores/useVaultStore';
+import Menu from '../common/Menu';
+import { MENUS, toEntries } from './menuConfig';
 
 /**
  * VSCode 式文字菜单框架（D-02）：嵌入自绘 TitleBar 左槽，项 13px、内边距 0 8px、
@@ -86,6 +12,7 @@ export default function MenuBar() {
   const [openIndex, setOpenIndex] = useState<number | null>(null);
   const [, setVersion] = useState(0);
   const anchors = useRef<(HTMLButtonElement | null)[]>([]);
+  const recent = useVaultStore((s) => s.recentVaults);
 
   useEffect(() => subscribe(() => setVersion((v) => v + 1)), []);
 
@@ -124,7 +51,7 @@ export default function MenuBar() {
           </button>
           {openIndex === index ? (
             <Menu
-              items={toEntries(group, commands)}
+              items={toEntries(group, commands, recent)}
               label={group.label}
               onClose={() => setOpenIndex(null)}
               anchorRef={{ current: anchors.current[index] ?? null }}

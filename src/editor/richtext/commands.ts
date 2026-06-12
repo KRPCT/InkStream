@@ -13,8 +13,11 @@ import type { EditorView } from '@codemirror/view';
  * 用 before/after 包裹每个选区。
  * - 有选区：包住选区，新选区落在被包裹文本上（before 之后、after 之前）。
  * - 无选区：插入 before+after，光标落在两者之间（便于继续输入）。
+ *
+ * 产物均为合法 Markdown / CommonMark HTML（无私有格式）——故 markdown 文档的
+ * 「格式」菜单/键位（markdownCommands）亦复用本变换（R4 §3 键位裁决合约）。
  */
-function wrapSelection(view: EditorView, before: string, after: string): boolean {
+export function wrapSelection(view: EditorView, before: string, after: string): boolean {
   view.dispatch(
     view.state.changeByRange((range) => {
       const insert = before + view.state.doc.sliceString(range.from, range.to) + after;

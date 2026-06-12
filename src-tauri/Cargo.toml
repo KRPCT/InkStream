@@ -26,6 +26,11 @@ tauri-plugin-fs = "=2.5.1"
 # 专责 open，capability 仅授 opener:allow-open-url，权限比 tauri-plugin-shell
 # 更窄。来源/版本经 Task 1 阻塞门人工核验通过（crates.io 官方 workspace，精确 pin）。
 tauri-plugin-opener = "=2.5.4"
+# 原生文件/文件夹选择对话框（R4 §2 反转旧自绘决策）。Tauri 官方 plugins-workspace
+# 一方插件，与 fs/opener/store 同仓同维护团队同 build.rs 机制（仅生成 permission
+# schema，无 install hook）；底层经 rfd 调 OS 原生 IFileDialog。capability 仅授
+# dialog:allow-open（最小权限，不开 save——另存为本阶段不做）。精确 pin（R4 供应链审过）。
+tauri-plugin-dialog = "=2.7.1"
 serde = { version = "=1.0.228", features = ["derive"] }
 serde_json = "=1.0.150"
 # 回收站删除（D-09）。Byron/trash-rs，跨平台。build.rs 审查见 02-03-SUMMARY。

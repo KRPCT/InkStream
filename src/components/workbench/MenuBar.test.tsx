@@ -30,11 +30,11 @@ describe('MenuBar（D-02 同源框架）', () => {
     disposeBuiltins();
   });
 
-  it('渲染 文件 / 视图 / 帮助 三个顶层菜单', () => {
+  it('渲染 文件 / 编辑 / 段落 / 格式 / 视图 / 帮助 六个顶层菜单', () => {
     render(<MenuBar />);
-    expect(screen.getByRole('menuitem', { name: '文件' })).toBeInTheDocument();
-    expect(screen.getByRole('menuitem', { name: '视图' })).toBeInTheDocument();
-    expect(screen.getByRole('menuitem', { name: '帮助' })).toBeInTheDocument();
+    for (const name of ['文件', '编辑', '段落', '格式', '视图', '帮助']) {
+      expect(screen.getByRole('menuitem', { name })).toBeInTheDocument();
+    }
   });
 
   it('展开「视图」含命令面板（带快捷键芯片）与 外观 / 模式 两个子菜单', async () => {
@@ -43,9 +43,26 @@ describe('MenuBar（D-02 同源框架）', () => {
     await user.click(screen.getByRole('menuitem', { name: '视图' }));
     const palette = screen.getByRole('menuitem', { name: /命令面板/ });
     expect(palette).toHaveTextContent('Ctrl+Shift+P');
-    expect(screen.getByRole('menuitem', { name: /切换侧边栏/ })).toHaveTextContent('Ctrl+B');
-    expect(screen.getByRole('menuitem', { name: /外观/ })).toBeInTheDocument();
-    expect(screen.getByRole('menuitem', { name: /模式/ })).toBeInTheDocument();
+    // R4 §3：侧栏让位 Ctrl+B，改 Ctrl+\
+    expect(screen.getByRole('menuitem', { name: /切换侧边栏/ })).toHaveTextContent('Ctrl+\\');
+    expect(screen.getByRole('menuitem', { name: /^外观$/ })).toBeInTheDocument();
+    expect(screen.getByRole('menuitem', { name: /^模式$/ })).toBeInTheDocument();
+  });
+
+  it('展开「格式」含加粗（Ctrl+B 芯片）与清除格式', async () => {
+    const user = userEvent.setup();
+    render(<MenuBar />);
+    await user.click(screen.getByRole('menuitem', { name: '格式' }));
+    expect(screen.getByRole('menuitem', { name: /加粗/ })).toHaveTextContent('Ctrl+B');
+    expect(screen.getByRole('menuitem', { name: '清除格式' })).toBeInTheDocument();
+  });
+
+  it('展开「文件」含原生打开文件/文件夹（Ctrl+O / Ctrl+Shift+O 芯片）', async () => {
+    const user = userEvent.setup();
+    render(<MenuBar />);
+    await user.click(screen.getByRole('menuitem', { name: '文件' }));
+    expect(screen.getByRole('menuitem', { name: /打开文件…/ })).toHaveTextContent('Ctrl+O');
+    expect(screen.getByRole('menuitem', { name: /打开文件夹…/ })).toHaveTextContent('Ctrl+Shift+O');
   });
 
   it('「外观」子菜单三项标题取自 registry（与主题命令同源）', async () => {
@@ -102,13 +119,13 @@ describe('MenuBar（D-02 同源框架）', () => {
     expect(await screen.findByText(/0\.1\.0-test/)).toBeInTheDocument();
   });
 
-  it('顶层菜单键盘左右切换', async () => {
+  it('顶层菜单键盘左右切换（文件 ↔ 编辑）', async () => {
     const user = userEvent.setup();
     render(<MenuBar />);
     await user.click(screen.getByRole('menuitem', { name: '文件' }));
     expect(screen.getByRole('menu', { name: '文件' })).toBeInTheDocument();
     await user.keyboard('{ArrowRight}');
-    expect(screen.getByRole('menu', { name: '视图' })).toBeInTheDocument();
+    expect(screen.getByRole('menu', { name: '编辑' })).toBeInTheDocument();
     await user.keyboard('{ArrowLeft}');
     expect(screen.getByRole('menu', { name: '文件' })).toBeInTheDocument();
   });

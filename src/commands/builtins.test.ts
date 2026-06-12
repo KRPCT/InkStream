@@ -16,12 +16,14 @@ vi.mock('../editor/livepreview/renderMode', () => ({
 }));
 
 const requestOpenFolder = vi.fn(() => Promise.resolve());
+const requestOpenFile = vi.fn(() => Promise.resolve());
 vi.mock('../editor/vaultFlow', () => ({
   requestOpenFolder: () => requestOpenFolder(),
+  requestOpenFile: () => requestOpenFile(),
   requestOpenRecent: vi.fn(() => Promise.resolve()),
 }));
 
-/** UI-SPEC 命令注册表文案表字面（含 TitleBar 菜单条目的命令面板/退出）。 */
+/** UI-SPEC / R4 命令注册表文案表字面（含 TitleBar 菜单条目的命令面板/退出）。 */
 const TITLES: Record<string, string> = {
   'theme.light': '主题：亮色',
   'theme.dark': '主题：暗色',
@@ -30,6 +32,7 @@ const TITLES: Record<string, string> = {
   'view.toggle-right-panel': '视图：切换右侧面板',
   'view.reset-layout': '视图：重置当前模式布局',
   'view.command-palette': '视图：命令面板',
+  'file.open-file': '文件：打开文件',
   'file.open-folder': '文件：打开文件夹',
   'file.open-recent': '文件：打开最近',
   'file.new-file': '文件：新建文件',
@@ -46,7 +49,39 @@ const TITLES: Record<string, string> = {
   'mode.switch-academic': '模式：切换到 Academic（学术）',
   'mode.switch-creative': '模式：切换到 Creative（长篇创作）',
   'app.about': '帮助：关于 InkStream',
+  'help.shortcuts': '帮助：快捷键参考',
+  // 编辑组
+  'edit.undo': '编辑：撤销',
+  'edit.redo': '编辑：重做',
+  'edit.cut': '编辑：剪切',
+  'edit.copy': '编辑：复制',
+  'edit.paste': '编辑：粘贴',
+  'edit.select-all': '编辑：全选',
+  'edit.find': '编辑：查找',
+  'edit.replace': '编辑：替换',
+  // 段落组
+  'para.heading-1': '段落：标题 1',
+  'para.paragraph': '段落：正文',
+  'para.ul': '段落：无序列表',
+  'para.ol': '段落：有序列表',
+  'para.task': '段落：任务列表',
+  'para.quote': '段落：引用',
+  'para.table': '段落：表格',
+  'para.code-fence': '段落：代码块',
+  'para.math-block': '段落：数学块',
+  // 格式组
+  'fmt.bold': '格式：加粗',
+  'fmt.italic': '格式：斜体',
+  'fmt.code': '格式：行内代码',
+  'fmt.strike': '格式：删除线',
+  'fmt.highlight': '格式：高亮',
+  'fmt.link': '格式：插入链接',
+  'fmt.image': '格式：插入图片',
+  'fmt.clear': '格式：清除格式',
 };
+
+/** 注册命令总数：原 23 + 打开文件 + 快捷键参考 + 编辑8 + 段落14 + 格式8 = 55。 */
+const COMMAND_COUNT = 55;
 
 function key(init: KeyboardEventInit): KeyboardEvent {
   return new KeyboardEvent('keydown', { cancelable: true, ...init });
@@ -63,6 +98,7 @@ describe('builtins', () => {
     delete document.documentElement.dataset.theme;
     delete document.documentElement.dataset.mode;
     requestOpenFolder.mockClear();
+    requestOpenFile.mockClear();
     disposeBuiltins = registerBuiltinCommands();
   });
 
@@ -71,27 +107,40 @@ describe('builtins', () => {
     disposeKeymap();
   });
 
-  it('注册 22 条命令，标题与 UI-SPEC 字面逐字一致', () => {
+  it('注册 55 条命令，标题与 UI-SPEC / R4 字面逐字一致', () => {
     const all = getAll();
-    expect(all).toHaveLength(23);
+    expect(all).toHaveLength(COMMAND_COUNT);
     for (const [id, title] of Object.entries(TITLES)) {
       expect(all.find((c) => c.id === id)?.title).toBe(title);
     }
   });
 
-  it('快捷键提示与键盘表一致', () => {
+  it('快捷键提示与键盘表一致（R4 §3 键位裁决）', () => {
     const byId = new Map(getAll().map((c) => [c.id, c]));
-    expect(byId.get('view.toggle-sidebar')?.shortcut).toBe('Ctrl+B');
+    // 侧栏让位 Ctrl+B（加粗），改 Ctrl+\
+    expect(byId.get('view.toggle-sidebar')?.shortcut).toBe('Ctrl+\\');
     expect(byId.get('view.toggle-right-panel')?.shortcut).toBe('Ctrl+Alt+B');
     expect(byId.get('view.command-palette')?.shortcut).toBe('Ctrl+Shift+P');
     expect(byId.get('go.quick-open')?.shortcut).toBe('Ctrl+P');
-    expect(byId.get('file.open-folder')?.shortcut).toBe('Ctrl+O');
+    // Ctrl+O 给打开文件；打开文件夹让位 Ctrl+Shift+O
+    expect(byId.get('file.open-file')?.shortcut).toBe('Ctrl+O');
+    expect(byId.get('file.open-folder')?.shortcut).toBe('Ctrl+Shift+O');
+    // 加粗占用 Ctrl+B；渲染模式保留 Ctrl+E
+    expect(byId.get('fmt.bold')?.shortcut).toBe('Ctrl+B');
+    expect(byId.get('view.toggle-render-mode')?.shortcut).toBe('Ctrl+E');
   });
 
-  it('合成 Ctrl+O 经 keymap 归一映射并触发打开文件夹', () => {
+  it('合成 Ctrl+O 经 keymap 归一映射并触发打开文件（R4 §3）', () => {
     initKeymap();
     expect(normalizeEvent(key({ key: 'o', ctrlKey: true }))).toBe('Ctrl+O');
     window.dispatchEvent(key({ key: 'o', ctrlKey: true }));
+    expect(requestOpenFile).toHaveBeenCalledTimes(1);
+    expect(requestOpenFolder).not.toHaveBeenCalled();
+  });
+
+  it('合成 Ctrl+Shift+O 触发打开文件夹', () => {
+    initKeymap();
+    window.dispatchEvent(key({ key: 'O', ctrlKey: true, shiftKey: true }));
     expect(requestOpenFolder).toHaveBeenCalledTimes(1);
   });
 
@@ -99,7 +148,7 @@ describe('builtins', () => {
     expect(() => {
       disposeBuiltins = registerBuiltinCommands();
     }).not.toThrow();
-    expect(getAll()).toHaveLength(23);
+    expect(getAll()).toHaveLength(COMMAND_COUNT);
   });
 
   it('合成 Ctrl+P 经 keymap 打开无前缀快速打开', () => {
@@ -133,12 +182,19 @@ describe('builtins', () => {
     expect(useWorkbenchStore.getState().layouts.standard.sidebarCollapsed).toBe(false);
   });
 
-  it('合成 Ctrl+B / Ctrl+Alt+B 经 keymap 触发折叠', () => {
+  it('合成 Ctrl+\\ 切侧栏、Ctrl+Alt+B 切右栏（R4 §3 侧栏让位 Ctrl+B）', () => {
     initKeymap();
-    window.dispatchEvent(key({ key: 'b', ctrlKey: true }));
+    window.dispatchEvent(key({ key: '\\', ctrlKey: true }));
     expect(useWorkbenchStore.getState().layouts.standard.sidebarCollapsed).toBe(true);
     window.dispatchEvent(key({ key: 'b', ctrlKey: true, altKey: true }));
     expect(useWorkbenchStore.getState().layouts.standard.rightPanelCollapsed).toBe(true);
+  });
+
+  it('Ctrl+B 不再 window 级绑定（交 CM markdownEditKeymap 处理加粗），侧栏不动', () => {
+    initKeymap();
+    const before = useWorkbenchStore.getState().layouts.standard.sidebarCollapsed;
+    window.dispatchEvent(key({ key: 'b', ctrlKey: true }));
+    expect(useWorkbenchStore.getState().layouts.standard.sidebarCollapsed).toBe(before);
   });
 
   it('合成 Ctrl+Shift+P 切换命令面板', () => {

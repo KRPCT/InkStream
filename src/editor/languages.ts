@@ -14,6 +14,7 @@ import { stex } from '@codemirror/legacy-modes/mode/stex';
 import { shell } from '@codemirror/legacy-modes/mode/shell';
 import { queueAfterComposition } from './composition';
 import { readLanguage } from './frontmatter';
+import { markdownEditKeymap } from './markdownCommands';
 import { richtextKeymap } from './richtext/keymap';
 import { richtextPasteHandler } from './richtext/commands';
 
@@ -119,10 +120,17 @@ export function languageForPath(path: string): LanguageId {
  */
 export function extensionsForLanguage(lang: string): Extension {
   if (lang === 'typst') return [];
-  // richtext 物理为 Markdown：高亮走 markdown（T-02-18），并随语言注入 Ctrl+B/I/U/K 键位——
-  // 键位仅在 richtext 文档的 langCompartment 内激活，构成 Ctrl+B 冲突裁决（UI-SPEC 合约）。
+  // markdown：注入「编辑/段落/格式」键位（R4 §3，Ctrl+B=加粗 等；仅 markdown 文档 + 聚焦时分发）。
+  if (lang === 'markdown') return [SYNC_FACTORY.markdown(), markdownEditKeymap()];
+  // richtext 物理为 Markdown：高亮走 markdown（T-02-18）。键位 = markdownEditKeymap（B/I/格式/段落，
+  // 与 markdown 文档同源）+ richtextKeymap（仅 Ctrl+U 下划线 <u>，D-15）+ 智能 URL 粘贴。
   if (lang === 'richtext')
-    return [SYNC_FACTORY.markdown(), richtextKeymap(), richtextPasteExtension()];
+    return [
+      SYNC_FACTORY.markdown(),
+      markdownEditKeymap(),
+      richtextKeymap(),
+      richtextPasteExtension(),
+    ];
   const factory =
     SYNC_FACTORY[lang as Exclude<LanguageId, 'typst' | 'richtext'>] ?? SYNC_FACTORY.markdown;
   return factory();

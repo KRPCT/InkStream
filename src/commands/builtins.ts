@@ -1,177 +1,26 @@
-import {
-  collapseAllInTree,
-  newFileInTree,
-  newFolderInTree,
-  renameNodeInTree,
-} from '../components/workbench/fileTreeController';
-import { createFileTreeOps } from '../components/workbench/fileTreeOps';
-import { requestOpenFolder, requestOpenRecent } from '../editor/vaultFlow';
-import { cycleDocumentLanguage } from '../editor/richtext/switchLanguage';
-import { toggleRenderMode } from '../editor/livepreview/renderMode';
-import { flushActiveFile } from '../editor/saveFlow';
-import { windowControls } from '../ipc/window';
-import { useAboutStore } from '../stores/useAboutStore';
-import { useEditorStore } from '../stores/useEditorStore';
-import { usePaletteStore } from '../stores/usePaletteStore';
-import { useSettingsStore } from '../stores/useSettingsStore';
-import { useWorkbenchStore } from '../stores/useWorkbenchStore';
 import type { Command } from '../types/commands';
+import { CORE_COMMANDS } from './coreCommands';
 import { bind } from './keymap';
 import { register } from './registry';
-
-/** 当前活动文件 → TreeNode（命令面板 rename/delete 的目标）；无活动文件 no-op。 */
-function activeNode(): { id: string; name: string; isDir: false } | null {
-  const { activePath, tabs } = useEditorStore.getState();
-  if (!activePath) return null;
-  const tab = tabs.find((t) => t.path === activePath);
-  return { id: activePath, name: tab?.name ?? activePath, isDir: false };
-}
+import { TEXT_COMMANDS } from './textCommands';
 
 /**
- * 内置命令（SHELL-04）：主题 x3（D-15）、视图 x4（D-12）、模式 x3（D-08）、应用：退出。
- * 标题字面照 01-UI-SPEC.md 命令注册表文案表；菜单与面板均从
- * registry.getAll() 取 title/shortcut（D-02 同源）。
- * 模式命令不占用全局快捷键（D-08：命令面板为主路，StatusBar 指示器为常驻入口）。
+ * 内置命令注册入口（SHELL-04）。命令定义按职责分两处（D-02 同源，均经 registry.getAll() 消费）：
+ *   coreCommands — 主题/视图/模式/文件/文档/应用/帮助；
+ *   textCommands — 编辑/段落/格式（R4 §1.3，接 CM6）。
+ * 本文件只做合并 + window 级键位绑定 + StrictMode 安全的 dispose 管理（拆分自避免单文件超 200 行）。
  */
-const BUILTINS: Command[] = [
-  {
-    id: 'theme.light',
-    title: '主题：亮色',
-    run: () => useSettingsStore.getState().setTheme('light'),
-  },
-  {
-    id: 'theme.dark',
-    title: '主题：暗色',
-    run: () => useSettingsStore.getState().setTheme('dark'),
-  },
-  {
-    id: 'theme.system',
-    title: '主题：跟随系统',
-    run: () => useSettingsStore.getState().setTheme('system'),
-  },
-  {
-    id: 'view.toggle-sidebar',
-    title: '视图：切换侧边栏',
-    shortcut: 'Ctrl+B',
-    run: () => useWorkbenchStore.getState().toggleSidebar(),
-  },
-  {
-    id: 'view.toggle-right-panel',
-    title: '视图：切换右侧面板',
-    shortcut: 'Ctrl+Alt+B',
-    run: () => useWorkbenchStore.getState().toggleRightPanel(),
-  },
-  {
-    id: 'view.reset-layout',
-    title: '视图：重置当前模式布局',
-    run: () => useWorkbenchStore.getState().resetCurrentLayout(),
-  },
-  {
-    id: 'view.command-palette',
-    title: '视图：命令面板',
-    shortcut: 'Ctrl+Shift+P',
-    run: () => usePaletteStore.getState().toggle(),
-  },
-  {
-    id: 'mode.switch-standard',
-    title: '模式：切换到 Standard（通用）',
-    run: () => useWorkbenchStore.getState().setMode('standard'),
-  },
-  {
-    id: 'mode.switch-academic',
-    title: '模式：切换到 Academic（学术）',
-    run: () => useWorkbenchStore.getState().setMode('academic'),
-  },
-  {
-    id: 'mode.switch-creative',
-    title: '模式：切换到 Creative（长篇创作）',
-    run: () => useWorkbenchStore.getState().setMode('creative'),
-  },
-  {
-    id: 'file.open-folder',
-    title: '文件：打开文件夹',
-    shortcut: 'Ctrl+O',
-    run: () => void requestOpenFolder(),
-  },
-  {
-    id: 'file.open-recent',
-    title: '文件：打开最近',
-    run: () => void requestOpenRecent(),
-  },
-  {
-    id: 'file.new-file',
-    title: '文件：新建文件',
-    shortcut: 'Ctrl+N',
-    run: () => newFileInTree(),
-  },
-  {
-    id: 'file.new-folder',
-    title: '文件：新建文件夹',
-    run: () => newFolderInTree(),
-  },
-  {
-    id: 'file.save',
-    title: '文件：保存',
-    shortcut: 'Ctrl+S',
-    run: () => void flushActiveFile(),
-  },
-  {
-    id: 'file.rename',
-    title: '文件：在文件树中重命名',
-    run: () => {
-      const node = activeNode();
-      if (node) renameNodeInTree(node.id);
-    },
-  },
-  {
-    id: 'file.delete',
-    title: '文件：删除到回收站',
-    run: () => {
-      const node = activeNode();
-      if (node) void createFileTreeOps().remove(node);
-    },
-  },
-  {
-    id: 'view.collapse-tree',
-    title: '视图：折叠文件树',
-    run: () => collapseAllInTree(),
-  },
-  {
-    id: 'go.quick-open',
-    title: '转到：快速打开文件',
-    shortcut: 'Ctrl+P',
-    run: () => usePaletteStore.getState().openQuickOpen(),
-  },
-  {
-    id: 'doc.toggle-language',
-    title: '文档：切换文档语言',
-    // 写入/修改 frontmatter `language` 字段，循环 markdown→latex→typst→richtext（D-13）。
-    run: () => cycleDocumentLanguage(),
-  },
-  {
-    id: 'view.toggle-render-mode',
-    title: '视图：切换渲染模式',
-    shortcut: 'Ctrl+E',
-    // Source ↔ Live Preview 热切（Compartment.reconfigure）；非 markdown 文档静默 no-op（D-01）。
-    run: () => void toggleRenderMode(),
-  },
-  {
-    id: 'app.exit',
-    title: '应用：退出',
-    run: () => void windowControls.close(),
-  },
-  {
-    id: 'app.about',
-    title: '帮助：关于 InkStream',
-    run: () => useAboutStore.getState().openAbout(),
-  },
-];
+const BUILTINS: Command[] = [...CORE_COMMANDS, ...TEXT_COMMANDS];
 
 let activeDispose: (() => void) | null = null;
 
 /**
  * 启动时调用一次（main.tsx）。重复调用安全（StrictMode 纪律）：先清理旧注册。
  * 返回 dispose：注销全部内置命令与键位绑定。
+ *
+ * 键位裁决（R4 §3，UAT 待用户确认）：侧栏让位 Ctrl+B → Ctrl+\；Ctrl+O = 打开文件、
+ * Ctrl+Shift+O = 打开文件夹；渲染模式保留 Ctrl+E。编辑/段落/格式键由 CM markdownEditKeymap
+ * 在编辑器聚焦时分发，不在此 window 级绑定，避免与 CM 键位双触发。
  */
 export function registerBuiltinCommands(): () => void {
   activeDispose?.();
@@ -179,10 +28,11 @@ export function registerBuiltinCommands(): () => void {
     ...BUILTINS.map(register),
     bind('Ctrl+Shift+P', 'view.command-palette'),
     bind('Ctrl+P', 'go.quick-open'),
-    bind('Ctrl+B', 'view.toggle-sidebar'),
+    bind('Ctrl+\\', 'view.toggle-sidebar'),
     bind('Ctrl+Alt+B', 'view.toggle-right-panel'),
     bind('Ctrl+N', 'file.new-file'),
-    bind('Ctrl+O', 'file.open-folder'),
+    bind('Ctrl+O', 'file.open-file'),
+    bind('Ctrl+Shift+O', 'file.open-folder'),
     bind('Ctrl+S', 'file.save'),
     bind('Ctrl+E', 'view.toggle-render-mode'),
   ];

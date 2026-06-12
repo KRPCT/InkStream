@@ -19,6 +19,8 @@ export interface MenuEntry {
   disabled?: boolean;
   submenu?: MenuEntry[];
   onSelect?: () => void;
+  /** 非交互分隔线（菜单分组用，VSCode/Typora 惯例）。键盘导航跳过。 */
+  separator?: boolean;
 }
 
 interface MenuProps {
@@ -34,13 +36,13 @@ interface MenuProps {
   label?: string;
 }
 
-/** 从 from 起按 delta 方向找下一个可用项（跳过 disabled，环绕）。 */
+/** 从 from 起按 delta 方向找下一个可用项（跳过 disabled / separator，环绕）。 */
 function nextEnabled(items: MenuEntry[], from: number, delta: number): number {
   const n = items.length;
   let i = from < 0 && delta < 0 ? 0 : from;
   for (let step = 0; step < n; step += 1) {
     i = (i + delta + n) % n;
-    if (!items[i].disabled) return i;
+    if (!items[i].disabled && !items[i].separator) return i;
   }
   return from;
 }
@@ -129,7 +131,15 @@ export default function Menu({
       onKeyDown={onKeyDown}
       className={`menu-pop z-50 min-w-40 rounded-[8px] border border-[var(--background-modifier-border)] bg-[var(--background-primary)] py-1 [box-shadow:var(--shadow-popup)] ${className}`}
     >
-      {items.map((item, index) => (
+      {items.map((item, index) =>
+        item.separator ? (
+          <hr
+            key={item.id}
+            role="separator"
+            aria-orientation="horizontal"
+            className="my-1 border-0 border-t border-[var(--background-modifier-border)]"
+          />
+        ) : (
         <div key={item.id} className="relative">
           <button
             type="button"
@@ -166,7 +176,8 @@ export default function Menu({
             />
           ) : null}
         </div>
-      ))}
+        ),
+      )}
     </div>
   );
 }
