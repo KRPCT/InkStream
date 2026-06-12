@@ -3,13 +3,18 @@ import type { EditorView } from '@codemirror/view';
 import { readFile } from '../ipc/files';
 import { useEditorStore } from '../stores/useEditorStore';
 import { useVaultStore } from '../stores/useVaultStore';
+import { isComposing, queueAfterComposition } from './composition';
 import { baseExtensions } from './extensions';
 import { readLanguage } from './frontmatter';
 import { languageFromDoc, markAppliedLanguage } from './languages';
 import { getView } from './viewHandle';
-import { getRenderMode, isMarkdownDoc, setRenderMode } from './livepreview/renderMode';
 import { imageVaultFacet } from './livepreview/inlinePlugin';
-import type { RenderMode } from '../types/editor';
+import {
+  applyRenderMode,
+  clearRenderModeCache,
+  disposeRenderMode,
+  snapshotRenderMode,
+} from './editorState.renderMode';
 
 /**
  * 每文件 EditorState 缓存（D-03 会话内）。
@@ -20,7 +25,6 @@ import type { RenderMode } from '../types/editor';
  * 真相源纪律：切换文件用 view.setState(整体换装)，绝不用 transaction/reconfigure 换文档
  * （Pitfall 3：避免 undo 历史跨文件串味）。每文件独立 EditorState 各持独立 history。
  */
-
 const cache = new Map<string, EditorState>();
 
 /**
@@ -31,50 +35,8 @@ const cache = new Map<string, EditorState>();
  */
 const scrollCache = new Map<string, number>();
 
-/**
- * 每文件渲染模式记忆（D-03 会话内，EDIT-02）。
- *
- * 平行 scrollCache：renderMode 是 view 级关注点（compartment 装的扩展），view.setState 换装
- * 不携带它。故按 path 缓存当前文件的 source/live 选择，切走时记录、切回时 setRenderMode 重放，
- * 关 tab 即释放、不跨重启持久化。store.activeRenderMode 仅镜像当前活动文件（权威在此 Map）。
- */
-const renderModeCache = new Map<string, RenderMode>();
-
-/** 取某 path 的会话内 renderMode 记忆（无记忆返回 null；测试/调用方据此判初次打开）。 */
-export function getRenderModeForPath(path: string): RenderMode | null {
-  return renderModeCache.get(path) ?? null;
-}
-
-/**
- * 把当前 view 的 renderMode 态镜像到 store（仿 syncRichtext 单向纪律，D-01 显隐）。
- *
- * markdown/richtext 文档：镜像当前 compartment 模式（source/live）；
- * 非 markdown 文档：镜像置 null——指示器隐藏、toggle 命令 no-op（D-01 同条件）。
- */
-function syncRenderMode(view: EditorView, path: string): void {
-  const md = isMarkdownDoc(view.state.doc.toString(), path);
-  useEditorStore.getState().setActiveRenderMode(md ? getRenderMode(view) : null);
-}
-
-/**
- * 打开/切到文件时应用其会话内 renderMode 记忆并同步镜像。
- *
- * 仅 markdown/richtext 文档应用：无记忆默认 'live'（D-02）；非 markdown 文档跳过 setRenderMode
- * （其 compartment 本就空），镜像由 syncRenderMode 置 null。
- */
-function applyRenderMode(view: EditorView, path: string): void {
-  if (isMarkdownDoc(view.state.doc.toString(), path)) {
-    setRenderMode(view, renderModeCache.get(path) ?? 'live');
-  }
-  syncRenderMode(view, path);
-}
-
-/** 在 setState 之后推迟一帧回填滚动位置：避免被 setState 触发的布局重排覆盖。 */
-function restoreScroll(view: EditorView, top: number): void {
-  requestAnimationFrame(() => {
-    view.scrollDOM.scrollTop = top;
-  });
-}
+/** per-file renderMode 记忆下沉 editorState.renderMode；此处 re-export 取值口（消费方/测试单一入口）。 */
+export { getRenderModeForPath } from './editorState.renderMode';
 
 /**
  * 把当前 view 的 richtext 态镜像到 store（D-14 工具条显隐）。
@@ -90,6 +52,29 @@ export function syncRichtext(view: EditorView): void {
   }
 }
 
+/** 在 setState 之后推迟一帧回填滚动位置：避免被 setState 触发的布局重排覆盖。 */
+function restoreScroll(view: EditorView, top: number): void {
+  requestAnimationFrame(() => {
+    view.scrollDOM.scrollTop = top;
+  });
+}
+
+/**
+ * 统一换装门（根治「换汤不换药」，§4.1）：组合期把整段换装推迟到 compositionend drain。
+ *
+ * setState 零组合感知，组合期换装撕掉 IME 锚定的 DocView 必吞字（铁律 2）。openFile/switchToTab/
+ * reloadFromDisk 的换装体（setState+restoreScroll+syncRichtext+applyRenderMode）整体进 doSwap，
+ * 组合期按 'swap:'+key 去重排队（先切 A 后切 B 排两个 task 按入队序停 B；都切 A 去重一次）。
+ * 用户点 tab 触发的 openFile/switchToTab 至此也过门，不再裸奔。
+ */
+function swapState(view: EditorView, key: string, doSwap: () => void): void {
+  if (isComposing(view)) {
+    queueAfterComposition(view, 'swap:' + key, doSwap);
+    return;
+  }
+  doSwap();
+}
+
 /**
  * 打开文件：命中缓存则恢复其完整 state（含光标/选区/undo 历史）；
  * 未命中则用 doc + ext 新建 EditorState 后整体换装。
@@ -103,10 +88,12 @@ export function openFile(view: EditorView, path: string, doc: string, ext: Exten
   const root = useVaultStore.getState().vault?.root ?? null;
   const vaultFacet = imageVaultFacet.of(root ? { root, docPath: path } : null);
   const state = cached ?? EditorState.create({ doc, extensions: [ext, vaultFacet] });
-  view.setState(state);
-  restoreScroll(view, scrollCache.get(path) ?? 0);
-  syncRichtext(view);
-  applyRenderMode(view, path);
+  swapState(view, path, () => {
+    view.setState(state);
+    restoreScroll(view, scrollCache.get(path) ?? 0);
+    syncRichtext(view);
+    applyRenderMode(view, path);
+  });
   // 焦点纪律：不程序化抢焦点。WebView2 只在「真实指针进入编辑器」时武装 OS IME/TSF，
   // 任何 programmatic 聚焦（view.focus / MoveFocus / EditContext）都不武装中文输入（真机 CDP 证）；
   // auto-focus 给的假光标反而诱导首次中文组合丢字。故由用户点击编辑器自然落焦（见 CONSTRAINTS §8）。
@@ -143,13 +130,16 @@ export function switchToTab(path: string): void {
   const view = getView();
   if (!view) return;
   const active = useEditorStore.getState().activePath;
+  // snapshotBeforeSwitch 纯读 view.state（不撕 DOM、不 dispatch），门外同步跑——保证快照已存、数据零丢失。
   if (active && active !== path) snapshotBeforeSwitch(view, active);
   const cached = cache.get(path);
   if (cached) {
-    view.setState(cached);
-    restoreScroll(view, scrollCache.get(path) ?? 0);
-    syncRichtext(view);
-    applyRenderMode(view, path);
+    swapState(view, path, () => {
+      view.setState(cached);
+      restoreScroll(view, scrollCache.get(path) ?? 0);
+      syncRichtext(view);
+      applyRenderMode(view, path);
+    });
   }
   useEditorStore.getState().setActive(path);
 }
@@ -158,10 +148,7 @@ export function switchToTab(path: string): void {
 export function snapshotBeforeSwitch(view: EditorView, path: string): void {
   cache.set(path, view.state);
   scrollCache.set(path, view.scrollDOM.scrollTop);
-  // 仅 markdown/richtext 文档记 renderMode（非 md 文档无切换语义，不污染缓存）。
-  if (isMarkdownDoc(view.state.doc.toString(), path)) {
-    renderModeCache.set(path, getRenderMode(view));
-  }
+  snapshotRenderMode(view, path);
 }
 
 /**
@@ -186,12 +173,12 @@ export function getDocForPath(path: string): string | null {
 export function disposeState(path: string): void {
   cache.delete(path);
   scrollCache.delete(path);
-  renderModeCache.delete(path);
+  disposeRenderMode(path);
 }
 
 /** 仅供测试：清空缓存以隔离用例。 */
 export function __clearCacheForTest(): void {
   cache.clear();
   scrollCache.clear();
-  renderModeCache.clear();
+  clearRenderModeCache();
 }

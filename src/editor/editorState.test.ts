@@ -2,7 +2,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { EditorState } from '@codemirror/state';
 import { EditorView } from '@codemirror/view';
 import { undo } from '@codemirror/commands';
-import { disposeState, openFile, snapshotBeforeSwitch, __clearCacheForTest } from './editorState';
+import { disposeState, openFile, snapshotBeforeSwitch, switchToTab, __clearCacheForTest } from './editorState';
+import { __resetCompositionForTest } from './composition';
+import { setView } from './viewHandle';
+import { useEditorStore } from '../stores/useEditorStore';
+import { dispatchComposition } from '../test/composition';
 import { baseExtensions } from './extensions';
 
 /** 在 jsdom 中建一个挂载好的 EditorView（空 doc）。 */
@@ -163,5 +167,82 @@ describe('openFile 不程序化抢焦点（WebView2 IME 平台限制，点击编
     // 由用户点击编辑器自然落焦（见 CONSTRAINTS §8 / specs 03）。
     expect(focusSpy).not.toHaveBeenCalled();
     view.destroy();
+  });
+});
+
+describe('换装过统一冻结门（§4.1：组合期排队、compositionend 后执行一次）', () => {
+  let view: EditorView;
+
+  beforeEach(() => {
+    __clearCacheForTest();
+    view = mountView();
+    setView(view);
+    useEditorStore.setState({ activePath: null });
+    vi.stubGlobal('requestAnimationFrame', (cb: FrameRequestCallback) => {
+      cb(0);
+      return 0;
+    });
+  });
+
+  afterEach(() => {
+    __resetCompositionForTest(view);
+    setView(null);
+    view.destroy();
+    vi.unstubAllGlobals();
+  });
+
+  it('组合期 openFile：setState 不立即跑，compositionend 后恰好一次且 doc 为目标文件', async () => {
+    openFile(view, 'a.md', 'AAA', baseExtensions());
+    const setStateSpy = vi.spyOn(view, 'setState');
+    // 用户开始组合中文，期间点别的文件触发 openFile：换装应排队、不撕 DocView。
+    dispatchComposition(view, { phase: 'compositionstart', data: '你' });
+    openFile(view, 'b.md', 'BBB', baseExtensions());
+    expect(setStateSpy).not.toHaveBeenCalled();
+    expect(view.state.doc.toString()).toBe('AAA');
+
+    // compositionend → drain：换装恰好执行一次，doc 切到目标 b.md。
+    dispatchComposition(view, { phase: 'compositionend', data: '你好' });
+    await Promise.resolve();
+    expect(setStateSpy).toHaveBeenCalledTimes(1);
+    expect(view.state.doc.toString()).toBe('BBB');
+  });
+
+  it('组合期先切 A 后切 B（不同 key 各排）→ drain 按入队序，最终停 B', async () => {
+    openFile(view, 'start.md', 'START', baseExtensions());
+    dispatchComposition(view, { phase: 'compositionstart', data: '咕' });
+    // 组合期连续切两个不同文件：各排一个 swap task。
+    openFile(view, 'A.md', 'AAA', baseExtensions());
+    openFile(view, 'B.md', 'BBB', baseExtensions());
+    expect(view.state.doc.toString()).toBe('START');
+
+    dispatchComposition(view, { phase: 'compositionend', data: '咕咕咕' });
+    await Promise.resolve();
+    // 入队序 A→B，drain 顺序执行，最终停在最后入队的 B（取最后一次语义）。
+    expect(view.state.doc.toString()).toBe('BBB');
+  });
+
+  it('组合期 switchToTab（已缓存 tab）：换装排队，end 后切到目标且 setActive 已同步', async () => {
+    // 先开 A 并快照入缓存，再切到 B（B 成为活动文件）。
+    openFile(view, 'A.md', 'AAA', baseExtensions());
+    useEditorStore.setState({ activePath: 'A.md' });
+    snapshotBeforeSwitch(view, 'A.md');
+    openFile(view, 'B.md', 'BBB', baseExtensions());
+    useEditorStore.setState({ activePath: 'B.md' });
+    snapshotBeforeSwitch(view, 'B.md');
+
+    // 组合期点回 A（缓存命中）：setActive 门外同步、换装排队、doc 仍是 B。
+    dispatchComposition(view, { phase: 'compositionstart', data: '你' });
+    switchToTab('A.md');
+    expect(useEditorStore.getState().activePath).toBe('A.md');
+    expect(view.state.doc.toString()).toBe('BBB');
+
+    dispatchComposition(view, { phase: 'compositionend', data: '你好' });
+    await Promise.resolve();
+    expect(view.state.doc.toString()).toBe('AAA');
+  });
+
+  it('非组合期 openFile：换装立即执行（行为同今天，不排队）', () => {
+    openFile(view, 'now.md', 'NOW', baseExtensions());
+    expect(view.state.doc.toString()).toBe('NOW');
   });
 });
