@@ -73,16 +73,17 @@ describe('useVaultStore', () => {
     expect(useVaultStore.getState().lastVaultPath).toBe('/v');
   });
 
-  it('hydratePersisted 应用持久态（最近 + 上次路径 + 展开）', () => {
+  it('hydratePersisted 应用持久态（最近 + 上次路径；展开态不在恢复范畴）', () => {
     useVaultStore.getState().hydratePersisted({
       recentVaults: ['/v', '/w'],
       lastVaultPath: '/v',
-      expandedForVault: ['notes', 'src'],
     });
     const s = useVaultStore.getState();
     expect(s.recentVaults).toEqual(['/v', '/w']);
     expect(s.lastVaultPath).toBe('/v');
-    expect(s.expanded.has('notes')).toBe(true);
+    // UAT 反馈：跨会话恢复的展开目录因懒加载未触发显示为空——展开态仅会话内有效，
+    // hydrate 不碰 expanded（开 vault 时 openVault 复位为空集，恒折叠起步）。
+    expect(s.expanded.size).toBe(0);
   });
 
   it('store holds no EditorView/EditorState instance fields', () => {

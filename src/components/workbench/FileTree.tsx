@@ -126,14 +126,6 @@ export default function FileTree() {
   const data = visibleSorted(tree);
   const ops = useMemo(() => createFileTreeOps(), []);
 
-  // D-08 持久化展开态回喂：仅取挂载首帧的 expanded 作 react-arborist 初始开合态
-  // （后续开合由 onToggle → store 单向驱动；initialOpenState 是「初始」语义，不随渲染更新）。
-  const initialOpenState = useMemo(() => {
-    const map: Record<string, boolean> = {};
-    for (const id of useVaultStore.getState().expanded) map[id] = true;
-    return map;
-  }, []);
-
   // 新建：返回临时占位节点。父目录与类型挂在 node.data.pending（WR-12），
   // 不再编码进 id 串——父目录路径含 ':' 时按 id 分割会错位。
   const onCreate: CreateHandler<TreeNode> = ({ parentNode, type }) => {
@@ -185,7 +177,9 @@ export default function FileTree() {
       indent={16}
       rowHeight={28}
       width="100%"
-      initialOpenState={initialOpenState}
+      // 默认折叠（UAT 反馈：react-arborist openByDefault 默认 true 会全展开且懒加载未触发，
+      // 目录显示为空——一大堆空目录糊脸）。展开态仅会话内有效，开 vault 恒从全折叠开始。
+      openByDefault={false}
       onToggle={(id) => void handleToggle(id)}
       onCreate={onCreate}
       onRename={onRename}

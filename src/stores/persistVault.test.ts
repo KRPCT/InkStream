@@ -66,7 +66,7 @@ describe('persistVault', () => {
     expect(mockSave).toHaveBeenCalledTimes(1);
   });
 
-  it('按 vault 路径键存展开态（expanded 以 vault.root 为键）', async () => {
+  it('展开态不持久化（恒写空 expanded 映射保 schema 兼容）', async () => {
     await initVaultPersistence();
     mockSave.mockClear();
     useVaultStore.getState().openVault(VAULT, []);
@@ -77,7 +77,9 @@ describe('persistVault', () => {
       expanded: Record<string, string[]>;
     };
     expect(payload.lastVaultPath).toBe('/v');
-    expect(payload.expanded['/v']).toContain('notes');
+    // UAT 反馈：恢复的展开目录因懒加载未触发显示为空，且用户要求开 vault 默认全折叠——
+    // 会话内展开不落盘；schema 字段保留为空映射（version 1 兼容旧文件）。
+    expect(payload.expanded).toEqual({});
   });
 
   it('持久内容不含 tab 列表 / 编辑状态（D-03 覆盖 D-08 的 tab 字面项）', async () => {

@@ -105,8 +105,9 @@ export async function expandDir(id: string): Promise<void> {
  * 文件树展开/折叠的单一同步点（react-arborist onToggle 回调，仅给 id）。
  *
  * onToggle 在内部 open 态已翻转后触发：以 store.expanded 为开合意图真相源同步翻转，
- * 翻成「打开」且该目录尚未加载时懒加载子项（expandDir）。store.expanded 经 persistVault
- * 持久化（D-08），并由 initialOpenState 回喂 react-arborist，闭环展开态。
+ * 翻成「打开」且该目录尚未加载时懒加载子项（expandDir）。展开态仅会话内有效——
+ * 开 vault 恒从全折叠开始（openByDefault=false），不跨会话恢复（恢复的展开目录
+ * 因懒加载未触发会显示为空）。
  */
 export async function handleToggle(id: string): Promise<void> {
   const { expanded, tree } = useVaultStore.getState();

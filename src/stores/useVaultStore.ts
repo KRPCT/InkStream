@@ -11,7 +11,7 @@ interface VaultState {
   tree: TreeNode[];
   /** 快速打开（Ctrl+P）的 vault 文件清单快照（FILE-03；fileProvider 同步消费）。 */
   files: FileEntry[];
-  /** 已展开目录的 id 集合（受控展开态，D-11；按当前 vault 持久化，D-08）。 */
+  /** 已展开目录的 id 集合（受控展开态，D-11；仅会话内有效——开 vault 恒从全折叠开始）。 */
   expanded: Set<string>;
   /** 最近打开 vault 路径列表（置顶去重，上限 20，D-07）。 */
   recentVaults: string[];
@@ -27,12 +27,8 @@ interface VaultState {
   pushRecent: (path: string) => void;
   /** 记录上次 vault 路径（D-07 启动恢复）。 */
   setLastVaultPath: (path: string | null) => void;
-  /** 应用持久态（persistVault 启动 hydrate）：最近 + 上次路径 + 当前 vault 展开态。 */
-  hydratePersisted: (data: {
-    recentVaults: string[];
-    lastVaultPath: string | null;
-    expandedForVault: string[];
-  }) => void;
+  /** 应用持久态（persistVault 启动 hydrate）：最近 + 上次路径。展开态不恢复（恒折叠起步）。 */
+  hydratePersisted: (data: { recentVaults: string[]; lastVaultPath: string | null }) => void;
 }
 
 /**
@@ -64,6 +60,5 @@ export const useVaultStore = create<VaultState>((set) => ({
       recentVaults: [path, ...s.recentVaults.filter((p) => p !== path)].slice(0, RECENT_LIMIT),
     })),
   setLastVaultPath: (lastVaultPath) => set({ lastVaultPath }),
-  hydratePersisted: ({ recentVaults, lastVaultPath, expandedForVault }) =>
-    set({ recentVaults, lastVaultPath, expanded: new Set(expandedForVault) }),
+  hydratePersisted: ({ recentVaults, lastVaultPath }) => set({ recentVaults, lastVaultPath }),
 }));
