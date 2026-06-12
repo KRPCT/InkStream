@@ -9,25 +9,30 @@ import { livePreviewExtensions, renderModeCompartment } from './livepreview/live
 import { compositionGate } from './composition';
 
 /**
- * 编辑器正文排版基线 theme（R5-typography §3.3，D-1/D-3 修复）。
+ * 编辑器正文排版基线 theme（R5-typography §3.3；F4 CDP 实机修正）。
  *
- * 顶层挂入（与 compositionGate 同级，所有模式 / 语言生效）——正文字号 16px、行高 1.7（中文优先）、
- * 版心 46rem 居中。取值全部消费 base.css 的 --editor-* / --font-editor token，**永不硬编码**。
+ * 顶层挂入（与 compositionGate 同级，所有模式 / 语言生效）——正文字号 16px、行高 1.7（中文优先）。
+ * 取值全部消费 base.css 的 --editor-* / --font-editor token，**永不硬编码**。
  *
- * IME 安全（铁律 1）：纯静态 CSS（font-size / line-height / max-width / margin / padding），
- * 不触焦点、不程序化抢焦点、不引重排时序，与组合冻结门正交。但 .cm-content 盒模型变更（max-width /
- * margin-inline）会改 CM6 视口宽度计算——须按 specs/03 矩阵第 4 判据真机复验候选窗锚点（记入交付提醒）。
+ * 版心改 Zettlr 式（MainEditor.vue:693-714）：留白属于 .cm-scroller 的水平 padding，**绝不**压
+ * .cm-content 盒模型。CM6 坐标系（posAtCoords/coordsAtPos）以 .cm-content 几何为准——往 content 叠
+ * max-width/margin-inline/padding-inline 会破坏视口宽度计算与命中测试（F2/F3/CM6 官方铁律），故：
+ *   - .cm-content 只保留 paddingBlock（垂直，官方允许）+ color/字体平滑；加 minWidth:0（Zettlr :704）
+ *     允许内容盒在 flex scroller 里收缩，杜绝撑破与左侧露底。
+ *   - .cm-scroller 用 paddingInline 居中内容列：max(留白, 1.5rem 下限) 纯 CSS 居中，留白属 scroller，
+ *     点击留白由 CM6 映射到行首/行尾（Zettlr 同款），左侧不再露裸 scroller 底。
+ *
+ * IME 安全（铁律 1）：纯静态 CSS，不触焦点、不程序化抢焦点、不引重排时序，与组合冻结门正交。
  */
 const editorBaseTheme = EditorView.theme({
   '.cm-scroller': {
     fontFamily: 'var(--font-editor)',
     fontSize: 'var(--editor-font-size)',
     lineHeight: 'var(--editor-line-height)',
+    paddingInline: 'max(calc((100% - var(--editor-max-width)) / 2), 1.5rem)',
   },
   '.cm-content': {
-    maxWidth: 'var(--editor-max-width)',
-    marginInline: 'auto',
-    paddingInline: 'var(--editor-padding-x)',
+    minWidth: '0',
     paddingBlock: '2rem',
     color: 'var(--text-normal)',
     WebkitFontSmoothing: 'antialiased',
@@ -57,6 +62,9 @@ export function baseExtensions(lang: string = 'markdown'): Extension[] {
   return [
     compositionGate,
     editorBaseTheme,
+    // 软换行（无条件常开）：Zettlr editor-extension-sets.ts:192 / SilverBullet editor_state.ts:165 /
+    // MarkFlowy setup.ts:72 三家同款。把 .cm-content 置 pre-wrap 且将行宽约束到 scroller（比纯 CSS 正确）。
+    EditorView.lineWrapping,
     history(),
     drawSelection(),
     highlightActiveLine(),

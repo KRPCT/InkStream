@@ -20,11 +20,12 @@
   --font-mono:
     'Cascadia Code', 'JetBrains Mono', ui-monospace, Consolas, 'Microsoft YaHei', monospace;
 
-  /* 编辑器正文排版 token（R5-typography §3.1，非颜色，正文/版心一处收口）。 */
+  /* 编辑器正文排版 token（R5-typography §3.1，非颜色，正文/版心一处收口）。
+     --editor-max-width 是版心列宽：经 .cm-scroller 的 paddingInline 居中（Zettlr 式，extensions.ts），
+     不再压 .cm-content 盒模型；横向留白下限内联在 scroller 公式（1.5rem），故无独立 padding-x token。 */
   --editor-font-size: 16px;
   --editor-line-height: 1.7;
   --editor-max-width: 46rem;
-  --editor-padding-x: clamp(16px, 5vw, 64px);
   /* 标题上下边距（R5 §3.1，inlinePlugin 行级 cm-ink-hN 消费）。 */
   --h-margin-top: 1.4em;
   --h-margin-bottom: 0.5em;
