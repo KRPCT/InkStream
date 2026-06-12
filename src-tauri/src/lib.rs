@@ -1,4 +1,5 @@
 mod files;
+mod ime_focus;
 mod ime_trace;
 mod path_guard;
 mod vault;
@@ -27,7 +28,8 @@ pub fn run() {
             files::trash_path,
             watcher::start_watch,
             watcher::stop_watch,
-            ime_trace::ime_trace_append
+            ime_trace::ime_trace_append,
+            ime_focus::arm_webview_ime
         ])
         .setup(|app| {
             // EDIT-06 诊断：清空本会话 IME trace 文件并打印其绝对路径（DEV-only，release no-op）。

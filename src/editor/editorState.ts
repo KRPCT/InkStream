@@ -1,5 +1,6 @@
 import { EditorState, type Extension } from '@codemirror/state';
 import type { EditorView } from '@codemirror/view';
+import { invoke } from '../ipc/invoke';
 import { readFile } from '../ipc/files';
 import { useEditorStore } from '../stores/useEditorStore';
 import { useVaultStore } from '../stores/useVaultStore';
@@ -97,42 +98,31 @@ function isModalActive(): boolean {
 }
 
 /**
- * IME 安全聚焦：让程序化聚焦走 WebView2 的指针命中测试路径（EDIT-06 真因修复）。
+ * IME 安全聚焦：DOM 聚焦 + 原生武装 WebView2 内部输入焦点 / TSF（EDIT-06 真因修复）。
  *
- * 背景（CDP 实测）：`view.focus()` 只置 DOM 焦点，但**不**触发 WebView2 内部输入焦点 →
- * Windows TSF text store（OS IME 组合写入的目标）从未被「武装」→ 打开文件后首次中文组合
- * 不产生 compositionstart/input，整段文本丢失（用户的临时解法是真实点击一下编辑器）。
+ * 背景（CDP 实测）：`view.focus()` 只置 DOM 焦点，且合成（isTrusted=false）pointer/mouse
+ * 往返**都不**触发 WebView2 内部输入焦点 → Windows TSF text store（OS IME 组合写入的目标）
+ * 从未被「武装」→ 打开文件后首次中文组合不产生 compositionstart/input，整段文本丢失
+ * （用户的临时解法是真实点击一下编辑器）。合成指针路径实测无效，已移除。
  *
- * 修复：在 contentDOM 上派发一组合成 pointer/mouse 往返（pointerdown→mousedown→pointerup→
- * mouseup）——这条路径会被 WebView2 命中测试消费，从而武装内部焦点 + TSF；随后再 view.focus()；
- * 最后重申当前选区，抵消合成 mousedown 可能造成的光标坍缩。
+ * 修复：
+ *   1. `view.focus()` 先置 DOM 焦点到 contentEditable（落光标）；
+ *   2. 重申当前选区，抵消任何潜在光标坍缩；
+ *   3. fire-and-forget `invoke('arm_webview_ime')`——原生侧经 with_webview 调
+ *      `ICoreWebView2Controller::MoveFocus(PROGRAMMATIC)`，为已聚焦元素武装 TSF。
+ *      DOM 焦点须先落，原生 MoveFocus 后发，TSF 才锚到正确元素。
  *
- * 纪律：重申用「同一选区」回写（view.state.selection），是个语义无变更的 selection set——
- * 不改 doc、不触发 docChanged、不标脏、不影响每文件 state 缓存（缓存键的是整体 EditorState）。
+ * 纪律：
+ *   - 重申用「同一选区」回写（view.state.selection），是个语义无变更的 selection set——
+ *     不改 doc、不触发 docChanged、不标脏、不影响每文件 state 缓存（缓存键的是整体 EditorState）。
+ *   - 原生 invoke fire-and-forget 且吞错：IME 武装绝不阻塞或拖垮打开流程；非 Windows 为 no-op。
  */
 function imeSafeFocus(view: EditorView): void {
-  const el = view.contentDOM;
-  const r = el.getBoundingClientRect();
-  const x = r.left + Math.min(40, r.width / 2);
-  const y = r.top + Math.min(20, r.height / 2);
-  const base = {
-    bubbles: true,
-    cancelable: true,
-    composed: true,
-    clientX: x,
-    clientY: y,
-    pointerId: 1,
-    pointerType: 'mouse',
-    isPrimary: true,
-    button: 0,
-  } as PointerEventInit & MouseEventInit;
-  el.dispatchEvent(new PointerEvent('pointerdown', { ...base, buttons: 1 }));
-  el.dispatchEvent(new MouseEvent('mousedown', { ...base, buttons: 1 }));
-  el.dispatchEvent(new PointerEvent('pointerup', { ...base, buttons: 0 }));
-  el.dispatchEvent(new MouseEvent('mouseup', { ...base, buttons: 0 }));
   view.focus();
-  // 重申（缓存/还原的）选区，以防合成 mousedown 移动了光标。同选区回写不标脏、不触 docChanged。
+  // 重申（缓存/还原的）选区。同选区回写不标脏、不触 docChanged。
   view.dispatch({ selection: view.state.selection });
+  // 原生武装 WebView2/TSF：DOM 焦点已落，此处 MoveFocus(PROGRAMMATIC) 为该元素建立内部输入焦点。
+  void invoke('arm_webview_ime', undefined).catch(() => {});
 }
 
 /**
