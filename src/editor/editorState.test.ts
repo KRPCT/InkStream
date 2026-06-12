@@ -12,8 +12,10 @@ import {
 import { __resetCompositionForTest } from './composition';
 import { setView } from './viewHandle';
 import { useEditorStore } from '../stores/useEditorStore';
+import { useVaultStore } from '../stores/useVaultStore';
 import { dispatchComposition } from '../test/composition';
 import { baseExtensions } from './extensions';
+import { imageVaultFacet } from './livepreview/inlinePlugin';
 
 /** 在 jsdom 中建一个挂载好的 EditorView（空 doc）。 */
 function mountView(): EditorView {
@@ -146,6 +148,39 @@ describe('editorState 滚动位置缓存/还原（D-03）', () => {
     // 释放后重开：滚动缓存已清，回到 0（不残留 120）
     openFile(view, 'd.md', 'ddd', baseExtensions());
     expect(scroll.get()).toBe(0);
+    view.destroy();
+  });
+});
+
+describe('openFile 注入 imageVaultFacet（WR-07 注入侧，per-view vault 上下文）', () => {
+  beforeEach(() => {
+    __clearCacheForTest();
+    vi.stubGlobal('requestAnimationFrame', (cb: FrameRequestCallback) => {
+      cb(0);
+      return 0;
+    });
+  });
+
+  afterEach(() => {
+    useVaultStore.setState({ vault: null });
+    vi.unstubAllGlobals();
+  });
+
+  it('有 vault 时新建 state 携带 {root, docPath}（装饰层据此解析本地图，不读全局 store）', () => {
+    useVaultStore.setState({
+      vault: { root: 'D:/vault', repoRoot: null, name: 'vault' },
+    });
+    const view = mountView();
+    openFile(view, 'notes/a.md', '![](img.png)', baseExtensions());
+    expect(view.state.facet(imageVaultFacet)).toEqual({ root: 'D:/vault', docPath: 'notes/a.md' });
+    view.destroy();
+  });
+
+  it('无 vault 时回落 null（消费侧按无上下文处理，本地图不解析）', () => {
+    useVaultStore.setState({ vault: null });
+    const view = mountView();
+    openFile(view, 'b.md', 'hi', baseExtensions());
+    expect(view.state.facet(imageVaultFacet)).toBeNull();
     view.destroy();
   });
 });

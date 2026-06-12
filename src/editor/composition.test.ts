@@ -98,6 +98,20 @@ describe('composition（统一组合冻结门）', () => {
       expect(isComposing(view)).toBe(false);
     });
 
+    it('空组合 end 后同步窗口的普通编辑不被误判为组合（frozenStartStates 同步清理）', () => {
+      view = makeTestView('文档', [compositionGate]);
+      // 空组合：start→end 零事务，state 未推进——end 必须把 start 记入的 state 从集合移除，
+      // 否则 drain 微任务前的首个普通编辑事务 startState 仍在册，被误判为组合中。
+      dispatchComposition(view, { phase: 'compositionstart', data: '' });
+      dispatchComposition(view, { phase: 'compositionend', data: '' });
+      const tr = view.state.update({
+        changes: { from: view.state.doc.length, insert: 'a' },
+        userEvent: 'input.type',
+      });
+      expect(isComposingTr(tr)).toBe(false);
+      expect(isComposing(view)).toBe(false);
+    });
+
     it('CM6 原生 input.type.compose 单支即识别（块级层旧判据等价保留）', () => {
       view = makeTestView('文档', [compositionGate]);
       // 不经 compositionstart，仅 CM6 原生标记（块级层据此短路）。

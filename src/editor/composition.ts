@@ -39,7 +39,8 @@ const pendingTasks = new WeakMap<EditorView, Map<string, () => void | Promise<vo
 /**
  * 冻结起始 state 集（annotation 桥的 view-less 关联口）。compositionstart 同步记入当前 view.state，
  * transactionExtender 无 view 句柄，据 tr.startState 是否在册判定该事务是否发自冻结中的 view。
- * compositionend 不主动清——同一 state 不会被复用，随 EditorState 释放自动回收（WeakSet）。
+ * compositionend 必须同步清除当前 view.state：空组合（start→end 零事务）时 state 未推进，
+ * 不清则后续首个普通编辑事务被误判为组合中（块级层误走 map-not-rebuild 留陈旧装饰）。
  */
 const frozenStartStates = new WeakSet<EditorState>();
 
@@ -109,6 +110,9 @@ const compositionDomHandlers = EditorView.domEventHandlers({
   },
   compositionend(_event, view) {
     frozenFlags.set(view, false);
+    // 空组合（零事务）时 view.state 仍是 start 记入的那个 state，同步移除防误判后续普通编辑；
+    // 有事务的组合 view.state 已推进，此删除为 no-op（旧 state 不再作为未来事务的 startState）。
+    frozenStartStates.delete(view.state);
     const gen = refreshGen.get(view) ?? 0;
     // 推迟一个微任务再 drain：必须在 CM6 自身 compositionend 上屏 flush、view.composing 归 false 之后
     // 才派发，否则撞 observer.clear() 丢弃尚未 flush 的上屏 mutation（root cause A）。
