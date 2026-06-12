@@ -67,6 +67,10 @@ export function useCodeMirror(parentRef: RefObject<HTMLElement | null>): RefObje
       view.destroy();
       viewRef.current = null;
       setView(null);
+      // IN-08：清测试态全局桩——否则 cleanup 后 __ink_test_view 仍指向已 destroy 的 view，跨用例泄漏。
+      if (import.meta.env.MODE === 'test') {
+        delete (globalThis as unknown as { __ink_test_view?: EditorView }).__ink_test_view;
+      }
     };
   }, [parentRef]);
 

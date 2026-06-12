@@ -2,7 +2,13 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { EditorState } from '@codemirror/state';
 import { EditorView } from '@codemirror/view';
 import { undo } from '@codemirror/commands';
-import { disposeState, openFile, snapshotBeforeSwitch, switchToTab, __clearCacheForTest } from './editorState';
+import {
+  disposeState,
+  openFile,
+  snapshotBeforeSwitch,
+  switchToTab,
+  __clearCacheForTest,
+} from './editorState';
 import { __resetCompositionForTest } from './composition';
 import { setView } from './viewHandle';
 import { useEditorStore } from '../stores/useEditorStore';
@@ -244,5 +250,14 @@ describe('换装过统一冻结门（§4.1：组合期排队、compositionend �
   it('非组合期 openFile：换装立即执行（行为同今天，不排队）', () => {
     openFile(view, 'now.md', 'NOW', baseExtensions());
     expect(view.state.doc.toString()).toBe('NOW');
+  });
+
+  it('switchToTab 缓存缺失：不换装、不翻 activePath（IN-05 view/activePath 同步）', () => {
+    openFile(view, 'A.md', 'AAA', baseExtensions());
+    useEditorStore.setState({ activePath: 'A.md' });
+    // 切到未缓存的 path：view 应仍显 A.md，activePath 不翻到 ghost（否则下游取真相源拿错内容）。
+    switchToTab('ghost.md');
+    expect(useEditorStore.getState().activePath).toBe('A.md');
+    expect(view.state.doc.toString()).toBe('AAA');
   });
 });

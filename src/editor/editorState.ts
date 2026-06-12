@@ -93,6 +93,9 @@ export function openFile(view: EditorView, path: string, doc: string, ext: Exten
     restoreScroll(view, scrollCache.get(path) ?? 0);
     syncRichtext(view);
     applyRenderMode(view, path);
+    // IN-06：换装后把语言 diff 基线对齐到新文件的实际语言——否则 lastAppliedLanguage 仍是上一文件的，
+    // 下一次 docChanged 会按错基线多切一次 reconfigure（或漏切）。
+    markAppliedLanguage(view, languageFromDoc(state.doc.toString(), path));
   });
   // 焦点纪律：不程序化抢焦点。WebView2 只在「真实指针进入编辑器」时武装 OS IME/TSF，
   // 任何 programmatic 聚焦（view.focus / MoveFocus / EditContext）都不武装中文输入（真机 CDP 证）；
@@ -123,24 +126,28 @@ export async function reloadFromDisk(path: string): Promise<void> {
  * 切到已打开（缓存命中）的 tab：快照当前活动文件 → setState 还原目标 + setActive + 滚动还原。
  *
  * 单内核换装的统一入口（EditorTabs 点击调用，组件不重复实现滚动/快照逻辑）。view 经 getView()
- * 解析。与 openFile 区别：不重读磁盘 doc——已开文件的最新编辑就在缓存 state 里。缓存缺失（异常）
- * 时仍 setActive，由 EditorArea 的打开流程兜底；无 view（未挂载）时静默返回。
+ * 解析。与 openFile 区别：不重读磁盘 doc——已开文件的最新编辑就在缓存 state 里。
+ *
+ * IN-05：缓存缺失时绝不翻 activePath——否则 view 仍显旧文档、activePath 已指新 path，二者失同步
+ * （下游 getDocForPath/autosave 据 activePath 取真相源会拿错 view 内容）。已打开的 tab 必有缓存，
+ * 缺失即异常，此时静默不切（保持当前文件），数据安全优先。无 view（未挂载）时静默返回。
  */
 export function switchToTab(path: string): void {
   const view = getView();
   if (!view) return;
+  const cached = cache.get(path);
+  if (!cached) return; // 缓存缺失：不换装、不翻 activePath，保 view/activePath 同步（IN-05）。
   const active = useEditorStore.getState().activePath;
   // snapshotBeforeSwitch 纯读 view.state（不撕 DOM、不 dispatch），门外同步跑——保证快照已存、数据零丢失。
   if (active && active !== path) snapshotBeforeSwitch(view, active);
-  const cached = cache.get(path);
-  if (cached) {
-    swapState(view, path, () => {
-      view.setState(cached);
-      restoreScroll(view, scrollCache.get(path) ?? 0);
-      syncRichtext(view);
-      applyRenderMode(view, path);
-    });
-  }
+  swapState(view, path, () => {
+    view.setState(cached);
+    restoreScroll(view, scrollCache.get(path) ?? 0);
+    syncRichtext(view);
+    applyRenderMode(view, path);
+    // IN-06：换装后对齐语言 diff 基线到目标文件实际语言（同 openFile，防多余/漏 reconfigure）。
+    markAppliedLanguage(view, languageFromDoc(cached.doc.toString(), path));
+  });
   useEditorStore.getState().setActive(path);
 }
 
