@@ -1,0 +1,2 @@
+patchedDependencies:
+  '@codemirror/view@6.43.1': patches/@codemirror__view@6.43.1.patch
