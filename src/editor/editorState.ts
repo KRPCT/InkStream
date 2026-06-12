@@ -97,22 +97,64 @@ function isModalActive(): boolean {
 }
 
 /**
+ * IME 安全聚焦：让程序化聚焦走 WebView2 的指针命中测试路径（EDIT-06 真因修复）。
+ *
+ * 背景（CDP 实测）：`view.focus()` 只置 DOM 焦点，但**不**触发 WebView2 内部输入焦点 →
+ * Windows TSF text store（OS IME 组合写入的目标）从未被「武装」→ 打开文件后首次中文组合
+ * 不产生 compositionstart/input，整段文本丢失（用户的临时解法是真实点击一下编辑器）。
+ *
+ * 修复：在 contentDOM 上派发一组合成 pointer/mouse 往返（pointerdown→mousedown→pointerup→
+ * mouseup）——这条路径会被 WebView2 命中测试消费，从而武装内部焦点 + TSF；随后再 view.focus()；
+ * 最后重申当前选区，抵消合成 mousedown 可能造成的光标坍缩。
+ *
+ * 纪律：重申用「同一选区」回写（view.state.selection），是个语义无变更的 selection set——
+ * 不改 doc、不触发 docChanged、不标脏、不影响每文件 state 缓存（缓存键的是整体 EditorState）。
+ */
+function imeSafeFocus(view: EditorView): void {
+  const el = view.contentDOM;
+  const r = el.getBoundingClientRect();
+  const x = r.left + Math.min(40, r.width / 2);
+  const y = r.top + Math.min(20, r.height / 2);
+  const base = {
+    bubbles: true,
+    cancelable: true,
+    composed: true,
+    clientX: x,
+    clientY: y,
+    pointerId: 1,
+    pointerType: 'mouse',
+    isPrimary: true,
+    button: 0,
+  } as PointerEventInit & MouseEventInit;
+  el.dispatchEvent(new PointerEvent('pointerdown', { ...base, buttons: 1 }));
+  el.dispatchEvent(new MouseEvent('mousedown', { ...base, buttons: 1 }));
+  el.dispatchEvent(new PointerEvent('pointerup', { ...base, buttons: 0 }));
+  el.dispatchEvent(new MouseEvent('mouseup', { ...base, buttons: 0 }));
+  view.focus();
+  // 重申（缓存/还原的）选区，以防合成 mousedown 移动了光标。同选区回写不标脏、不触 docChanged。
+  view.dispatch({ selection: view.state.selection });
+}
+
+/**
  * 打开文件后把焦点交给编辑器的 contentEditable（IME 吞字 root cause 修复，EDIT-06）。
  *
- * 背景：openFile 经 view.setState 换装文档，但**不**自动聚焦 contentEditable——首次组合
- * （中文 IME）若落在文件树/游离 input 上会被 Chromium 丢弃（首字吞字）。故换装后显式
- * view.focus()，使键击/组合直接落到编辑器。
+ * 背景：openFile 经 view.setState 换装文档，但**不**自动聚焦 contentEditable——且程序化
+ * `view.focus()` 在 WebView2 下不武装内部输入焦点/TSF（见 imeSafeFocus），首次中文组合丢字。
+ * 故换装后经 imeSafeFocus 走指针命中测试路径聚焦，使首次组合直接落到编辑器。
  *
  * 纪律：
- *   - 推迟一帧（rAF）执行：与 restoreScroll 同步，确保 setState 触发的 DOM 重排已落定、
- *     React 渲染已提交，再聚焦——绝不为聚焦 dispatch 事务（聚焦是 view 级副作用，非文档变更）。
+ *   - 双重 rAF 推迟：聚焦须落在 WebView2 完成对 setState 重建 contentDOM 的「再挂载」之后
+ *     至少一帧（单帧 rAF 不足以越过 React 提交 + WebView2 重新父化）——绝不为聚焦 dispatch
+ *     文档变更（imeSafeFocus 的同选区回写非文档变更）。
  *   - 模态活跃时跳过：不从命令面板/对话框抢焦点（isModalActive）。
  */
 function focusEditor(view: EditorView): void {
-  requestAnimationFrame(() => {
-    if (isModalActive()) return;
-    view.focus();
-  });
+  requestAnimationFrame(() =>
+    requestAnimationFrame(() => {
+      if (isModalActive()) return;
+      imeSafeFocus(view);
+    }),
+  );
 }
 
 /**
@@ -192,6 +234,9 @@ export function switchToTab(path: string): void {
     restoreScroll(view, scrollCache.get(path) ?? 0);
     syncRichtext(view);
     applyRenderMode(view, path);
+    // 切到已开 tab 也是对 setState 重建节点的程序化重聚焦——与 openFile 同享 WebView2 IME
+    // 未武装的症状，故同样经 imeSafeFocus 走指针路径聚焦（EDIT-06）。
+    focusEditor(view);
   }
   useEditorStore.getState().setActive(path);
 }

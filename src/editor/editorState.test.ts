@@ -141,11 +141,11 @@ describe('editorState 滚动位置缓存/还原（D-03）', () => {
   });
 });
 
-describe('openFile 聚焦编辑器 contentEditable（IME 吞字修复）', () => {
+describe('openFile 聚焦编辑器 contentEditable（IME 吞字修复，EDIT-06）', () => {
   beforeEach(() => {
     __clearCacheForTest();
     usePaletteStore.getState().closePalette();
-    // openFile 经 rAF 推迟聚焦：同步刷新一帧让回调立即执行（无真实事件循环）。
+    // focusEditor 经双重 rAF 推迟聚焦：同步桩让两帧回调都立即执行（无真实事件循环）。
     vi.stubGlobal('requestAnimationFrame', (cb: FrameRequestCallback) => {
       cb(0);
       return 0;
@@ -157,7 +157,7 @@ describe('openFile 聚焦编辑器 contentEditable（IME 吞字修复）', () =>
     usePaletteStore.getState().closePalette();
   });
 
-  it('openFile 在无模态时调用 view.focus()', () => {
+  it('openFile 在无模态时经双重 rAF 聚焦（imeSafeFocus 调用 view.focus）', () => {
     const view = mountView();
     const focusSpy = vi.spyOn(view, 'focus');
     openFile(view, 'focus.md', 'hello', baseExtensions());
@@ -171,6 +171,69 @@ describe('openFile 聚焦编辑器 contentEditable（IME 吞字修复）', () =>
     usePaletteStore.getState().openPalette();
     openFile(view, 'focus2.md', 'hello', baseExtensions());
     expect(focusSpy).not.toHaveBeenCalled();
+    view.destroy();
+  });
+
+  it('focusEditor 经双重 rAF 调度：第一帧未聚焦，第二帧才聚焦', () => {
+    // 自管 rAF 队列：每次 flush 只跑「当下已排入」的回调（外层跑时排入的内层留到下一帧）。
+    let queue: FrameRequestCallback[] = [];
+    vi.stubGlobal('requestAnimationFrame', (cb: FrameRequestCallback) => {
+      queue.push(cb);
+      return queue.length;
+    });
+    /** 刷一帧：执行当前已排队的回调（执行期间新排入的留待下帧）。 */
+    const flushFrame = (): void => {
+      const due = queue;
+      queue = [];
+      for (const cb of due) cb(0);
+    };
+    const view = mountView();
+    const focusSpy = vi.spyOn(view, 'focus');
+    openFile(view, 'double-raf.md', 'hello', baseExtensions());
+    // 尚未刷帧：外层 rAF（及 restoreScroll 帧）已排队，未聚焦。
+    expect(focusSpy).not.toHaveBeenCalled();
+    // 第一帧：跑外层 focusEditor → 排入内层；restoreScroll 帧也在此跑完。仍未聚焦。
+    flushFrame();
+    expect(focusSpy).not.toHaveBeenCalled();
+    // 第二帧：跑内层 → imeSafeFocus 聚焦落地。
+    flushFrame();
+    expect(focusSpy).toHaveBeenCalledTimes(1);
+    view.destroy();
+  });
+
+  it('imeSafeFocus 在 contentDOM 上派发 pointerdown/mousedown/pointerup/mouseup 后再聚焦', () => {
+    const view = mountView();
+    const seen: string[] = [];
+    for (const type of ['pointerdown', 'mousedown', 'pointerup', 'mouseup']) {
+      view.contentDOM.addEventListener(type, () => seen.push(type));
+    }
+    const focusSpy = vi.spyOn(view, 'focus');
+    openFile(view, 'pointer.md', 'hello', baseExtensions());
+    // 四个指针/鼠标事件按序在 contentDOM 上派发，且发生在 view.focus() 之前。
+    expect(seen).toEqual(['pointerdown', 'mousedown', 'pointerup', 'mouseup']);
+    expect(focusSpy).toHaveBeenCalledTimes(1);
+    view.destroy();
+  });
+
+  it('imeSafeFocus 的选区重申不改 doc、不触 docChanged（缓存安全）', () => {
+    let docChanged = false;
+    const watcher = EditorView.updateListener.of((u) => {
+      if (u.docChanged) docChanged = true;
+    });
+    const parent = document.createElement('div');
+    document.body.appendChild(parent);
+    const view = new EditorView({
+      state: EditorState.create({ doc: 'hello world', extensions: [...baseExtensions(), watcher] }),
+      parent,
+    });
+    // 给定一个非空选区（仅选区变更，不改 doc，watcher 不应被触发）。
+    view.dispatch({ selection: { anchor: 2, head: 6 } });
+    const docBefore = view.state.doc.toString();
+    // 重新打开同 path（缓存未命中走新建，但聚焦路径一致）触发 imeSafeFocus 的同选区重申。
+    openFile(view, 'reassert.md', docBefore, baseExtensions());
+    // 同选区回写不构成文档变更（不标脏、不触发 autosave）；自始至终无 docChanged。
+    expect(docChanged).toBe(false);
+    expect(view.state.doc.toString()).toBe(docBefore);
     view.destroy();
   });
 });
