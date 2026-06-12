@@ -33,10 +33,3 @@ trash = "=5.2.6"
 # 防抖文件监听（FILE-02 watcher）。内捆 notify 7.x；裸 notify 不显式 pin，
 # 经 notify_debouncer_full::notify 重导出访问类型（Pitfall 6，避免双 pin 冲突）。
 notify-debouncer-full = "=0.7.0"
-
-# WebView2 IME 内部焦点武装（EDIT-06）。Windows 专属：经 with_webview 拿 controller 后
-# 调 ICoreWebView2Controller::MoveFocus(PROGRAMMATIC) 建立 TSF text store，使首次中文组合
-# 直接落到编辑器。版本与 tauri 2.11.2 内部依赖（webview2-com 0.38.2，Cargo.lock 已锁）精确对齐，
-# 复用既有解析、不引新版本。non-windows target 不拉此依赖（命令体在该平台为 no-op）。
-[target.'cfg(windows)'.dependencies]
-webview2-com = "=0.38.2"

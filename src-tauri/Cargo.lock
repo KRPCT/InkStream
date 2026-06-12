@@ -1758,7 +1758,6 @@ dependencies = [
  "tauri-plugin-store",
  "tauri-plugin-window-state",
  "trash",
- "webview2-com",
 ]
 
 [[package]]
