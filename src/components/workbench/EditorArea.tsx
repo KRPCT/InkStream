@@ -26,8 +26,7 @@ function OpenFolderButton() {
  * EditorArea：全 App 唯一 CM6 容器 + 二态空态（UI-SPEC 逐空态表）。
  *
  * CM 容器随 App 生命周期常驻（WorkbenchLayout 五插槽永不卸载）——空态只是覆盖层，
- * useCodeMirror 始终挂载在隐藏的 parentRef 上，切 tab 走 setState 换装不重建。
- * tab 栏 / 提示条 / 工具条槽位留 02-03/02-04。
+ * useCodeMirror 始终挂载在隐藏的 parentRef 上，切 tab 走换装门（editorState）不重建。
  */
 export default function EditorArea() {
   const parentRef = useRef<HTMLDivElement | null>(null);
@@ -38,11 +37,11 @@ export default function EditorArea() {
 
   return (
     <div className="flex h-full flex-col bg-[var(--background-primary)]">
-      {/* 垂直结构：[Tab 栏 36px] → [外部变更提示条槽位 02-04] → [richtext 工具条槽位 02-04/05] → [CM 内容区] */}
+      {/* 垂直结构：[Tab 栏 36px] → [外部变更提示条] → [richtext 工具条] → [CM 内容区] */}
       {vault && hasTabs ? <EditorTabs /> : null}
-      {/* 外部变更提示条（02-04）：脏文档外部变更时插入（自身条件渲染，D-04） */}
+      {/* 外部变更提示条：脏文档外部变更时插入（自身条件渲染，D-04） */}
       <ExternalChangeBar />
-      {/* richtext 工具条（02-05）：frontmatter language=richtext 时显示（D-14，自身条件渲染） */}
+      {/* richtext 工具条：frontmatter language=richtext 时显示（D-14，自身条件渲染） */}
       <Toolbar />
       <div className="relative min-h-0 flex-1">
         {/* 单内核 DOM 挂载点：始终存在；无活动文件时由空态覆盖层遮住 */}
