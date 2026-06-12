@@ -28,9 +28,4 @@ export interface IpcCommands {
   // watcher 生命周期（切 vault 时 stop 旧 start 新）。
   start_watch: { args: { root: string }; result: null };
   stop_watch: { args: undefined; result: null };
-  // DEV-only IME 诊断落盘：单行 trace 追加到 %TEMP%/inkstream-ime-trace.log（EDIT-06）。
-  ime_trace_append: { args: { line: string }; result: null };
-  // WebView2 IME 内部输入焦点武装（EDIT-06）：原生 MoveFocus(PROGRAMMATIC) 建立 TSF。
-  // 无参；Windows 真武装、其它平台 no-op。fire-and-forget 调用，结果忽略。
-  arm_webview_ime: { args: undefined; result: null };
 }

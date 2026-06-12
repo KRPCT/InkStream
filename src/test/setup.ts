@@ -44,9 +44,8 @@ if (!('ResizeObserver' in globalThis)) {
 // ---------------------------------------------------------------------------
 // Range.getClientRects mock（jsdom 缺失；CM6 拖选命中测试 isInPrimarySelection 依赖）
 // ---------------------------------------------------------------------------
-// EDIT-06 的 imeSafeFocus 会在 contentDOM 上派发合成 mousedown 以走 WebView2 指针命中路径，
-// 该 mousedown 落到 CM6 自身的 handler，经 isInPrimarySelection 调 Range.getClientRects——jsdom
-// 未实现（真实 WebView2 正常）。补一个返回空列表的桩，免 jsdom-only layout 查询抛未捕获异常。
+// CM6 的指针命中测试（isInPrimarySelection 等）会调 Range.getClientRects——jsdom 未实现（真实
+// WebView2 正常）。补一个返回空列表的桩，免 jsdom-only layout 查询抛未捕获异常。
 {
   const rangeProto = Range.prototype as unknown as { getClientRects?: () => DOMRectList };
   if (typeof rangeProto.getClientRects !== 'function') {

@@ -1,6 +1,5 @@
 import { EditorState, type Extension } from '@codemirror/state';
 import type { EditorView } from '@codemirror/view';
-import { invoke } from '../ipc/invoke';
 import { readFile } from '../ipc/files';
 import { useEditorStore } from '../stores/useEditorStore';
 import { useVaultStore } from '../stores/useVaultStore';
@@ -9,11 +8,6 @@ import { readLanguage } from './frontmatter';
 import { languageFromDoc, markAppliedLanguage } from './languages';
 import { getView } from './viewHandle';
 import { getRenderMode, isMarkdownDoc, setRenderMode } from './livepreview/renderMode';
-import { imeTraceSmokingGun } from './livepreview/imeTrace';
-import { useConfirmStore } from '../stores/useConfirmStore';
-import { useOpenFolderStore } from '../stores/useOpenFolderStore';
-import { usePaletteStore } from '../stores/usePaletteStore';
-import { useAboutStore } from '../stores/useAboutStore';
 import type { RenderMode } from '../types/editor';
 
 /**
@@ -82,72 +76,6 @@ function restoreScroll(view: EditorView, top: number): void {
 }
 
 /**
- * 任一模态弹层是否活跃（CommandPalette / OpenFolderDialog / ConfirmDialog / AboutDialog）。
- *
- * 焦点纪律：打开文件时把焦点交给编辑器 contentEditable，但绝不从一个正打开的模态抢焦点
- * （否则用户在命令面板/对话框里的输入会被打断）。这四个 store 的活跃态即全部模态来源
- * （SettingsDialog 为内联非模态，无独立显隐 store）。
- */
-function isModalActive(): boolean {
-  return (
-    usePaletteStore.getState().open ||
-    useOpenFolderStore.getState().request !== null ||
-    useConfirmStore.getState().request !== null ||
-    useAboutStore.getState().open
-  );
-}
-
-/**
- * IME 安全聚焦：DOM 聚焦 + 原生武装 WebView2 内部输入焦点 / TSF（EDIT-06 真因修复）。
- *
- * 背景（CDP 实测）：`view.focus()` 只置 DOM 焦点，且合成（isTrusted=false）pointer/mouse
- * 往返**都不**触发 WebView2 内部输入焦点 → Windows TSF text store（OS IME 组合写入的目标）
- * 从未被「武装」→ 打开文件后首次中文组合不产生 compositionstart/input，整段文本丢失
- * （用户的临时解法是真实点击一下编辑器）。合成指针路径实测无效，已移除。
- *
- * 修复：
- *   1. `view.focus()` 先置 DOM 焦点到 contentEditable（落光标）；
- *   2. 重申当前选区，抵消任何潜在光标坍缩；
- *   3. fire-and-forget `invoke('arm_webview_ime')`——原生侧经 with_webview 调
- *      `ICoreWebView2Controller::MoveFocus(PROGRAMMATIC)`，为已聚焦元素武装 TSF。
- *      DOM 焦点须先落，原生 MoveFocus 后发，TSF 才锚到正确元素。
- *
- * 纪律：
- *   - 重申用「同一选区」回写（view.state.selection），是个语义无变更的 selection set——
- *     不改 doc、不触发 docChanged、不标脏、不影响每文件 state 缓存（缓存键的是整体 EditorState）。
- *   - 原生 invoke fire-and-forget 且吞错：IME 武装绝不阻塞或拖垮打开流程；非 Windows 为 no-op。
- */
-function imeSafeFocus(view: EditorView): void {
-  view.focus();
-  // 重申（缓存/还原的）选区。同选区回写不标脏、不触 docChanged。
-  view.dispatch({ selection: view.state.selection });
-  // 原生武装 WebView2/TSF：DOM 焦点已落，此处 MoveFocus(PROGRAMMATIC) 为该元素建立内部输入焦点。
-  void invoke('arm_webview_ime', undefined).catch(() => {});
-}
-
-/**
- * 打开文件后把焦点交给编辑器的 contentEditable（IME 吞字 root cause 修复，EDIT-06）。
- *
- * 背景：openFile 经 view.setState 换装文档，但**不**自动聚焦 contentEditable——且程序化
- * `view.focus()` 在 WebView2 下不武装内部输入焦点/TSF（见 imeSafeFocus），首次中文组合丢字。
- * 故换装后经 imeSafeFocus 走指针命中测试路径聚焦，使首次组合直接落到编辑器。
- *
- * 纪律：
- *   - 双重 rAF 推迟：聚焦须落在 WebView2 完成对 setState 重建 contentDOM 的「再挂载」之后
- *     至少一帧（单帧 rAF 不足以越过 React 提交 + WebView2 重新父化）——绝不为聚焦 dispatch
- *     文档变更（imeSafeFocus 的同选区回写非文档变更）。
- *   - 模态活跃时跳过：不从命令面板/对话框抢焦点（isModalActive）。
- */
-function focusEditor(view: EditorView): void {
-  requestAnimationFrame(() =>
-    requestAnimationFrame(() => {
-      if (isModalActive()) return;
-      imeSafeFocus(view);
-    }),
-  );
-}
-
-/**
  * 把当前 view 的 richtext 态镜像到 store（D-14 工具条显隐）。
  *
  * 单向：CM doc 头部 frontmatter language === 'richtext' → store.isRichtext。
@@ -168,18 +96,15 @@ export function syncRichtext(view: EditorView): void {
  * 换装后回填该 path 的滚动位置（缓存有则还原，无则置 0），实现 D-03 滚动位置恢复。
  */
 export function openFile(view: EditorView, path: string, doc: string, ext: Extension): void {
-  // 冒烟枪（EDIT-06 诊断）：组合期 view.setState 会 destroy/重建 contentDOM 文本节点 → 撕掉 IME 锚定
-  // 节点 → Chromium 中止组合（吞字 root cause）。autosave/setState 组合期门（3507f22）+ externalChange
-  // 的 deferReplayAfterComposition 应已挡住所有组合期 setState；此处 DEV warn 是该门若仍泄漏的直接证据。
-  if (view.composing) imeTraceSmokingGun('openFile/setState', { path });
   const cached = cache.get(path);
   const state = cached ?? EditorState.create({ doc, extensions: ext });
   view.setState(state);
   restoreScroll(view, scrollCache.get(path) ?? 0);
   syncRichtext(view);
   applyRenderMode(view, path);
-  // 换装后把焦点交给 contentEditable：首次 IME 组合直接落到编辑器而非游离 input（吞字修复）。
-  focusEditor(view);
+  // 焦点纪律：不程序化抢焦点。WebView2 只在「真实指针进入编辑器」时武装 OS IME/TSF，
+  // 任何 programmatic 聚焦（view.focus / MoveFocus / EditContext）都不武装中文输入（真机 CDP 证）；
+  // auto-focus 给的假光标反而诱导首次中文组合丢字。故由用户点击编辑器自然落焦（见 CONSTRAINTS §8）。
 }
 
 /**
@@ -192,10 +117,6 @@ export function openFile(view: EditorView, path: string, doc: string, ext: Exten
 export async function reloadFromDisk(path: string): Promise<void> {
   const vault = useVaultStore.getState().vault;
   const view = getView();
-  // 冒烟枪（EDIT-06）：reload 经 openFile→view.setState 撕 DocView。externalChange 的
-  // deferReplayAfterComposition 应已把组合期 reload 推迟到 compositionend；若此处仍在组合期被调到，
-  // 说明推迟门泄漏——DEV warn 直接抓现行。
-  if (view?.composing) imeTraceSmokingGun('reloadFromDisk', { path });
   cache.delete(path);
   scrollCache.delete(path);
   if (!vault || !view) return;
@@ -224,9 +145,6 @@ export function switchToTab(path: string): void {
     restoreScroll(view, scrollCache.get(path) ?? 0);
     syncRichtext(view);
     applyRenderMode(view, path);
-    // 切到已开 tab 也是对 setState 重建节点的程序化重聚焦——与 openFile 同享 WebView2 IME
-    // 未武装的症状，故同样经 imeSafeFocus 走指针路径聚焦（EDIT-06）。
-    focusEditor(view);
   }
   useEditorStore.getState().setActive(path);
 }

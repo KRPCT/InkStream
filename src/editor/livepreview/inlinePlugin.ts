@@ -1,5 +1,5 @@
 import { syntaxTree } from '@codemirror/language';
-import { type Range, RangeSetBuilder, Transaction } from '@codemirror/state';
+import { type Range, RangeSetBuilder } from '@codemirror/state';
 import {
   Decoration,
   type DecorationSet,
@@ -23,7 +23,6 @@ import { TaskCheckboxWidget } from './widgets/TaskCheckboxWidget';
 import { useVaultStore } from '../../stores/useVaultStore';
 import { useEditorStore } from '../../stores/useEditorStore';
 import { isFrozen, refreshLivePreview } from './composingGuard';
-import { imeTrace } from './imeTrace';
 
 /**
  * 行内层 ViewPlugin（EDIT-03 / RESEARCH Pattern 1，三层范式的行内脊柱）。
@@ -310,23 +309,6 @@ const inlineTheme = EditorView.theme({
   },
 });
 
-/**
- * 主选区 head 所在行当前是否落有任一行内装饰（EDIT-06 诊断：Option 2 是否真把合成行置空）。
- *
- * 在 [line.from, line.to] 内探测 deco：若组合行仍残留装饰（淡显/隐藏/widget），即说明活动行
- * 纯源码契约破防——正是吞字根因 B 的现行证据。无装饰区间则返回 false（契约保住）。
- */
-function activeLineHasDeco(deco: DecorationSet, view: EditorView): boolean {
-  const { state } = view;
-  const line = state.doc.lineAt(state.selection.main.head);
-  let has = false;
-  deco.between(line.from, line.to, () => {
-    has = true;
-    return false; // 命中一个即可短路。
-  });
-  return has;
-}
-
 /** 行内层 ViewPlugin 类：持 decorations，组合期 freeze+map、非组合期重建（active-line 纯源码契约不变）。 */
 class InlinePluginValue {
   decorations: DecorationSet;
@@ -351,16 +333,6 @@ class InlinePluginValue {
     if (!refreshed && (u.view.composing || isFrozen(u.view))) {
       if (u.docChanged) this.decorations = this.decorations.map(u.changes);
       // 纯选区变化的组合事务：保持当前装饰不动（不重建、无可 map 的 changes）。
-      imeTrace('inlinePlugin', {
-        path: 'MAP',
-        composing: u.view.composing,
-        docChanged: u.docChanged,
-        selectionSet: u.selectionSet,
-        userEvent:
-          u.transactions.map((t) => t.annotation(Transaction.userEvent)).find(Boolean) ?? null,
-        activeLineHasDeco: activeLineHasDeco(this.decorations, u.view),
-        docLen: u.state.doc.length,
-      });
       return;
     }
 
@@ -368,15 +340,6 @@ class InlinePluginValue {
     // selectionSet 触发重建使活动行集随主选区移动；refreshLivePreview 强刷亦在此重建一次。
     if (u.docChanged || u.viewportChanged || u.selectionSet || refreshed) {
       this.decorations = buildInlineDecorations(u.view);
-      imeTrace('inlinePlugin', {
-        path: 'REBUILD',
-        composing: u.view.composing,
-        docChanged: u.docChanged,
-        selectionSet: u.selectionSet,
-        refreshed,
-        activeLineHasDeco: activeLineHasDeco(this.decorations, u.view),
-        docLen: u.state.doc.length,
-      });
     }
   }
 }

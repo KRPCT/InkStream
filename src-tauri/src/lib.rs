@@ -1,6 +1,4 @@
 mod files;
-mod ime_focus;
-mod ime_trace;
 mod path_guard;
 mod vault;
 mod watcher;
@@ -27,13 +25,9 @@ pub fn run() {
             files::move_path,
             files::trash_path,
             watcher::start_watch,
-            watcher::stop_watch,
-            ime_trace::ime_trace_append,
-            ime_focus::arm_webview_ime
+            watcher::stop_watch
         ])
         .setup(|app| {
-            // EDIT-06 诊断：清空本会话 IME trace 文件并打印其绝对路径（DEV-only，release no-op）。
-            ime_trace::init_session();
             // watcher 单例状态注册（切 vault 时 start/stop_watch 经此句柄换装）。
             watcher::init(app);
             // D-04 离屏兜底：window-state 插件先于 setup 恢复几何，
