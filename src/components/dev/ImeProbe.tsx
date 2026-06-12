@@ -1,27 +1,19 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef } from 'react';
+import ProbeZone from './ProbeZone';
+import { ZONES } from './imeProbeZones';
 import { useImeProbeStore } from './useImeProbeStore';
 
 /**
- * IME 输入探针（R2 go/no-go 实验，dev-only 覆盖面板）。
- * 三个并排受试区：程序化聚焦的 <textarea>（判定门）、<input>、对照组 contentEditable <div>。
- * 每区实时事件日志（最近 20 条 composition/input/keydown），日志面板防误触不夺焦。
- * 受试区切换全程程序化转焦——禁止用户点受试区本身（点了即污染实验）。
- * 零侵入：不接任何生产输入路径，探针代码集中 dev/ 目录便于整体删除。
+ * IME 输入探针「一轮二分定位器」（R2，dev-only 覆盖面板）。
+ *
+ * 8 受试区 A–H 从「裸 div / textarea 基线」单调爬升到「CM6 完整 baseExtensions」，每区只比前一区多挂一层
+ * 嫌疑物（属性/样式/扩展）。用户打一轮拼音即可锁定第一个失效的区——那一层就是罪魁。
+ *
+ * 纪律：区间切换走「转焦」按钮程序化转焦（不要点击输入区本身污染实验）；但 CM 区是例外——既要测程序化
+ * 聚焦、又要测真实点击两条路径，故 CM 区额外允许「也可直接点击」（说明里写清先转焦打一次、再点击打一次）。
+ *
+ * 整体 DEV-only：App.tsx 单点 `import.meta.env.DEV && <ImeProbe />` 门控；探针代码全集中 dev/，可整目录删。
  */
-
-type Zone = 'textarea' | 'input' | 'div';
-
-interface LogEntry {
-  seq: number;
-  type: string;
-  detail: string;
-}
-
-const ZONES: { id: Zone; label: string }[] = [
-  { id: 'textarea', label: 'textarea（程序化聚焦·判定门）' },
-  { id: 'input', label: 'input（程序化聚焦）' },
-  { id: 'div', label: 'contentEditable（对照组·预期失效）' },
-];
 
 export default function ImeProbe() {
   const open = useImeProbeStore((s) => s.open);
@@ -29,40 +21,41 @@ export default function ImeProbe() {
   return <ImeProbePanel />;
 }
 
-/** 单受试区的事件日志：返回 push 回调与最近 20 条快照。 */
-function useEventLog(): { entries: LogEntry[]; push: (type: string, detail: string) => void } {
-  const seqRef = useRef(0);
-  const [entries, setEntries] = useState<LogEntry[]>([]);
-  const push = useCallback((type: string, detail: string) => {
-    setEntries((prev) => [{ seq: (seqRef.current += 1), type, detail }, ...prev].slice(0, 20));
-  }, []);
-  return { entries, push };
-}
-
 function ImeProbePanel() {
   const close = useImeProbeStore((s) => s.close);
-  const [active, setActive] = useState<Zone>('textarea');
-  const refs = useRef<Record<Zone, HTMLElement | null>>({ textarea: null, input: null, div: null });
+  const refs = useRef<Record<string, HTMLElement | null>>({});
 
-  // 挂载即程序化聚焦 textarea（这正是要测的：程序化聚焦下 textarea 是否武装 IME）。
+  // 挂载即程序化转焦到 A 区（基线判定门：程序化聚焦下 textarea 是否武装 IME）。
   useEffect(() => {
-    refs.current.textarea?.focus();
+    refs.current.A?.focus();
   }, []);
 
-  const focusZone = useCallback((zone: Zone) => {
-    setActive(zone);
-    refs.current[zone]?.focus();
+  // 每区一个稳定的 register 回调（按 id 记忆）——绝不每渲染新建，否则会反复重挂 ProbeZone 的 effect
+  // （重建 throwaway EditorView，污染日志）。ZONES 是模块级常量，registrars 一次性建好即定。
+  const registrars = useMemo(() => {
+    const map: Record<string, (el: HTMLElement | null) => void> = {};
+    for (const z of ZONES) {
+      map[z.id] = (el) => {
+        refs.current[z.id] = el;
+      };
+    }
+    return map;
+  }, []);
+
+  const focusZone = useCallback((id: string) => {
+    refs.current[id]?.focus();
   }, []);
 
   return (
     <div
       role="dialog"
       aria-label="IME 输入探针"
-      className="fixed inset-x-0 top-0 z-[9999] flex flex-col gap-3 border-b border-[var(--background-modifier-border)] bg-[var(--background-primary)] p-4 [box-shadow:var(--shadow-popup)]"
+      className="fixed inset-0 z-[9999] flex flex-col gap-3 overflow-auto border-b border-[var(--background-modifier-border)] bg-[var(--background-primary)] p-4 [box-shadow:var(--shadow-popup)]"
     >
       <div className="flex items-start justify-between gap-4">
         <p className="text-[13px] leading-snug font-bold text-[var(--text-normal)]">
-          实验步骤：打开后直接打拼音「测试」与连续「咕咕咕」，不要点击输入区。切换受试区只用下方按钮。
+          每区先用按钮转焦打一次拼音，再直接点击该区打一次；记录每区两种路径下中文能否上屏。区间切换默认只用
+          下方「转焦」按钮（不要点击输入区本身）——CM 区例外：标注「也可直接点击」，两条路径都要各打一次。
         </p>
         <button
           type="button"
@@ -73,113 +66,24 @@ function ImeProbePanel() {
         </button>
       </div>
 
-      <div className="flex gap-2">
+      <div className="flex flex-wrap gap-2">
         {ZONES.map((z) => (
           <button
             key={z.id}
             type="button"
-            data-active={active === z.id}
             onClick={() => focusZone(z.id)}
-            className="cursor-pointer rounded-[6px] border border-[var(--background-modifier-border)] px-2 py-1 text-[12px] text-[var(--text-normal)] data-[active=true]:border-[var(--interactive-accent)] data-[active=true]:text-[var(--interactive-accent)]"
+            className="cursor-pointer rounded-[6px] border border-[var(--background-modifier-border)] px-2 py-1 text-[12px] text-[var(--text-normal)] hover:border-[var(--interactive-accent)] hover:text-[var(--interactive-accent)]"
           >
-            转焦到 {z.label}
+            转焦到 {z.id}
           </button>
         ))}
       </div>
 
-      <div className="grid grid-cols-3 gap-4">
+      <div className="grid grid-cols-4 gap-4">
         {ZONES.map((z) => (
-          <ProbeZone
-            key={z.id}
-            zone={z.id}
-            label={z.label}
-            register={(el) => {
-              refs.current[z.id] = el;
-            }}
-          />
+          <ProbeZone key={z.id} spec={z} register={registrars[z.id]} />
         ))}
       </div>
-    </div>
-  );
-}
-
-interface ProbeZoneProps {
-  zone: Zone;
-  label: string;
-  register: (el: HTMLElement | null) => void;
-}
-
-function ProbeZone({ zone, label, register }: ProbeZoneProps) {
-  const { entries, push } = useEventLog();
-
-  const onComposition = (e: React.CompositionEvent) => push(e.type, `data=${JSON.stringify(e.data)}`);
-  const onInput = (e: React.FormEvent) => {
-    const native = e.nativeEvent as InputEvent;
-    push('input', `data=${JSON.stringify(native.data)} isComposing=${native.isComposing}`);
-  };
-  const onKeyDown = (e: React.KeyboardEvent) =>
-    push('keydown', `key=${e.key} isComposing=${e.nativeEvent.isComposing}`);
-
-  const fieldClass =
-    'w-full rounded-[6px] border border-[var(--background-modifier-border)] bg-[var(--background-secondary)] px-2 py-1 text-[13px] text-[var(--text-normal)] outline-none';
-
-  return (
-    <div className="flex flex-col gap-2">
-      <p className="text-[12px] font-semibold text-[var(--text-muted)]">{label}</p>
-      {zone === 'textarea' && (
-        <textarea
-          ref={register as (el: HTMLTextAreaElement | null) => void}
-          aria-label="textarea 受试区"
-          rows={2}
-          className={fieldClass}
-          onCompositionStart={onComposition}
-          onCompositionUpdate={onComposition}
-          onCompositionEnd={onComposition}
-          onInput={onInput}
-          onKeyDown={onKeyDown}
-        />
-      )}
-      {zone === 'input' && (
-        <input
-          ref={register as (el: HTMLInputElement | null) => void}
-          type="text"
-          aria-label="input 受试区"
-          className={fieldClass}
-          onCompositionStart={onComposition}
-          onCompositionUpdate={onComposition}
-          onCompositionEnd={onComposition}
-          onInput={onInput}
-          onKeyDown={onKeyDown}
-        />
-      )}
-      {zone === 'div' && (
-        <div
-          ref={register as (el: HTMLDivElement | null) => void}
-          role="textbox"
-          aria-label="contentEditable 受试区"
-          contentEditable
-          suppressContentEditableWarning
-          tabIndex={0}
-          className={`min-h-[2.5rem] ${fieldClass}`}
-          onCompositionStart={onComposition}
-          onCompositionUpdate={onComposition}
-          onCompositionEnd={onComposition}
-          onInput={onInput}
-          onKeyDown={onKeyDown}
-        />
-      )}
-      <ul
-        aria-label={`${label} 事件日志`}
-        // 防误触：点日志不夺焦（preventDefault 阻止 mousedown 转移焦点，保护实验）。
-        onMouseDown={(e) => e.preventDefault()}
-        className="h-32 overflow-auto rounded-[6px] border border-[var(--background-modifier-border)] bg-[var(--background-primary)] p-1 font-mono text-[11px] text-[var(--text-muted)]"
-      >
-        {entries.map((entry) => (
-          <li key={entry.seq}>
-            {entry.type} · {entry.detail}
-          </li>
-        ))}
-      </ul>
     </div>
   );
 }

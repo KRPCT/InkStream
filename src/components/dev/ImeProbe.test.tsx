@@ -1,11 +1,20 @@
-import { fireEvent, render, screen } from '@testing-library/react';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { act, fireEvent, render, screen } from '@testing-library/react';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { EditorView } from '@codemirror/view';
 import { getAll } from '../../commands/registry';
 import ImeProbe from './ImeProbe';
 import { registerImeProbeCommand } from './imeProbeCommand';
+import { ZONES } from './imeProbeZones';
 import { useImeProbeStore } from './useImeProbeStore';
 
-describe('ImeProbe', () => {
+/**
+ * R2「一轮二分定位器」探针回归门。
+ *
+ * jsdom 不驱动真实 IME（无 view.composing / TSF），故本套不验「中文能否上屏」（那是手动 Windows+WebView2
+ * 验收）；只锁工程契约：8 区全渲染、CM 区挂载即 EditorView 实例存在、卸载 destroy 被调、日志记录事件。
+ */
+
+describe('ImeProbe（8 区二分定位器）', () => {
   beforeEach(() => {
     useImeProbeStore.setState({ open: false });
   });
@@ -16,84 +25,119 @@ describe('ImeProbe', () => {
 
   it('面板关闭时不渲染任何受试区', () => {
     render(<ImeProbe />);
-    expect(screen.queryByLabelText('textarea 受试区')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('A 受试区')).not.toBeInTheDocument();
   });
 
-  it('打开后挂载即程序化聚焦 textarea（document.activeElement）', () => {
+  it('打开后 8 个受试区 A–H 全渲染', () => {
     useImeProbeStore.setState({ open: true });
     render(<ImeProbe />);
-    const textarea = screen.getByLabelText('textarea 受试区');
-    expect(document.activeElement).toBe(textarea);
+    expect(ZONES).toHaveLength(8);
+    for (const z of ZONES) {
+      expect(screen.getByLabelText(`${z.id} 区事件日志`)).toBeInTheDocument();
+    }
+    // A=textarea、B/C=contentEditable、D–H=CM6（容器内 .cm-editor）
+    expect(screen.getByLabelText('A 受试区').tagName).toBe('TEXTAREA');
+    expect(screen.getByLabelText('B 受试区')).toHaveAttribute('contenteditable', 'true');
+    expect(screen.getByLabelText('C 受试区')).toHaveAttribute('contenteditable', 'true');
   });
 
-  it('三个并排受试区均渲染：textarea / input / contentEditable', () => {
+  it('C 区照抄 CM6 .cm-content 全套属性（来源 view@6.43.1 updateAttrs）', () => {
     useImeProbeStore.setState({ open: true });
     render(<ImeProbe />);
-    expect(screen.getByLabelText('textarea 受试区').tagName).toBe('TEXTAREA');
-    expect(screen.getByLabelText('input 受试区')).toHaveAttribute('type', 'text');
-    expect(screen.getByLabelText('contentEditable 受试区')).toHaveAttribute('contenteditable', 'true');
+    const c = screen.getByLabelText('C 受试区');
+    expect(c).toHaveAttribute('role', 'textbox');
+    expect(c).toHaveAttribute('aria-multiline', 'true');
+    expect(c).toHaveAttribute('spellcheck', 'false');
+    expect(c).toHaveAttribute('autocorrect', 'off');
+    expect(c).toHaveAttribute('autocapitalize', 'off');
+    expect(c).toHaveAttribute('translate', 'no');
+    expect(c).toHaveAttribute('writingsuggestions', 'false');
+    expect(c.className).toContain('cm-content');
+    expect(c.className).toContain('cm-lineWrapping');
   });
 
-  it('事件日志记录 composition 事件（start/update/end + data）', () => {
+  it('CM 区（D–H）挂载即各持一个真实 EditorView 实例', () => {
+    useImeProbeStore.setState({ open: true });
+    const { container } = render(<ImeProbe />);
+    const cmZones = ZONES.filter((z) => z.kind === 'cm');
+    expect(cmZones).toHaveLength(5);
+    // 每个 CM 区容器内恰好一个 .cm-editor（throwaway EditorView 已挂入 contentDOM）
+    expect(container.querySelectorAll('.cm-editor')).toHaveLength(cmZones.length);
+    expect(container.querySelectorAll('.cm-content')).toHaveLength(
+      // C 区也带 cm-content class（照抄），故 = CM 区数 + 1
+      cmZones.length + 1,
+    );
+  });
+
+  it('卸载时每个 throwaway EditorView 的 destroy 都被调用', () => {
+    const destroySpy = vi.spyOn(EditorView.prototype, 'destroy');
+    useImeProbeStore.setState({ open: true });
+    const { unmount } = render(<ImeProbe />);
+    const before = destroySpy.mock.calls.length;
+    act(() => unmount());
+    const cmCount = ZONES.filter((z) => z.kind === 'cm').length;
+    expect(destroySpy.mock.calls.length - before).toBeGreaterThanOrEqual(cmCount);
+    destroySpy.mockRestore();
+  });
+
+  it('事件日志记录 composition 事件（捕获阶段，带 data）', () => {
     useImeProbeStore.setState({ open: true });
     render(<ImeProbe />);
-    const textarea = screen.getByLabelText('textarea 受试区');
-    const log = screen.getByLabelText(/textarea.*事件日志/);
-
+    const textarea = screen.getByLabelText('A 受试区');
     fireEvent.compositionStart(textarea, { data: '' });
     fireEvent.compositionUpdate(textarea, { data: 'ce' });
     fireEvent.compositionEnd(textarea, { data: '测试' });
-
+    const log = screen.getByLabelText('A 区事件日志');
     expect(log.textContent).toContain('compositionstart');
     expect(log.textContent).toContain('compositionupdate');
     expect(log.textContent).toContain('compositionend');
     expect(log.textContent).toContain('测试');
   });
 
-  it('keydown 日志记录 isComposing（IME 防误触判据可见）', () => {
+  it('keydown 日志记录 isComposing（IME 判据可见）', () => {
     useImeProbeStore.setState({ open: true });
     render(<ImeProbe />);
-    const textarea = screen.getByLabelText('textarea 受试区');
+    const textarea = screen.getByLabelText('A 受试区');
     fireEvent.keyDown(textarea, { key: 'a', isComposing: true });
-    expect(screen.getByLabelText(/textarea.*事件日志/).textContent).toContain('isComposing=true');
+    expect(screen.getByLabelText('A 区事件日志').textContent).toContain('isComposing=true');
+  });
+
+  it('日志只保留最近 10 条', () => {
+    useImeProbeStore.setState({ open: true });
+    render(<ImeProbe />);
+    const textarea = screen.getByLabelText('A 受试区');
+    for (let i = 0; i < 15; i += 1) {
+      fireEvent.keyDown(textarea, { key: String(i), isComposing: false });
+    }
+    expect(screen.getByLabelText('A 区事件日志').querySelectorAll('li')).toHaveLength(10);
   });
 
   it('日志面板防误触：mousedown 被 preventDefault（点击不夺焦）', () => {
     useImeProbeStore.setState({ open: true });
     render(<ImeProbe />);
-    const log = screen.getByLabelText(/textarea.*事件日志/);
-    const ev = fireEvent.mouseDown(log);
-    expect(ev).toBe(false); // preventDefault 已调用，fireEvent 返回 false
+    const ev = fireEvent.mouseDown(screen.getByLabelText('A 区事件日志'));
+    expect(ev).toBe(false);
   });
 
-  it('转焦按钮程序化切换焦点到对应受试区', () => {
+  it('转焦按钮程序化聚焦到对应受试区（A 区 textarea）', () => {
     useImeProbeStore.setState({ open: true });
     render(<ImeProbe />);
-    fireEvent.click(screen.getByText(/转焦.*input/));
-    expect(document.activeElement).toBe(screen.getByLabelText('input 受试区'));
-  });
-
-  it('日志只保留最近 20 条', () => {
-    useImeProbeStore.setState({ open: true });
-    render(<ImeProbe />);
-    const textarea = screen.getByLabelText('textarea 受试区');
-    for (let i = 0; i < 25; i += 1) {
-      fireEvent.keyDown(textarea, { key: String(i), isComposing: false });
-    }
-    const items = screen.getByLabelText(/textarea.*事件日志/).querySelectorAll('li');
-    expect(items.length).toBe(20);
+    // 先把焦点移走，再点转焦按钮验证程序化转焦生效。
+    (document.activeElement as HTMLElement | null)?.blur();
+    fireEvent.click(screen.getByText('转焦到 A'));
+    expect(document.activeElement).toBe(screen.getByLabelText('A 受试区'));
   });
 });
 
-describe('registerImeProbeCommand', () => {
-  it('DEV 下注册 dev.ime-probe 命令，dispose 后注销', () => {
+describe('registerImeProbeCommand（生产命令集不漂移）', () => {
+  it('DEV 下注册唯一 dev.ime-probe 命令，标题文案不变，dispose 后注销', () => {
     expect(import.meta.env.DEV).toBe(true);
     const dispose = registerImeProbeCommand();
-    expect(getAll().some((c) => c.id === 'dev.ime-probe')).toBe(true);
-    const cmd = getAll().find((c) => c.id === 'dev.ime-probe');
-    expect(cmd?.title).toBe('开发：IME 输入探针');
+    const probes = getAll().filter((c) => c.id === 'dev.ime-probe');
+    expect(probes).toHaveLength(1);
+    expect(probes[0].title).toBe('开发：IME 输入探针');
 
-    cmd?.run();
+    probes[0].run();
     expect(useImeProbeStore.getState().open).toBe(true);
 
     dispose();
