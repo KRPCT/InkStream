@@ -9,18 +9,19 @@ import { inlinePlugin } from './inlinePlugin';
 import { compositionGate, refreshLivePreview } from '../composition';
 
 /**
- * 行内层 ViewPlugin 回归门（EDIT-03 / RESEARCH Pattern 1，EDIT-06 Option 2）。
+ * 行内层 ViewPlugin 回归门（EDIT-03 / RESEARCH Pattern 1，EDIT-06 Option 2 + F4 错位根治）。
  *
  * 断言：
  *   1. 渲染态（非活动行）：`# H1` 标记 `# ` 被隐藏装饰（cm-ink-hidden）+ 标题行得字号 class（cm-ink-h1）；
- *   2. 活动行整行纯源码（Option 2 契约）：与主选区相交的行**零行内装饰**（无 hidden / 无 faint / 无 replace），
- *      该行渲染为单个与 doc 切片逐字节相等的文本节点（findCompositionRange 文本相等闸门的硬前提）；
- *      同一元素移出活动行后恢复 hidden + widget 渲染；多行选区相交的所有行均纯源码；
+ *   2. 活动行契约（F4 修正后精确化）：与主选区相交的行**零 mark/replace/widget**（无 hidden / 无 faint /
+ *      无 replace），文本节点与 doc 切片逐字节相等（findCompositionRange 文本相等闸门的硬前提）；但**可有
+ *      行级 line decoration**（标题字号 cm-ink-hN / 引用竖条 cm-ink-quote——只加 class、不动文本，行高稳定，
+ *      根治 39px↔27px 塌缩重排错位，Typora 同款）。同一元素移出活动行后恢复 hidden + widget 渲染；
  *   3. 规范重建：docChanged / selectionSet 时装饰无条件重建（不再有 IME 冻结/映射闸门——
  *      CM6 6.43.1 内置合成保护，组合期 docChange 照常重建，selectionSet 驱动活动行集随光标移动）；
  *   4. 性能纪律 + 无硬编码色：源文件含 visibleRanges/RangeSetBuilder，无 # 十六进制色。
  *
- * 注：jsdom 不复现真实 IME，本套只锁「活动行纯源码」契约；EDIT-06 真验收为手动
+ * 注：jsdom 不复现真实 IME，本套只锁「活动行零 mark/replace/widget」契约；EDIT-06 真验收为手动
  * Windows+WebView2 拼音测试（咕咕咕 + 长句 + 跨装饰）。
  */
 
@@ -92,21 +93,26 @@ describe('inlinePlugin 渲染态', () => {
   });
 });
 
-describe('inlinePlugin 活动行整行纯源码（EDIT-06 Option 2，Typora/Obsidian 级契约）', () => {
+describe('inlinePlugin 活动行契约（EDIT-06 Option 2 + F4：零 mark/replace/widget，可有 line decoration）', () => {
   /** 取落在某行 [from,to) 字节区间内的装饰（行级 line 装饰起止相等于 line.from，亦计入）。 */
   function decosOnLine(v: EditorView, lineNo: number): ReturnType<typeof collectDecos> {
     const line = v.state.doc.line(lineNo);
     return collectDecos(v).filter((d) => d.from >= line.from && d.from <= line.to);
   }
 
-  it('光标在 `**bold**` 行 → 该行零装饰（无 hidden / 无 faint / 无 replace，纯源码）；移出后标记隐藏 + 加粗渲染', () => {
+  /** 取某行的 mark/replace/widget 装饰（line decoration 起止相等于 line.from，from===to，故排除之）。 */
+  function inlineDecosOnLine(v: EditorView, lineNo: number): ReturnType<typeof collectDecos> {
+    return decosOnLine(v, lineNo).filter((d) => d.from !== d.to);
+  }
+
+  it('光标在 `**bold**` 行 → 该行零 mark/replace/widget（无行级装饰可言，纯源码）；移出后标记隐藏 + 加粗渲染', () => {
     view = lpView('**bold**\n\n尾');
     // 光标移到末行：第一行非活动 → 两侧 `**` 隐藏（cm-ink-hidden），加粗内容渲染。
     view.dispatch({ selection: EditorSelection.cursor(view.state.doc.length) });
     const rendered = decosOnLine(view, 1);
     expect(rendered.filter((d) => d.class === 'cm-ink-hidden').length).toBeGreaterThanOrEqual(2);
 
-    // 光标移回加粗行内（pos 2）：整行纯源码——零行内装饰，且绝无残留 faint 类。
+    // 光标移回加粗行内（pos 2）：该行无 line decoration，故整行零装饰；绝无残留 faint 类。
     view.dispatch({ selection: EditorSelection.cursor(2) });
     const active = decosOnLine(view, 1);
     expect(active.length).toBe(0);
@@ -115,7 +121,7 @@ describe('inlinePlugin 活动行整行纯源码（EDIT-06 Option 2，Typora/Obsi
     expect(active.some((d) => d.widget)).toBe(false);
   });
 
-  it('光标在标题行 → 该行零装饰（无 cm-ink-h1 行级 class、无 hidden）；移出后字号 class + 标记隐藏复现', () => {
+  it('光标在标题行 → 保留 cm-ink-hN line decoration（行高稳定）但零 mark/replace/widget（`# ` 可见、不隐藏）', () => {
     view = lpView('# H1\n\n正文');
     // 光标在末行：标题行非活动 → 得 cm-ink-h1 + `# ` 隐藏。
     view.dispatch({ selection: EditorSelection.cursor(view.state.doc.length) });
@@ -123,15 +129,17 @@ describe('inlinePlugin 活动行整行纯源码（EDIT-06 Option 2，Typora/Obsi
     expect(rendered.some((d) => d.class?.includes('cm-ink-h1'))).toBe(true);
     expect(rendered.some((d) => d.class === 'cm-ink-hidden')).toBe(true);
 
-    // 光标移回标题行（pos 2）：整行纯源码，连行级字号 class 都不发（纯文本节点 == doc 切片）。
+    // 光标移回标题行（pos 2，活动）：保留行级字号 class（F4 错位根治），但 `# ` 标记不再隐藏、无任何 mark/replace。
     view.dispatch({ selection: EditorSelection.cursor(2) });
     const active = decosOnLine(view, 1);
-    expect(active.length).toBe(0);
+    expect(active.some((d) => d.class === 'cm-ink-h1' && d.from === d.to)).toBe(true); // line deco 保留
+    expect(inlineDecosOnLine(view, 1).length).toBe(0); // 零 mark/replace/widget
+    expect(active.some((d) => d.class === 'cm-ink-hidden')).toBe(false); // `# ` 可见
   });
 
-  it('链接 `[**x**](u)` 行活动 → 整行零装饰（链接括号/URL/内层 `**` 一律不发，无 faint 残留）', () => {
+  it('链接 `[**x**](u)` 行活动 → 零 mark/replace/widget（链接括号/URL/内层 `**` 一律不发，无 faint 残留）', () => {
     view = lpView('[**x**](https://x.com)\n\n尾');
-    // 光标移入链接行（pos 3）：整行纯源码。
+    // 光标移入链接行（pos 3）：该行无 line decoration，整行纯源码。
     view.dispatch({ selection: EditorSelection.cursor(3) });
     const active = decosOnLine(view, 1);
     expect(active.length).toBe(0);
@@ -139,22 +147,26 @@ describe('inlinePlugin 活动行整行纯源码（EDIT-06 Option 2，Typora/Obsi
     expect(active.some((d) => d.class === 'cm-ink-hidden')).toBe(false);
   });
 
-  it('多行选区 → 所有相交行均纯源码（零装饰），选区外行仍渲染', () => {
+  it('多行选区 → 所有相交行零 mark/replace/widget，标题行仍保 cm-ink-hN line decoration，选区外行仍渲染', () => {
     view = lpView('# H1\n**b**\n## H2\n\n尾');
-    // 选区从第 1 行起跨到第 3 行（## H2 内）：第 1-3 行全活动 → 全纯源码。
+    // 选区从第 1 行起跨到第 3 行（## H2 内）：第 1-3 行全活动。
     const l1 = view.state.doc.line(1).from;
     const l3 = view.state.doc.line(3).to;
     view.dispatch({ selection: EditorSelection.range(l1, l3) });
-    expect(decosOnLine(view, 1).length).toBe(0);
-    expect(decosOnLine(view, 2).length).toBe(0);
-    expect(decosOnLine(view, 3).length).toBe(0);
-    // 选区外的末行「尾」本无可渲染元素，但确认整体无 faint 类残留（FAINT_MARK 已删）。
+    // 三行均零 mark/replace/widget。
+    expect(inlineDecosOnLine(view, 1).length).toBe(0);
+    expect(inlineDecosOnLine(view, 2).length).toBe(0);
+    expect(inlineDecosOnLine(view, 3).length).toBe(0);
+    // 但两条标题行（1、3）保留 line decoration（行高稳定）。
+    expect(decosOnLine(view, 1).some((d) => d.class === 'cm-ink-h1' && d.from === d.to)).toBe(true);
+    expect(decosOnLine(view, 3).some((d) => d.class === 'cm-ink-h2' && d.from === d.to)).toBe(true);
+    // 全局无 faint 类残留（FAINT_MARK 已删）。
     expect(collectDecos(view).some((d) => d.class === 'cm-ink-mark-faint')).toBe(false);
   });
 
-  it('同一元素：非活动行隐藏标记 + 渲染，活动行纯源码（对照契约）', () => {
+  it('同一元素：非活动行隐藏标记 + 渲染，活动行零 mark/replace/widget（对照契约）', () => {
     view = lpView('**a**\n**b**\n\n尾');
-    // 光标在第 1 行（pos 1）：第 1 行活动纯源码，第 2 行非活动 → `**` 隐藏。
+    // 光标在第 1 行（pos 1）：第 1 行活动（无 line deco → 零装饰），第 2 行非活动 → `**` 隐藏。
     view.dispatch({ selection: EditorSelection.cursor(1) });
     expect(decosOnLine(view, 1).length).toBe(0);
     expect(decosOnLine(view, 2).filter((d) => d.class === 'cm-ink-hidden').length).toBeGreaterThanOrEqual(2);
@@ -313,13 +325,17 @@ describe('inlinePlugin 列表 / 引用逐行还原（D-06）', () => {
     ).toBe(true);
   });
 
-  it('引用块活动行整行纯源码（QuoteMark 不发任何装饰，含竖条 line class）', () => {
+  it('引用块活动行：保留竖条 cm-ink-quote line decoration（行高稳定）但 QuoteMark 不隐藏（`>` 可见、零 mark/replace）', () => {
     view = lpView('> q1\n> q2');
-    // 光标在第一行（pos 1）：该行活动 → 整行纯源码，连竖条 line 装饰都不发。
+    // 光标在第一行（pos 1）：该行活动 → 保竖条 line 装饰，但 `>` 不再隐藏、无任何 mark/replace。
     view.dispatch({ selection: EditorSelection.cursor(1) });
     const line1 = view.state.doc.line(1);
     const onLine1 = collectDecos(view).filter((d) => d.from >= line1.from && d.from <= line1.to);
-    expect(onLine1.length).toBe(0);
+    // 竖条 line decoration 保留（F4 错位根治：行高与非活动态一致）。
+    expect(onLine1.some((d) => d.class === 'cm-ink-quote' && d.from === d.to)).toBe(true);
+    // 零 mark/replace/widget：`>` 可见（QuoteMark 不隐藏）。
+    expect(onLine1.filter((d) => d.from !== d.to).length).toBe(0);
+    expect(onLine1.some((d) => d.class === 'cm-ink-quote-mark')).toBe(false);
     expect(onLine1.some((d) => d.class === 'cm-ink-mark-faint')).toBe(false);
     // 第二行非活动 → 仍渲染（QuoteMark 隐藏）。
     expect(collectDecos(view).some((d) => d.class === 'cm-ink-quote-mark' || d.class === 'cm-ink-hidden')).toBe(true);
@@ -430,16 +446,18 @@ describe('inlinePlugin IME freeze/map（EDIT-06：组合期 map 不重建，comp
 });
 
 describe('inlinePlugin 规范重建（非组合期：活动行随选区重建）', () => {
-  it('selectionSet 驱动活动行集随光标移动（光标移入标题行 → 该行转纯源码，零装饰）', () => {
+  it('selectionSet 驱动活动行集随光标移动（光标移入标题行 → `# ` 标记解隐，但保 cm-ink-h1 line decoration）', () => {
     view = lpView('# H1\n\n正文');
     view.dispatch({ selection: EditorSelection.cursor(view.state.doc.length) });
     expect(collectDecos(view).some((d) => d.from === 0 && d.class === 'cm-ink-hidden')).toBe(true);
 
-    // 纯选区移动（无 docChange）：update 据 selectionSet 重建，标题行进入活动集 → 整行纯源码。
+    // 纯选区移动（无 docChange）：update 据 selectionSet 重建，标题行进入活动集。
     view.dispatch({ selection: EditorSelection.cursor(2) });
     const line1 = view.state.doc.line(1);
     const onLine1 = collectDecos(view).filter((d) => d.from >= line1.from && d.from <= line1.to);
-    expect(onLine1.length).toBe(0);
+    // 行级字号 class 保留（行高稳定，F4 错位根治），但 `# ` 标记解隐、零 mark/replace/widget。
+    expect(onLine1.some((d) => d.class === 'cm-ink-h1' && d.from === d.to)).toBe(true);
+    expect(onLine1.filter((d) => d.from !== d.to).length).toBe(0);
     expect(onLine1.some((d) => d.class === 'cm-ink-hidden')).toBe(false);
     expect(onLine1.some((d) => d.class === 'cm-ink-mark-faint')).toBe(false);
   });

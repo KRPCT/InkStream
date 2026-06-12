@@ -32,11 +32,12 @@ import { isComposing, refreshLivePreview } from '../composition';
  *     Decoration.mark({class:'cm-ink-hidden'}) 隐藏字符——**绝不改 doc**（真相源不变 T-03-06）；
  *     删除线 line-through / 行内代码等宽底纹 / 链接色 / `<u>` underline 用 Decoration.mark 加内容样式；
  *     水平线 HorizontalRule 经 Decoration.replace 换 `<hr>` widget。
- *   - 活动行整行还原（D-07 / D-06，Typora/Obsidian 级契约）：与主选区（state.selection.main）相交的行
- *     （[firstLine,lastLine]）**整行不发任何行内装饰**——既不隐藏标记，也不 inline replace（image/hr/task），
- *     该行渲染为纯源码：一个与 doc 切片逐字节相等的文本节点。这是 CM6 findCompositionRange 文本相等闸门的
- *     硬前提——活动行若被拆成多 span（隐藏/widget），相等判定失败，中文 IME 重复字（咕咕咕）与长句合成仍吞字。
- *     非活动行保持全套 Live Preview 渲染。
+ *   - 活动行还原（D-07 / D-06，Typora/Obsidian 级契约 + F4 错位根治）：与主选区（state.selection.main）
+ *     相交的行**保留行级排版 line decoration**（标题字号 cm-ink-hN、引用竖条 cm-ink-quote——只加 class、
+ *     不改文本、不拆文本节点），但**跳过全部隐藏 mark / replace / widget**。效果 = Typora：光标进标题行整行
+ *     保持标题字号、`#` 前缀可见；行高在装饰态/源码态恒定，杜绝 F4 实测的 39px↔27px 塌缩重排（点击错位）。
+ *     活动行的**文本节点与 doc 切片逐字节相等且无 replace/mark**——line decoration 只加 class 不动文本，
+ *     CM6 findCompositionRange 文本相等闸门不破（中文 IME 重复字/长句合成安全）。非活动行全套 Live Preview 渲染。
  *   - IME（重构设计 §4.4，root cause B）：组合判据收口到统一冻结门，update() 据 isComposing(u.view)
  *     在组合期短路——保旧 RangeSet 不重建（撕合成中的文本节点 DOM = 吞字），docChanged 时 map 跟随位移；
  *     compositionend 后门派发 refreshLivePreview 强刷，恰好重建一次还原渲染态（CR-01）。活动行纯源码契约
@@ -112,8 +113,9 @@ export function buildInlineDecorations(view: EditorView): DecorationSet {
   let openUTag: { from: number; to: number } | null = null;
 
   // 活动行集（EDIT-06 Option 2）：仅据**主选区**（state.selection.main）一次算出 [firstLine,lastLine]。
-  // 绑定主 range 而非全部选区——多光标 / 大范围选区不会把整屏行都置空。与此区间相交的任一行整行跳过
-  // 所有行内装饰，渲染为纯源码文本节点（== doc 切片，满足 findCompositionRange 文本相等闸门）。
+  // 绑定主 range 而非全部选区——多光标 / 大范围选区不会把整屏行都置空。与此区间相交的任一行**跳过全部
+  // 隐藏 mark / replace / widget**（文本节点 == doc 切片，满足 findCompositionRange 文本相等闸门），但**保留
+  // 行级 line decoration**（标题字号 / 引用竖条，行高稳定，根治塌缩重排）。
   const sel = state.selection.main;
   const firstLine = doc.lineAt(sel.from).number;
   const lastLine = doc.lineAt(sel.to).number;
@@ -127,14 +129,15 @@ export function buildInlineDecorations(view: EditorView): DecorationSet {
       from,
       to,
       enter: (node) => {
-        // 活动行硬跳过（FIRST CHECK）：节点所在行与主选区相交 → 不发任何装饰
-        // （无标记隐藏，无 image/hr/task inline replace，无标题行级 class）。
-        // 该行整行保持纯源码：单个与 doc 逐字节相等的文本节点，保住中文 IME 合成相等闸门。
-        if (isActiveLine(node.from)) {
-          return undefined; // 继续迭代子树以快速越过，但任何分支都不 push 装饰。
-        }
+        // 活动行（与主选区相交）：保留**行级排版 line decoration**（标题字号 cm-ink-hN / 引用竖条
+        // cm-ink-quote）——它们只加 class、不改文本、不拆文本节点，故行高在装饰态/源码态保持一致
+        // （Typora 同款：光标进标题行仍是标题字号、# 前缀可见），根治 F4 的 39px↔27px 塌缩重排错位。
+        // 但**仍跳过**全部隐藏 mark / replace / widget：活动行的文本节点与 doc 切片逐字节相等且无
+        // replace/mark，保住 CM6 findCompositionRange 文本相等闸门（line decoration 不破此契约）。
+        const active = isActiveLine(node.from);
 
-        // 标题元素：给所在行加字号 class（行级，保字号字重；不替换文本）。
+        // 标题元素：给所在行加字号 class（行级，保字号字重；不替换文本）。活动行同样保留——line
+        // decoration 不改文本、不拆节点，行高稳定。
         const level = headingLevel(node.name);
         if (level > 0) {
           const line = state.doc.lineAt(node.from);
@@ -145,14 +148,27 @@ export function buildInlineDecorations(view: EditorView): DecorationSet {
           return undefined;
         }
 
-        // 水平线：整节点 replace 为 <hr>（活动行还原由顶部整行硬跳过统一接管，此处必非活动行）。
+        // 以下分支均为隐藏 mark / replace / widget：活动行一律跳过（保纯源码 + 相等闸门）。
+        if (active) {
+          // 但引用行仍保留行级竖条 line decoration（不改文本、不隐 `>`，行盒高度稳定）。
+          if (node.name === 'QuoteMark') {
+            const line = state.doc.lineAt(node.from);
+            if (!quotedLines.has(line.number)) {
+              quotedLines.add(line.number);
+              ranges.push(QUOTE_LINE.range(line.from, line.from));
+            }
+          }
+          return undefined;
+        }
+
+        // 水平线：整节点 replace 为 <hr>（活动行由上方 active 分支跳过，此处必非活动行）。
         if (node.name === HR_NODE) {
           ranges.push(HR_REPLACE.range(node.from, node.to));
           return false;
         }
 
         // 图片 `![](url)`：整节点 replace 为 ImageWidget（本地 asset / 远程 https:）。
-        // 活动行还原由顶部整行硬跳过接管；整节点替换故 return false（子 URL 不再单隐）。
+        // 活动行由上方 active 分支跳过；整节点替换故 return false（子 URL 不再单隐）。
         // url 取自语法树 URL 子节点而非裸正则（WR-02）：titled `![a](u "t")`、spaced `![a]( u )`
         // 形态正则会把标题/空格并入 url；URL 子节点对全部形态精确给出区间。无 URL 子节点（残缺图）则跳过。
         if (node.name === IMAGE_NODE) {
@@ -167,7 +183,7 @@ export function buildInlineDecorations(view: EditorView): DecorationSet {
         }
 
         // 任务复选框 `[ ]`/`[x]`（TaskMarker）：replace 为可点 TaskCheckboxWidget。
-        // 活动行还原由顶部整行硬跳过接管；checked 据中间字符（from+1）非空格判定。
+        // 活动行由上方 active 分支跳过；checked 据中间字符（from+1）非空格判定。
         if (node.name === TASK_MARKER_NODE) {
           const checked = state.doc.sliceString(node.from + 1, node.from + 2).toLowerCase() === 'x';
           ranges.push(
@@ -205,7 +221,7 @@ export function buildInlineDecorations(view: EditorView): DecorationSet {
         }
 
         // 逐行还原标记（列表 ListMark / 引用 QuoteMark）：非活动行渲染（隐藏标记 + 竖条/项目符号）。
-        // 活动行逐行还原由顶部整行硬跳过统一接管，此处恒为非活动行。
+        // 活动行由上方 active 分支接管（引用行保竖条 line decoration、不隐 `>`），此处恒为非活动行。
         if (LINE_REVEAL_MARK.has(node.name)) {
           if (node.name === 'QuoteMark') {
             const line = state.doc.lineAt(node.from);
@@ -221,7 +237,7 @@ export function buildInlineDecorations(view: EditorView): DecorationSet {
           return undefined;
         }
 
-        // 标记字符节点：隐藏其字符（装饰，不改 doc）。活动行已在顶部整行跳过，此处恒隐藏。
+        // 标记字符节点：隐藏其字符（装饰，不改 doc）。活动行已在上方 active 分支跳过，此处恒隐藏。
         if (HIDE_MARK.has(node.name) && node.to > node.from) {
           ranges.push(HIDDEN_MARK.range(node.from, node.to));
         }
@@ -386,7 +402,7 @@ class InlinePluginValue {
       return;
     }
 
-    // 非组合期：规范重建（Option 2 active-line 纯源码契约由 buildInlineDecorations 内部保证不变）。
+    // 非组合期：规范重建（活动行契约——零 replace/mark + 可有 line decoration——由 buildInlineDecorations 内部保证）。
     // selectionSet 触发重建使活动行集随主选区移动；refreshLivePreview 强刷亦在此重建一次。
     if (u.docChanged || u.viewportChanged || u.selectionSet || refreshed) {
       this.decorations = buildInlineDecorations(u.view);
