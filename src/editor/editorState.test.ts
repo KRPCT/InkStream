@@ -4,6 +4,7 @@ import { EditorView } from '@codemirror/view';
 import { undo } from '@codemirror/commands';
 import { disposeState, openFile, snapshotBeforeSwitch, __clearCacheForTest } from './editorState';
 import { baseExtensions } from './extensions';
+import { usePaletteStore } from '../stores/usePaletteStore';
 
 /** 在 jsdom 中建一个挂载好的 EditorView（空 doc）。 */
 function mountView(): EditorView {
@@ -136,6 +137,40 @@ describe('editorState 滚动位置缓存/还原（D-03）', () => {
     // 释放后重开：滚动缓存已清，回到 0（不残留 120）
     openFile(view, 'd.md', 'ddd', baseExtensions());
     expect(scroll.get()).toBe(0);
+    view.destroy();
+  });
+});
+
+describe('openFile 聚焦编辑器 contentEditable（IME 吞字修复）', () => {
+  beforeEach(() => {
+    __clearCacheForTest();
+    usePaletteStore.getState().closePalette();
+    // openFile 经 rAF 推迟聚焦：同步刷新一帧让回调立即执行（无真实事件循环）。
+    vi.stubGlobal('requestAnimationFrame', (cb: FrameRequestCallback) => {
+      cb(0);
+      return 0;
+    });
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    usePaletteStore.getState().closePalette();
+  });
+
+  it('openFile 在无模态时调用 view.focus()', () => {
+    const view = mountView();
+    const focusSpy = vi.spyOn(view, 'focus');
+    openFile(view, 'focus.md', 'hello', baseExtensions());
+    expect(focusSpy).toHaveBeenCalledTimes(1);
+    view.destroy();
+  });
+
+  it('命令面板打开时 openFile 不抢焦点（不调用 view.focus）', () => {
+    const view = mountView();
+    const focusSpy = vi.spyOn(view, 'focus');
+    usePaletteStore.getState().openPalette();
+    openFile(view, 'focus2.md', 'hello', baseExtensions());
+    expect(focusSpy).not.toHaveBeenCalled();
     view.destroy();
   });
 });

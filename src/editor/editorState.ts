@@ -9,6 +9,10 @@ import { languageFromDoc, markAppliedLanguage } from './languages';
 import { getView } from './viewHandle';
 import { getRenderMode, isMarkdownDoc, setRenderMode } from './livepreview/renderMode';
 import { imeTraceSmokingGun } from './livepreview/imeTrace';
+import { useConfirmStore } from '../stores/useConfirmStore';
+import { useOpenFolderStore } from '../stores/useOpenFolderStore';
+import { usePaletteStore } from '../stores/usePaletteStore';
+import { useAboutStore } from '../stores/useAboutStore';
 import type { RenderMode } from '../types/editor';
 
 /**
@@ -77,6 +81,41 @@ function restoreScroll(view: EditorView, top: number): void {
 }
 
 /**
+ * 任一模态弹层是否活跃（CommandPalette / OpenFolderDialog / ConfirmDialog / AboutDialog）。
+ *
+ * 焦点纪律：打开文件时把焦点交给编辑器 contentEditable，但绝不从一个正打开的模态抢焦点
+ * （否则用户在命令面板/对话框里的输入会被打断）。这四个 store 的活跃态即全部模态来源
+ * （SettingsDialog 为内联非模态，无独立显隐 store）。
+ */
+function isModalActive(): boolean {
+  return (
+    usePaletteStore.getState().open ||
+    useOpenFolderStore.getState().request !== null ||
+    useConfirmStore.getState().request !== null ||
+    useAboutStore.getState().open
+  );
+}
+
+/**
+ * 打开文件后把焦点交给编辑器的 contentEditable（IME 吞字 root cause 修复，EDIT-06）。
+ *
+ * 背景：openFile 经 view.setState 换装文档，但**不**自动聚焦 contentEditable——首次组合
+ * （中文 IME）若落在文件树/游离 input 上会被 Chromium 丢弃（首字吞字）。故换装后显式
+ * view.focus()，使键击/组合直接落到编辑器。
+ *
+ * 纪律：
+ *   - 推迟一帧（rAF）执行：与 restoreScroll 同步，确保 setState 触发的 DOM 重排已落定、
+ *     React 渲染已提交，再聚焦——绝不为聚焦 dispatch 事务（聚焦是 view 级副作用，非文档变更）。
+ *   - 模态活跃时跳过：不从命令面板/对话框抢焦点（isModalActive）。
+ */
+function focusEditor(view: EditorView): void {
+  requestAnimationFrame(() => {
+    if (isModalActive()) return;
+    view.focus();
+  });
+}
+
+/**
  * 把当前 view 的 richtext 态镜像到 store（D-14 工具条显隐）。
  *
  * 单向：CM doc 头部 frontmatter language === 'richtext' → store.isRichtext。
@@ -107,6 +146,8 @@ export function openFile(view: EditorView, path: string, doc: string, ext: Exten
   restoreScroll(view, scrollCache.get(path) ?? 0);
   syncRichtext(view);
   applyRenderMode(view, path);
+  // 换装后把焦点交给 contentEditable：首次 IME 组合直接落到编辑器而非游离 input（吞字修复）。
+  focusEditor(view);
 }
 
 /**
