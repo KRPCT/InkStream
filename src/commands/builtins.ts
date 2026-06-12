@@ -1,3 +1,4 @@
+import { registerImeProbeCommand } from '../components/dev/imeProbeCommand';
 import type { Command } from '../types/commands';
 import { CORE_COMMANDS } from './coreCommands';
 import { bind } from './keymap';
@@ -35,6 +36,8 @@ export function registerBuiltinCommands(): () => void {
     bind('Ctrl+Shift+O', 'file.open-folder'),
     bind('Ctrl+S', 'file.save'),
     bind('Ctrl+E', 'view.toggle-render-mode'),
+    // DEV-only：IME 输入探针命令（R2 实验入口）。非 DEV 为 no-op，不进注册表。
+    registerImeProbeCommand(),
   ];
   const dispose = (): void => {
     disposers.forEach((d) => d());

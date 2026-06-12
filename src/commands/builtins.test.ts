@@ -80,8 +80,13 @@ const TITLES: Record<string, string> = {
   'fmt.clear': '格式：清除格式',
 };
 
-/** 注册命令总数：原 23 + 打开文件 + 快捷键参考 + 编辑8 + 段落14 + 格式8 = 55。 */
+/** 生产命令总数：原 23 + 打开文件 + 快捷键参考 + 编辑8 + 段落14 + 格式8 = 55。 */
 const COMMAND_COUNT = 55;
+
+/** 生产命令（剔除 dev.* DEV-only 命令，如 IME 探针 dev.ime-probe）。 */
+function prodCommands() {
+  return getAll().filter((c) => !c.id.startsWith('dev.'));
+}
 
 function key(init: KeyboardEventInit): KeyboardEvent {
   return new KeyboardEvent('keydown', { cancelable: true, ...init });
@@ -107,12 +112,19 @@ describe('builtins', () => {
     disposeKeymap();
   });
 
-  it('注册 55 条命令，标题与 UI-SPEC / R4 字面逐字一致', () => {
-    const all = getAll();
+  it('注册 55 条生产命令，标题与 UI-SPEC / R4 字面逐字一致', () => {
+    const all = prodCommands();
     expect(all).toHaveLength(COMMAND_COUNT);
     for (const [id, title] of Object.entries(TITLES)) {
       expect(all.find((c) => c.id === id)?.title).toBe(title);
     }
+  });
+
+  it('DEV 下 registerBuiltinCommands 一并注册 IME 探针命令（dev.ime-probe）', () => {
+    expect(import.meta.env.DEV).toBe(true);
+    expect(getAll().some((c) => c.id === 'dev.ime-probe')).toBe(true);
+    // 探针属 DEV-only，不计入生产命令总数。
+    expect(prodCommands().some((c) => c.id === 'dev.ime-probe')).toBe(false);
   });
 
   it('快捷键提示与键盘表一致（R4 §3 键位裁决）', () => {
@@ -148,7 +160,7 @@ describe('builtins', () => {
     expect(() => {
       disposeBuiltins = registerBuiltinCommands();
     }).not.toThrow();
-    expect(getAll()).toHaveLength(COMMAND_COUNT);
+    expect(prodCommands()).toHaveLength(COMMAND_COUNT);
   });
 
   it('合成 Ctrl+P 经 keymap 打开无前缀快速打开', () => {
