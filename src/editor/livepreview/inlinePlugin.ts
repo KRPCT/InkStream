@@ -268,48 +268,55 @@ export function buildInlineDecorations(view: EditorView): DecorationSet {
 const inlineTheme = EditorView.theme({
   '.cm-ink-hidden': { fontSize: '0.1px', letterSpacing: '-1ch', color: 'transparent' },
   // 标题字阶（Obsidian 默认 major-second 1.125 比例，R5 §1.3 保留不动）+ 标题色去红回正文色
-  // （var(--cm-heading) 已在 theme.css 改为 --text-normal，R5 D-2）+ 上下边距（行级 margin，R5 §3.4）。
+  // （var(--cm-heading) 已在 theme.css 改为 --text-normal，R5 D-2）+ 上下间距。
+  //
+  // F4-fix 关键：标题上下间距用 **padding** 而非 margin。CM6 的高度图（measureVisibleLineHeights）
+  // 以 `.cm-line` 的 getBoundingClientRect().height 记录每行块高——该值含 padding 却**不含 margin**。
+  // 旧实现把标题间距放 marginTop/marginBottom 时，渲染 DOM 有这段竖向间隙，但高度图按 border-box
+  // 高度记录、漏掉 margin，每经一个标题就少计约 (margin-top+margin-bottom)px → posAtCoords 高度图
+  // 与真实几何失配、点击落点随文档向下单调累积下偏（CDP 实测 lineDrift 1~6 行）。改用 padding 后
+  // 间距计入 border-box 高度，高度图与渲染几何一致，drift 归零（lineWrapping 下同样成立）。
   '.cm-ink-h1': {
     fontSize: '1.802em',
     fontWeight: '600',
     color: 'var(--cm-heading)',
-    marginTop: 'var(--h-margin-top)',
-    marginBottom: 'var(--h-margin-bottom)',
+    paddingTop: 'var(--h-margin-top)',
+    paddingBottom: 'var(--h-margin-bottom)',
   },
   '.cm-ink-h2': {
     fontSize: '1.602em',
     fontWeight: '600',
     color: 'var(--cm-heading)',
-    marginTop: 'var(--h-margin-top)',
-    marginBottom: 'var(--h-margin-bottom)',
+    paddingTop: 'var(--h-margin-top)',
+    paddingBottom: 'var(--h-margin-bottom)',
   },
   '.cm-ink-h3': {
     fontSize: '1.424em',
     fontWeight: '600',
     color: 'var(--cm-heading)',
-    marginTop: 'var(--h-margin-top)',
-    marginBottom: 'var(--h-margin-bottom)',
+    paddingTop: 'var(--h-margin-top)',
+    paddingBottom: 'var(--h-margin-bottom)',
   },
   '.cm-ink-h4': {
     fontSize: '1.266em',
     fontWeight: '600',
     color: 'var(--cm-heading)',
-    marginTop: 'var(--h-margin-top)',
-    marginBottom: 'var(--h-margin-bottom)',
+    paddingTop: 'var(--h-margin-top)',
+    paddingBottom: 'var(--h-margin-bottom)',
   },
   '.cm-ink-h5': {
     fontSize: '1.125em',
     fontWeight: '600',
     color: 'var(--cm-heading)',
-    marginTop: 'var(--h-margin-top)',
-    marginBottom: 'var(--h-margin-bottom)',
+    paddingTop: 'var(--h-margin-top)',
+    paddingBottom: 'var(--h-margin-bottom)',
   },
   '.cm-ink-h6': {
     fontSize: '1em',
     fontWeight: '600',
     color: 'var(--cm-heading)',
-    marginTop: 'var(--h-margin-top)',
-    marginBottom: 'var(--h-margin-bottom)',
+    paddingTop: 'var(--h-margin-top)',
+    paddingBottom: 'var(--h-margin-bottom)',
   },
   // 删除线：文本 line-through（颜色继承正文）。
   '.cm-ink-strike': { textDecoration: 'line-through' },

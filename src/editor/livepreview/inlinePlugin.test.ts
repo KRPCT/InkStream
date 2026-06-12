@@ -481,8 +481,8 @@ describe('inlinePlugin 源纪律', () => {
     expect(src).toContain('this.decorations.map(u.changes)');
   });
 
-  it('活动行整行硬跳过存在且 FAINT_MARK 已删（Option 2：活动行纯源码，无淡显死码）', () => {
-    // 据主选区算活动行集 [firstLine,lastLine] 并在 enter 顶部据此整行跳过。
+  it('活动行据主选区计算且跳过 mark/replace/widget（保 line decoration），FAINT_MARK 已删', () => {
+    // 据主选区算活动行集 [firstLine,lastLine]；活动行跳过隐藏 mark/replace/widget，但保留行级 line decoration。
     expect(src).toContain('state.selection.main');
     expect(src).toMatch(/isActiveLine/);
     // FAINT_MARK 常量与 cm-ink-mark-faint 主题规则均已删除（不留淡显死码）。
