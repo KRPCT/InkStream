@@ -33,6 +33,8 @@ export default function ProbeZone({ spec, register }: ProbeZoneProps) {
 
     let view: EditorView | null = null;
     let target: HTMLElement | null = null;
+    // 候选解法接线（I/J/K）的 cleanup：CM 区 spec.setup 返回，卸载时先于 view.destroy 调。
+    let teardownSetup: (() => void) | null = null;
 
     if (spec.kind === 'cm') {
       // throwaway view：仅本区生命周期持有，卸载 destroy（不进任何 store/全局句柄）。
@@ -41,6 +43,8 @@ export default function ProbeZone({ spec, register }: ProbeZoneProps) {
         state: EditorState.create({ doc: '在此输入中文', extensions: spec.extensions?.() ?? [] }),
       });
       target = view.contentDOM;
+      // I/J/K 候选解法：view 就绪后挂命令式接线（焦点循环 / ce 翻转 / textarea 中继），返回 cleanup。
+      teardownSetup = spec.setup?.(view, host) ?? null;
     } else {
       target = host.querySelector<HTMLElement>('[data-probe-input]');
     }
@@ -54,6 +58,7 @@ export default function ProbeZone({ spec, register }: ProbeZoneProps) {
       for (const name of PROBE_EVENTS)
         target?.removeEventListener(name, listener, { capture: true });
       register(null);
+      teardownSetup?.();
       view?.destroy();
     };
     // spec 在面板内稳定不变（模块级常量）；register/push 稳定（useCallback）。

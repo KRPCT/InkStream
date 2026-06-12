@@ -14,7 +14,7 @@ import { useImeProbeStore } from './useImeProbeStore';
  * 验收）；只锁工程契约：8 区全渲染、CM 区挂载即 EditorView 实例存在、卸载 destroy 被调、日志记录事件。
  */
 
-describe('ImeProbe（8 区二分定位器）', () => {
+describe('ImeProbe（A–H 二分 + I/J/K 候选解法）', () => {
   beforeEach(() => {
     useImeProbeStore.setState({ open: false });
   });
@@ -28,17 +28,30 @@ describe('ImeProbe（8 区二分定位器）', () => {
     expect(screen.queryByLabelText('A 受试区')).not.toBeInTheDocument();
   });
 
-  it('打开后 8 个受试区 A–H 全渲染', () => {
+  it('打开后 11 个受试区 A–K 全渲染', () => {
     useImeProbeStore.setState({ open: true });
     render(<ImeProbe />);
-    expect(ZONES).toHaveLength(8);
+    expect(ZONES).toHaveLength(11);
+    expect(ZONES.map((z) => z.id)).toEqual(['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K']);
     for (const z of ZONES) {
       expect(screen.getByLabelText(`${z.id} 区事件日志`)).toBeInTheDocument();
     }
-    // A=textarea、B/C=contentEditable、D–H=CM6（容器内 .cm-editor）
+    // A=textarea、B/C=contentEditable、D–K=CM6（容器内 .cm-editor）
     expect(screen.getByLabelText('A 受试区').tagName).toBe('TEXTAREA');
     expect(screen.getByLabelText('B 受试区')).toHaveAttribute('contenteditable', 'true');
     expect(screen.getByLabelText('C 受试区')).toHaveAttribute('contenteditable', 'true');
+  });
+
+  it('I/J/K 候选解法区均为 CM6 + setup 接线（K 额外铺中继 textarea）', () => {
+    useImeProbeStore.setState({ open: true });
+    const { container } = render(<ImeProbe />);
+    for (const id of ['I', 'J', 'K']) {
+      const zone = ZONES.find((z) => z.id === id);
+      expect(zone?.kind).toBe('cm');
+      expect(typeof zone?.setup).toBe('function');
+    }
+    // K 区在 CM 容器内动态挂入透明中继 textarea（绝对定位铺满）。
+    expect(container.querySelector('textarea[data-relay-input]')).toBeInTheDocument();
   });
 
   it('C 区照抄 CM6 .cm-content 全套属性（来源 view@6.43.1 updateAttrs）', () => {
@@ -56,11 +69,11 @@ describe('ImeProbe（8 区二分定位器）', () => {
     expect(c.className).toContain('cm-lineWrapping');
   });
 
-  it('CM 区（D–H）挂载即各持一个真实 EditorView 实例', () => {
+  it('CM 区（D–K）挂载即各持一个真实 EditorView 实例', () => {
     useImeProbeStore.setState({ open: true });
     const { container } = render(<ImeProbe />);
     const cmZones = ZONES.filter((z) => z.kind === 'cm');
-    expect(cmZones).toHaveLength(5);
+    expect(cmZones).toHaveLength(8);
     // 每个 CM 区容器内恰好一个 .cm-editor（throwaway EditorView 已挂入 contentDOM）
     expect(container.querySelectorAll('.cm-editor')).toHaveLength(cmZones.length);
     expect(container.querySelectorAll('.cm-content')).toHaveLength(

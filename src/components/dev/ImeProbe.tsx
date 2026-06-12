@@ -4,10 +4,11 @@ import { ZONES } from './imeProbeZones';
 import { useImeProbeStore } from './useImeProbeStore';
 
 /**
- * IME 输入探针「一轮二分定位器」（R2，dev-only 覆盖面板）。
+ * IME 输入探针：A–H 二分定位器 + I/J/K 候选解法验证台（R2/R3，dev-only 覆盖面板）。
  *
- * 8 受试区 A–H 从「裸 div / textarea 基线」单调爬升到「CM6 完整 baseExtensions」，每区只比前一区多挂一层
- * 嫌疑物（属性/样式/扩展）。用户打一轮拼音即可锁定第一个失效的区——那一层就是罪魁。
+ * A–H 从「裸 div / textarea 基线」单调爬升到「CM6 完整 baseExtensions」，每区只比前一区多挂一层嫌疑物，
+ * 打一轮拼音锁定第一个失效区。I/J/K 是基于「焦点落定后首次组合被吞」结论的三种候选解法受试区——I 焦点
+ * 循环、J contenteditable 翻转、K textarea 中继（详见 imeProbeZones.ts / imeMitigations.ts）。
  *
  * 纪律：区间切换走「转焦」按钮程序化转焦（不要点击输入区本身污染实验）；但 CM 区是例外——既要测程序化
  * 聚焦、又要测真实点击两条路径，故 CM 区额外允许「也可直接点击」（说明里写清先转焦打一次、再点击打一次）。
@@ -53,10 +54,15 @@ function ImeProbePanel() {
       className="fixed inset-0 z-[9999] flex flex-col gap-3 overflow-auto border-b border-[var(--background-modifier-border)] bg-[var(--background-primary)] p-4 [box-shadow:var(--shadow-popup)]"
     >
       <div className="flex items-start justify-between gap-4">
-        <p className="text-[13px] leading-snug font-bold text-[var(--text-normal)]">
-          每区先用按钮转焦打一次拼音，再直接点击该区打一次；记录每区两种路径下中文能否上屏。区间切换默认只用
-          下方「转焦」按钮（不要点击输入区本身）——CM 区例外：标注「也可直接点击」，两条路径都要各打一次。
-        </p>
+        <div className="flex flex-col gap-1">
+          <p className="text-[13px] leading-snug font-bold text-[var(--text-normal)]">
+            每区先用按钮转焦打一次拼音，再直接点击该区打一次；记录每区两种路径下中文能否上屏。区间切换默认只用
+            下方「转焦」按钮（不要点击输入区本身）——CM 区例外：标注「也可直接点击」，两条路径都要各打一次。
+          </p>
+          <p className="text-[12px] leading-snug font-semibold text-[var(--interactive-accent)]">
+            I/J 重点测试：点击该区后<strong>第一次</strong>打拼音是否直接成功（不再需要重试）；K 区直接打字即可。
+          </p>
+        </div>
         <button
           type="button"
           onClick={close}
