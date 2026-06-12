@@ -44,22 +44,16 @@ fn temp_sibling(target: &Path) -> PathBuf {
         .join(tmp_name)
 }
 
-/// 原子写（T-02-07）：同目录 temp 文件 + rename。写中途崩溃只丢 temp，原文件不动。
+/// temp + fsync + rename 原子写共用体（`write_file_atomic` / `write_file_to_path` 同核）。
 ///
-/// 路径经 path_guard 校验落在 vault 根内（目标可不存在，故走 resolve_new_target_in_root）。
 /// 写 temp 或 rename 任一步失败均清理 temp 文件再返回错误。
 ///
 /// WR-04 持久性：temp 写入后 `sync_all()` 把数据块刷盘**再** rename，避免掉电后
 /// rename 已记账而数据块未落致零长/截断。Unix 上额外 fsync 父目录 fd，确保 rename
 /// 这条目录项本身持久化；Windows 无等价父目录 fsync API，temp 的 sync_all 已足够
 /// （NTFS 元数据日志保证 rename 顺序），故平台差异化处理。
-#[tauri::command]
-pub fn write_file_atomic(root: String, path: String, content: String) -> Result<(), String> {
-    let canon_root = Path::new(&root)
-        .canonicalize()
-        .map_err(|e| format!("无法解析工作区根: {e}"))?;
-    let target = resolve_new_target_in_root(&canon_root, &path)?;
-    let tmp = temp_sibling(&target);
+fn write_atomic(target: &Path, content: &str) -> Result<(), String> {
+    let tmp = temp_sibling(target);
 
     // temp 写入 + 数据块刷盘（sync_all）。任一步失败清理 temp 再返回。
     let write_result = (|| -> std::io::Result<()> {
@@ -73,7 +67,7 @@ pub fn write_file_atomic(root: String, path: String, content: String) -> Result<
         return Err(format!("无法写入临时文件: {e}"));
     }
 
-    if let Err(e) = std::fs::rename(&tmp, &target) {
+    if let Err(e) = std::fs::rename(&tmp, target) {
         let _ = std::fs::remove_file(&tmp);
         return Err(format!("无法落盘（rename 失败）: {e}"));
     }
@@ -89,6 +83,30 @@ pub fn write_file_atomic(root: String, path: String, content: String) -> Result<
     }
 
     Ok(())
+}
+
+/// 原子写（T-02-07）：同目录 temp 文件 + rename。写中途崩溃只丢 temp，原文件不动。
+///
+/// 路径经 path_guard 校验落在 vault 根内（目标可不存在，故走 resolve_new_target_in_root）。
+#[tauri::command]
+pub fn write_file_atomic(root: String, path: String, content: String) -> Result<(), String> {
+    let canon_root = Path::new(&root)
+        .canonicalize()
+        .map_err(|e| format!("无法解析工作区根: {e}"))?;
+    let target = resolve_new_target_in_root(&canon_root, &path)?;
+    write_atomic(&target, &content)
+}
+
+/// 草稿「另存为」绝对路径原子写：path 来自原生保存对话框，属用户显式授权边界，
+/// 不经 vault path_guard（无 root 语义）。仅接受绝对路径（对话框必返绝对路径，
+/// 拒相对路径以杜绝任意 cwd 相对写入）。
+#[tauri::command]
+pub fn write_file_to_path(path: String, content: String) -> Result<(), String> {
+    let target = PathBuf::from(&path);
+    if !target.is_absolute() {
+        return Err("另存为路径必须是绝对路径".to_string());
+    }
+    write_atomic(&target, &content)
 }
 
 /// 新建空文件：已存在则 Err，绝不覆盖（D-12 同名拒绝）。
@@ -170,7 +188,7 @@ pub fn trash_path(root: String, path: String) -> Result<(), String> {
 mod tests {
     use super::{
         create_dir, create_file, move_path, read_file, rename_path, temp_sibling, trash_path,
-        write_file_atomic, READ_FILE_INLINE_LIMIT_BYTES,
+        write_file_atomic, write_file_to_path, READ_FILE_INLINE_LIMIT_BYTES,
     };
     use std::fs;
     use std::path::Path;
@@ -252,6 +270,31 @@ mod tests {
         let result = write_file_atomic(root_str, "../evil.md".to_string(), "x".to_string());
         assert!(result.is_err());
         fs::remove_dir_all(&root).ok();
+    }
+
+    #[test]
+    fn write_file_to_path_writes_absolute_target() {
+        // 草稿另存为：原生对话框给出的绝对路径直接原子写（不经 path_guard），可覆盖自身。
+        let root = temp_dir("write-abs");
+        let target = root.join("草稿.md");
+        let target_str = target.to_string_lossy().into_owned();
+        write_file_to_path(target_str.clone(), "v1".to_string()).unwrap();
+        assert_eq!(fs::read_to_string(&target).unwrap(), "v1");
+        write_file_to_path(target_str, "v2 墨流".to_string()).unwrap();
+        assert_eq!(fs::read_to_string(&target).unwrap(), "v2 墨流");
+        // 无残留 temp 文件。
+        let leftover = fs::read_dir(&root)
+            .unwrap()
+            .filter_map(|e| e.ok())
+            .any(|e| e.file_name().to_string_lossy().starts_with(".inkstream-tmp-"));
+        assert!(!leftover, "另存为成功后不应残留 temp 文件");
+        fs::remove_dir_all(&root).ok();
+    }
+
+    #[test]
+    fn write_file_to_path_rejects_relative() {
+        // 相对路径拒绝：另存为只接受对话框返回的绝对路径，杜绝 cwd 相对写入。
+        assert!(write_file_to_path("relative.md".to_string(), "x".to_string()).is_err());
     }
 
     #[test]

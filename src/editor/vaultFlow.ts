@@ -16,14 +16,14 @@ import { openFileByPath } from './fileOpenFlow';
  */
 
 /** 路径分隔统一为 `/` 并剥除末尾分隔，取父目录（vault 外文件 → 其父目录作 vault）。 */
-function parentDir(filePath: string): string {
+export function parentDir(filePath: string): string {
   const norm = filePath.replace(/\\/g, '/').replace(/\/+$/, '');
   const i = norm.lastIndexOf('/');
   return i <= 0 ? norm : norm.slice(0, i);
 }
 
 /** 判断文件是否落在当前已打开 vault 根内（同根 → 直接打开，无需切 vault）。 */
-function relativeWithinVault(filePath: string, root: string): string | null {
+export function relativeWithinVault(filePath: string, root: string): string | null {
   const normFile = filePath.replace(/\\/g, '/');
   const normRoot = root.replace(/\\/g, '/').replace(/\/+$/, '');
   if (normFile === normRoot) return null;

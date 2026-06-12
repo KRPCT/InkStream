@@ -1,16 +1,19 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { open } from '@tauri-apps/plugin-dialog';
-import { pickFile, pickFolder } from './dialog';
+import { open, save } from '@tauri-apps/plugin-dialog';
+import { pickFile, pickFolder, pickSavePath } from './dialog';
 
 vi.mock('@tauri-apps/plugin-dialog', () => ({
   open: vi.fn(),
+  save: vi.fn(),
 }));
 
 const mockedOpen = vi.mocked(open);
+const mockedSave = vi.mocked(save);
 
 describe('dialog ipc 收口', () => {
   beforeEach(() => {
     mockedOpen.mockReset();
+    mockedSave.mockReset();
   });
 
   it('pickFolder：directory + 单选，返回选中路径', async () => {
@@ -37,5 +40,19 @@ describe('dialog ipc 收口', () => {
   it('pickFile 取消返回 null', async () => {
     mockedOpen.mockResolvedValue(null);
     await expect(pickFile()).resolves.toBeNull();
+  });
+
+  it('pickSavePath：预填默认文件名 + Markdown 过滤（草稿另存为）', async () => {
+    mockedSave.mockResolvedValue('/v/未命名-1.md');
+    await expect(pickSavePath('未命名-1.md')).resolves.toBe('/v/未命名-1.md');
+    expect(mockedSave).toHaveBeenCalledWith({
+      defaultPath: '未命名-1.md',
+      filters: [{ name: 'Markdown', extensions: ['md', 'markdown', 'txt'] }],
+    });
+  });
+
+  it('pickSavePath 取消返回 null', async () => {
+    mockedSave.mockResolvedValue(null);
+    await expect(pickSavePath('未命名-1.md')).resolves.toBeNull();
   });
 });

@@ -6,21 +6,22 @@ import EditorContextMenu, { type MenuPosition } from './EditorContextMenu';
 import ExternalChangeBar from './ExternalChangeBar';
 import Toolbar from '../../editor/richtext/Toolbar';
 import { isComposing } from '../../editor/composition';
+import { newDraftDocument } from '../../editor/draftFlow';
 import { useCodeMirror } from '../../editor/useCodeMirror';
 import { requestOpenFolder } from '../../editor/vaultFlow';
 import { getView } from '../../editor/viewHandle';
 import { useEditorStore } from '../../stores/useEditorStore';
 import { useVaultStore } from '../../stores/useVaultStore';
 
-/** 空态「打开文件夹」按钮（Heading 14/600，沿 UI-SPEC 主操作入口）。 */
-function OpenFolderButton() {
+/** 空态操作按钮（Heading 14/600，沿 UI-SPEC 主操作入口）。 */
+function ActionButton({ label, onClick }: { label: string; onClick: () => void }) {
   return (
     <button
       type="button"
-      onClick={() => void requestOpenFolder()}
+      onClick={onClick}
       className="rounded-[4px] border border-[var(--background-modifier-border)] px-3 py-1.5 text-[14px] font-semibold text-[var(--text-muted)] hover:bg-[var(--background-modifier-hover)] hover:text-[var(--text-normal)]"
     >
-      打开文件夹
+      {label}
     </button>
   );
 }
@@ -54,8 +55,9 @@ export default function EditorArea() {
 
   return (
     <div className="flex h-full flex-col bg-[var(--background-primary)]">
-      {/* 垂直结构：[Tab 栏 36px] → [外部变更提示条] → [richtext 工具条] → [CM 内容区] */}
-      {vault && hasTabs ? <EditorTabs /> : null}
+      {/* 垂直结构：[Tab 栏 36px] → [外部变更提示条] → [richtext 工具条] → [CM 内容区]。
+          Tab 栏只看 hasTabs：草稿（draft://）无 vault 也要有 tab 栏。 */}
+      {hasTabs ? <EditorTabs /> : null}
       {/* 外部变更提示条：脏文档外部变更时插入（自身条件渲染，D-04） */}
       <ExternalChangeBar />
       {/* richtext 工具条：frontmatter language=richtext 时显示（D-14，自身条件渲染） */}
@@ -72,22 +74,28 @@ export default function EditorArea() {
         {menuPos ? (
           <EditorContextMenu position={menuPos} onClose={() => setMenuPos(null)} />
         ) : null}
-        {!vault ? (
+        {/* 空态只看 activePath：有活动文档（含无 vault 的草稿）绝不覆盖编辑器。 */}
+        {!activePath ? (
           <div className="absolute inset-0 bg-[var(--background-primary)]">
-            <EmptyState
-              icon={FolderOpen}
-              heading="未打开工作区"
-              body="打开一个文件夹作为工作区，开始写作。"
-              action={<OpenFolderButton />}
-            />
-          </div>
-        ) : !activePath ? (
-          <div className="absolute inset-0 bg-[var(--background-primary)]">
-            <EmptyState
-              icon={FileText}
-              heading="未打开文件"
-              body="在左侧文件树中选择文件，或按 Ctrl+P 快速打开。"
-            />
+            {!vault ? (
+              <EmptyState
+                icon={FolderOpen}
+                heading="未打开工作区"
+                body="新建一个空白文档直接开始写作，或打开文件夹作为工作区。"
+                action={
+                  <div className="flex items-center justify-center gap-3">
+                    <ActionButton label="新建文档" onClick={() => newDraftDocument()} />
+                    <ActionButton label="打开文件夹" onClick={() => void requestOpenFolder()} />
+                  </div>
+                }
+              />
+            ) : (
+              <EmptyState
+                icon={FileText}
+                heading="未打开文件"
+                body="在左侧文件树中选择文件，或按 Ctrl+P 快速打开。"
+              />
+            )}
           </div>
         ) : null}
       </div>

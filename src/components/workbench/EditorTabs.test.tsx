@@ -28,6 +28,11 @@ vi.mock('../../editor/editorState', () => ({
   disposeState: (path: string) => disposeStateSpy(path),
 }));
 
+const confirmDestructive = vi.fn<(opts: unknown) => Promise<boolean>>();
+vi.mock('../../stores/useConfirmStore', () => ({
+  confirmDestructive: (opts: unknown) => confirmDestructive(opts),
+}));
+
 function reset(): void {
   useEditorStore.setState({ tabs: [], activePath: null, dirty: {}, cursor: 0, frozen: {} });
 }
@@ -113,6 +118,46 @@ describe('EditorTabs', () => {
     expect(closeOrder).toEqual(['flush-start:a.md', 'flush-end', 'dispose:a.md']);
     expect(disposeStateSpy).toHaveBeenCalledWith('a.md');
     expect(useEditorStore.getState().tabs.map((t) => t.path)).toEqual(['b.md']);
+  });
+
+  // ---- 草稿 tab（draft://）关闭流程 ----
+
+  it('关干净草稿 tab：不弹确认、不 flush，直接 dispose + 移除', async () => {
+    useEditorStore.getState().openTab({ path: 'draft://1', name: '未命名-1' });
+    render(<EditorTabs />);
+    fireEvent.click(screen.getByTestId('close-tab-draft://1'));
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(confirmDestructive).not.toHaveBeenCalled();
+    expect(flushAutosave).not.toHaveBeenCalled();
+    expect(disposeStateSpy).toHaveBeenCalledWith('draft://1');
+    expect(useEditorStore.getState().tabs.map((t) => t.path)).toEqual(['a.md', 'b.md']);
+  });
+
+  it('关脏草稿 tab：弹丢弃确认，确认后丢弃（不落盘）', async () => {
+    useEditorStore.getState().openTab({ path: 'draft://1', name: '未命名-1' });
+    useEditorStore.getState().markDirty('draft://1');
+    confirmDestructive.mockResolvedValue(true);
+    render(<EditorTabs />);
+    fireEvent.click(screen.getByTestId('close-tab-draft://1'));
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(confirmDestructive).toHaveBeenCalledTimes(1);
+    expect(flushAutosave).not.toHaveBeenCalled();
+    expect(disposeStateSpy).toHaveBeenCalledWith('draft://1');
+    expect(useEditorStore.getState().tabs.some((t) => t.path === 'draft://1')).toBe(false);
+  });
+
+  it('关脏草稿 tab：取消确认则草稿保留', async () => {
+    useEditorStore.getState().openTab({ path: 'draft://1', name: '未命名-1' });
+    useEditorStore.getState().markDirty('draft://1');
+    confirmDestructive.mockResolvedValue(false);
+    render(<EditorTabs />);
+    fireEvent.click(screen.getByTestId('close-tab-draft://1'));
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(disposeStateSpy).not.toHaveBeenCalled();
+    expect(useEditorStore.getState().tabs.some((t) => t.path === 'draft://1')).toBe(true);
   });
 
   // ---- R4 §3.2 侧栏 / 右栏一键开关按钮 ----

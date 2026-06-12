@@ -1,15 +1,15 @@
-import { open } from '@tauri-apps/plugin-dialog';
+import { open, save } from '@tauri-apps/plugin-dialog';
 
 /**
  * 原生系统对话框前端通道（R4 §2）。全项目唯一接触 @tauri-apps/plugin-dialog 的文件
  * （ipc/ 收口立约）：业务代码经此调用，不直接 import @tauri-apps/*。
  *
- * 权限面：capability 仅授 `dialog:allow-open`（最小权限）——故本层只暴露「打开」族，
- * 不提供 save（另存为本阶段不做）。原生对话框返回的路径仍交 Rust 端 vault/files command
- * 的 path_guard 收口校验，不削弱现有路径防护。
+ * 权限面：capability 授 `dialog:allow-open` 与 `dialog:allow-save`（最小权限）。
+ * 「打开」族返回的路径仍交 Rust 端 vault/files command 的 path_guard 收口校验；
+ * 「保存」返回的绝对路径属用户显式授权边界（草稿另存为，走 write_file_to_path）。
  */
 
-/** 仅 Markdown / 纯文本文件过滤（打开文件用；无 `.` 前缀，跨平台 OS 原生过滤器）。 */
+/** 仅 Markdown / 纯文本文件过滤（打开/保存共用；无 `.` 前缀，跨平台 OS 原生过滤器）。 */
 const MARKDOWN_FILTER = {
   name: 'Markdown',
   extensions: ['md', 'markdown', 'txt'],
@@ -29,4 +29,12 @@ export function pickFolder(): Promise<string | null> {
  */
 export function pickFile(): Promise<string | null> {
   return open({ directory: false, multiple: false, filters: [MARKDOWN_FILTER] });
+}
+
+/**
+ * 原生保存对话框（草稿另存为转正用）：defaultName 预填文件名。取消返回 null。
+ * 返回的绝对路径是用户显式授权的写入位置（不经 vault path_guard）。
+ */
+export function pickSavePath(defaultName: string): Promise<string | null> {
+  return save({ defaultPath: defaultName, filters: [MARKDOWN_FILTER] });
 }

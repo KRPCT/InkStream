@@ -21,6 +21,15 @@ vi.mock('../editor/vaultFlow', () => ({
   requestOpenFolder: () => requestOpenFolder(),
   requestOpenFile: () => requestOpenFile(),
   requestOpenRecent: vi.fn(() => Promise.resolve()),
+  switchVault: vi.fn(() => Promise.resolve()),
+  parentDir: vi.fn(),
+  relativeWithinVault: vi.fn(),
+}));
+
+const newDraftDocument = vi.fn();
+vi.mock('../editor/draftFlow', () => ({
+  newDraftDocument: () => newDraftDocument(),
+  saveDraftAs: vi.fn(() => Promise.resolve()),
 }));
 
 /** UI-SPEC / R4 命令注册表文案表字面（含 TitleBar 菜单条目的命令面板/退出）。 */
@@ -35,6 +44,7 @@ const TITLES: Record<string, string> = {
   'file.open-file': '文件：打开文件',
   'file.open-folder': '文件：打开文件夹',
   'file.open-recent': '文件：打开最近',
+  'file.new-document': '文件：新建文档',
   'file.new-file': '文件：新建文件',
   'file.new-folder': '文件：新建文件夹',
   'file.save': '文件：保存',
@@ -80,8 +90,8 @@ const TITLES: Record<string, string> = {
   'fmt.clear': '格式：清除格式',
 };
 
-/** 生产命令总数：原 23 + 打开文件 + 快捷键参考 + 编辑8 + 段落14 + 格式8 = 55。 */
-const COMMAND_COUNT = 55;
+/** 生产命令总数：原 23 + 打开文件 + 快捷键参考 + 编辑8 + 段落14 + 格式8 + 新建文档 = 56。 */
+const COMMAND_COUNT = 56;
 
 /** 生产命令（剔除 dev.* DEV-only 命令，如 IME 探针 dev.ime-probe）。 */
 function prodCommands() {
@@ -137,6 +147,9 @@ describe('builtins', () => {
     // Ctrl+O 给打开文件；打开文件夹让位 Ctrl+Shift+O
     expect(byId.get('file.open-file')?.shortcut).toBe('Ctrl+O');
     expect(byId.get('file.open-folder')?.shortcut).toBe('Ctrl+Shift+O');
+    // Ctrl+N 归「新建文档」（草稿）；树内建文件让位 Ctrl+Alt+N
+    expect(byId.get('file.new-document')?.shortcut).toBe('Ctrl+N');
+    expect(byId.get('file.new-file')?.shortcut).toBe('Ctrl+Alt+N');
     // 加粗占用 Ctrl+B；渲染模式保留 Ctrl+E
     expect(byId.get('fmt.bold')?.shortcut).toBe('Ctrl+B');
     expect(byId.get('view.toggle-render-mode')?.shortcut).toBe('Ctrl+E');
@@ -154,6 +167,12 @@ describe('builtins', () => {
     initKeymap();
     window.dispatchEvent(key({ key: 'O', ctrlKey: true, shiftKey: true }));
     expect(requestOpenFolder).toHaveBeenCalledTimes(1);
+  });
+
+  it('合成 Ctrl+N 触发新建草稿文档（无 vault 也可用）', () => {
+    initKeymap();
+    window.dispatchEvent(key({ key: 'n', ctrlKey: true }));
+    expect(newDraftDocument).toHaveBeenCalledTimes(1);
   });
 
   it('重复调用安全（StrictMode）：先清旧注册再登记', () => {

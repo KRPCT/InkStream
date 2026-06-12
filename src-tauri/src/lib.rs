@@ -20,6 +20,7 @@ pub fn run() {
             vault::find_repo_root,
             files::read_file,
             files::write_file_atomic,
+            files::write_file_to_path,
             files::create_file,
             files::create_dir,
             files::rename_path,

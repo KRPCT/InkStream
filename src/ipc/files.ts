@@ -23,6 +23,14 @@ export function writeFileAtomic(root: string, path: string, content: string): Pr
   return invoke('write_file_atomic', { root, path, content });
 }
 
+/**
+ * 草稿另存为：绝对路径原子写（temp+fsync+rename，与 writeFileAtomic 同核）。
+ * path 来自原生保存对话框，属用户显式授权边界，Rust 侧不经 vault path_guard（无 root 语义）。
+ */
+export function writeFileToPath(path: string, content: string): Promise<null> {
+  return invoke('write_file_to_path', { path, content });
+}
+
 /** 新建空文件：同名已存在则 Rust 侧返回错误，绝不覆盖（D-12）。 */
 export function createFile(root: string, path: string): Promise<null> {
   return invoke('create_file', { root, path });

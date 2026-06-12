@@ -1,4 +1,5 @@
 import { queueAfterComposition } from '../editor/composition';
+import { isDraftPath } from '../editor/draftPath';
 import { getDocForPath } from '../editor/editorState';
 import { getView } from '../editor/viewHandle';
 import { writeFileAtomic } from '../ipc/files';
@@ -120,8 +121,9 @@ async function writeOnce(path: string): Promise<void> {
   }
 }
 
-/** 编辑触发：防抖窗口内多次调用合并为一次落盘。 */
+/** 编辑触发：防抖窗口内多次调用合并为一次落盘。草稿（draft://）无真实路径，一律跳过。 */
 export function scheduleAutosave(path: string): void {
+  if (isDraftPath(path)) return;
   const existing = timers.get(path);
   if (existing !== undefined) clearTimeout(existing);
   timers.set(
@@ -141,9 +143,10 @@ export function scheduleAutosave(path: string): void {
 /**
  * Ctrl+S / 关 tab 前：取消防抖定时器并立即落盘。
  * WR-08：经 enqueueWrite 串到该 path 在途写链尾——若已有写在飞，先等它完成再写本次，
- * 保证落盘顺序、杜绝两个 rename 竞态。
+ * 保证落盘顺序、杜绝两个 rename 竞态。草稿（draft://）一律跳过（保存走 saveDraftAs）。
  */
 export async function flushAutosave(path: string): Promise<void> {
+  if (isDraftPath(path)) return;
   const existing = timers.get(path);
   if (existing !== undefined) {
     clearTimeout(existing);

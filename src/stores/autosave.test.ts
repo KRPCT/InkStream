@@ -107,6 +107,14 @@ describe('autosave 防抖落盘管线', () => {
     expect(mockWrite).toHaveBeenCalledTimes(1);
   });
 
+  it('草稿 path（draft://）schedule 与 flush 均跳过落盘（无真实路径）', async () => {
+    docs['draft://1'] = '草稿内容';
+    scheduleAutosave('draft://1');
+    await vi.runAllTimersAsync();
+    await flushAutosave('draft://1');
+    expect(mockWrite).not.toHaveBeenCalled();
+  });
+
   it('frozen 时不落盘（02-04 冲突期防误覆盖）', async () => {
     useEditorStore.getState().freezeAutosave('a.md');
     docs['a.md'] = '冻结期编辑';

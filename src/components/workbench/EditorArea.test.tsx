@@ -9,8 +9,11 @@ import EditorArea from './EditorArea';
 vi.mock('../../editor/useCodeMirror', () => ({ useCodeMirror: vi.fn() }));
 vi.mock('../../editor/richtext/Toolbar', () => ({ default: () => null }));
 vi.mock('./ExternalChangeBar', () => ({ default: () => null }));
-vi.mock('./EditorTabs', () => ({ default: () => null }));
+vi.mock('./EditorTabs', () => ({ default: () => <div data-testid="editor-tabs" /> }));
 vi.mock('../../editor/vaultFlow', () => ({ requestOpenFolder: vi.fn() }));
+
+const newDraftDocument = vi.fn();
+vi.mock('../../editor/draftFlow', () => ({ newDraftDocument: () => newDraftDocument() }));
 
 const getView = vi.fn();
 vi.mock('../../editor/viewHandle', () => ({ getView: () => getView() }));
@@ -63,5 +66,45 @@ describe('EditorArea 右键菜单（R4 §4.3 组合期防御）', () => {
     render(<EditorArea />);
     fireEvent.contextMenu(cmMount(), { clientX: 10, clientY: 10 });
     expect(screen.queryByTestId('editor-context-menu')).not.toBeInTheDocument();
+  });
+});
+
+describe('EditorArea 空态与草稿（未命名文档）', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    useVaultStore.setState(useVaultStore.getInitialState(), true);
+    useEditorStore.setState(useEditorStore.getInitialState(), true);
+    getView.mockReturnValue(fakeView);
+    isComposing.mockReturnValue(false);
+  });
+
+  afterEach(() => {
+    useVaultStore.setState(useVaultStore.getInitialState(), true);
+    useEditorStore.setState(useEditorStore.getInitialState(), true);
+  });
+
+  it('无 vault 无 tab：空态并列「新建文档」与「打开文件夹」，点新建走 newDraftDocument', () => {
+    render(<EditorArea />);
+    expect(screen.getByText('未打开工作区')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '打开文件夹' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '新建文档' }));
+    expect(newDraftDocument).toHaveBeenCalledTimes(1);
+  });
+
+  it('无 vault 但草稿 tab 活动：不覆盖编辑器且显示 tab 栏', () => {
+    useEditorStore.setState({
+      tabs: [{ path: 'draft://1', name: '未命名-1' }],
+      activePath: 'draft://1',
+    });
+    render(<EditorArea />);
+    expect(screen.queryByText('未打开工作区')).not.toBeInTheDocument();
+    expect(screen.queryByText('未打开文件')).not.toBeInTheDocument();
+    expect(screen.getByTestId('editor-tabs')).toBeInTheDocument();
+  });
+
+  it('有 vault 无活动文件：仍显示「未打开文件」空态', () => {
+    useVaultStore.setState({ vault: { root: '/v', repoRoot: null, name: 'v' } });
+    render(<EditorArea />);
+    expect(screen.getByText('未打开文件')).toBeInTheDocument();
   });
 });

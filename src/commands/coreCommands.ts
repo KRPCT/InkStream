@@ -5,6 +5,7 @@ import {
   renameNodeInTree,
 } from '../components/workbench/fileTreeController';
 import { createFileTreeOps } from '../components/workbench/fileTreeOps';
+import { newDraftDocument } from '../editor/draftFlow';
 import { requestOpenFile, requestOpenFolder, requestOpenRecent } from '../editor/vaultFlow';
 import { cycleDocumentLanguage } from '../editor/richtext/switchLanguage';
 import { toggleRenderMode } from '../editor/livepreview/renderMode';
@@ -106,9 +107,17 @@ export const CORE_COMMANDS: Command[] = [
   },
   { id: 'file.open-recent', title: '文件：打开最近', run: () => void requestOpenRecent() },
   {
+    id: 'file.new-document',
+    title: '文件：新建文档',
+    shortcut: 'Ctrl+N',
+    // 无论有无 vault：开一个未命名草稿（纯内存，Ctrl+S 另存为转正）——打开 app 即可写。
+    run: () => newDraftDocument(),
+  },
+  {
     id: 'file.new-file',
     title: '文件：新建文件',
-    shortcut: 'Ctrl+N',
+    // Ctrl+N 让位「新建文档」（用户直觉：新建即写）；树内建文件改 Ctrl+Alt+N。
+    shortcut: 'Ctrl+Alt+N',
     // 无 vault 先提示打开文件夹（在当前 vault 根创建，复用 fileTreeOps 不绕 path_guard）。
     run: () => requireVault(() => newFileInTree()),
   },

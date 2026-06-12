@@ -3,7 +3,7 @@ import type { RenderMode } from '../types/editor';
 
 /** tab 元数据（可序列化；EditorState 实例不在此，缓存于 editor/editorState.ts）。 */
 export interface TabMeta {
-  /** 文件相对 vault 根路径（唯一键）。 */
+  /** 文件相对 vault 根路径，或草稿合成标识 `draft://N`（唯一键，editor/draftPath）。 */
   path: string;
   /** 显示名（文件名）。 */
   name: string;

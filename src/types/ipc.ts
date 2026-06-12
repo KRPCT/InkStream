@@ -20,6 +20,8 @@ export interface IpcCommands {
   read_file: { args: { root: string; path: string }; result: string };
   // 写侧 command（02-03）。均经 path_guard 校验落在 vault 根内；同名拒绝绝不覆盖（D-12）。
   write_file_atomic: { args: { root: string; path: string; content: string }; result: null };
+  // 草稿另存为：原生保存对话框给出的绝对路径（用户显式授权边界，不经 path_guard）。
+  write_file_to_path: { args: { path: string; content: string }; result: null };
   create_file: { args: { root: string; path: string }; result: null };
   create_dir: { args: { root: string; path: string }; result: null };
   rename_path: { args: { root: string; from: string; to: string }; result: null };

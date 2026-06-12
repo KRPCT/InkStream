@@ -35,6 +35,7 @@ export const MENUS: GroupConfig[] = [
   {
     label: '文件',
     items: [
+      { commandId: 'file.new-document', label: '新建文档' },
       { commandId: 'file.new-file', label: '新建文件' },
       { commandId: 'file.new-folder', label: '新建文件夹' },
       { separator: true },
