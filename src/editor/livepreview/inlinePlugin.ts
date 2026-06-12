@@ -1,5 +1,5 @@
 import { syntaxTree } from '@codemirror/language';
-import { type Range, RangeSetBuilder } from '@codemirror/state';
+import { Facet, type Range, RangeSetBuilder } from '@codemirror/state';
 import {
   Decoration,
   type DecorationSet,
@@ -15,14 +15,13 @@ import {
   INLINE_STYLE,
   LINE_REVEAL_MARK,
   TASK_MARKER_NODE,
+  URL_NODE,
   headingLevel,
 } from './nodeNames';
 import { HrWidget } from './widgets/HrWidget';
 import { type ImageVaultContext, ImageWidget } from './widgets/ImageWidget';
 import { TaskCheckboxWidget } from './widgets/TaskCheckboxWidget';
-import { useVaultStore } from '../../stores/useVaultStore';
-import { useEditorStore } from '../../stores/useEditorStore';
-import { isFrozen, refreshLivePreview } from './composingGuard';
+import { isComposing, refreshLivePreview } from '../composition';
 
 /**
  * 行内层 ViewPlugin（EDIT-03 / RESEARCH Pattern 1，三层范式的行内脊柱）。
@@ -33,18 +32,15 @@ import { isFrozen, refreshLivePreview } from './composingGuard';
  *     Decoration.mark({class:'cm-ink-hidden'}) 隐藏字符——**绝不改 doc**（真相源不变 T-03-06）；
  *     删除线 line-through / 行内代码等宽底纹 / 链接色 / `<u>` underline 用 Decoration.mark 加内容样式；
  *     水平线 HorizontalRule 经 Decoration.replace 换 `<hr>` widget。
- *   - 活动行整行还原（D-07 / D-06 / EDIT-06 Option 2，Typora/Obsidian 级契约）：与主选区（state.selection.main）
- *     相交的行（[firstLine,lastLine]）**整行不发任何行内装饰**——既不隐藏标记（HIDDEN/FAINT/list/quote），
- *     也不 inline replace（image/hr/task），该行渲染为纯源码：一个与 doc 切片逐字节相等的文本节点。
- *     这正是 CM6 6.43.1 findCompositionRange 文本相等闸门的硬前提——活动行若被拆成多 span（淡显/隐藏/
- *     widget），相等判定失败，中文 IME 重复字（咕咕咕）与长句合成仍吞字。整行硬跳过取代旧的逐元素
- *     REVEALABLE 还原 / FAINT 淡显 / LINE_REVEAL 逐行还原，三者被本契约统一吸收。非活动行保持全套 Live
- *     Preview 渲染（隐藏标记 + widget）。
- *   - IME（EDIT-06，Option 2 在 Option 1 之上）：不再自建 composition 冻结闸门——CM6 6.15.3+（本项目 6.43.1）
- *     内置合成范围保护（findCompositionRange），update() 照常无条件重建装饰；组合期的 docChange 事务正常
- *     触发 buildInlineDecorations，活动行恒为纯文本节点保住相等闸门，CM6 自身保护正在合成的文本节点。
- *     docChanged 的 React/落盘副作用在 useCodeMirror 内据 `!view.composing` 推迟到上屏提交事务，避免每次
- *     候选键击触发同步重活。
+ *   - 活动行整行还原（D-07 / D-06，Typora/Obsidian 级契约）：与主选区（state.selection.main）相交的行
+ *     （[firstLine,lastLine]）**整行不发任何行内装饰**——既不隐藏标记，也不 inline replace（image/hr/task），
+ *     该行渲染为纯源码：一个与 doc 切片逐字节相等的文本节点。这是 CM6 findCompositionRange 文本相等闸门的
+ *     硬前提——活动行若被拆成多 span（隐藏/widget），相等判定失败，中文 IME 重复字（咕咕咕）与长句合成仍吞字。
+ *     整行硬跳过取代旧的逐元素 REVEALABLE / LINE_REVEAL 还原。非活动行保持全套 Live Preview 渲染。
+ *   - IME（重构设计 §4.4，root cause B）：组合判据收口到统一冻结门，update() 据 isComposing(u.view)
+ *     在组合期短路——保旧 RangeSet 不重建（撕合成中的文本节点 DOM = 吞字），docChanged 时 map 跟随位移；
+ *     compositionend 后门派发 refreshLivePreview 强刷，恰好重建一次还原渲染态（CR-01）。活动行纯源码契约
+ *     与门叠加：重建发生时活动行恒为纯文本节点保住相等闸门。
  *   - 性能纪律：仅 view.visibleRanges 内迭代 + 构建，视口外不迭代（10 万字 < 16ms）。
  *
  * 样式经 EditorView.theme() 消费 var(--cm-*)，**永不硬编色值**（highlightTheme.ts 纪律）。
@@ -82,17 +78,16 @@ const QUOTE_MARK = Decoration.mark({ class: 'cm-ink-quote-mark' });
 const QUOTE_LINE = Decoration.line({ class: 'cm-ink-quote' });
 
 /**
- * 取当前图片 widget 的 vault 上下文（vault 根 + 活动文档相对路径），无 vault / 无活动文档时返回 null。
+ * 图片 vault 上下文 Facet（WR-07：装饰构建不读全局 store，保 per-view 纯净）。
  *
- * 本地图相对路径据「活动文档目录」解析并断言在 vault 根内（ImageWidget.resolveVaultImage，T-03-19）。
- * 经 store getState() 惰性读取（同 editorState.ts 纪律，store 不进装饰构建闭包外的 React 渲染路径）。
+ * 旧实现在 buildInlineDecorations 内直读全局 store 取活动文档上下文——多 view 共存时所有 view 都读同一
+ * 活动文档，渲染态与各自 EditorState 脱钩（per-view 不纯）。改为经 Facet 由宿主（editorState 换装时）按
+ * view 注入：每个 EditorState 各持其文档的 vault 上下文，装饰构建只读 view.state.facet，零全局 store 触达。
+ * 无注入（测试 / 无 vault）回落 null。
  */
-function currentImageVault(): ImageVaultContext | null {
-  const root = useVaultStore.getState().vault?.root ?? null;
-  const docPath = useEditorStore.getState().activePath;
-  if (!root || !docPath) return null;
-  return { root, docPath };
-}
+export const imageVaultFacet = Facet.define<ImageVaultContext | null, ImageVaultContext | null>({
+  combine: (values) => values[0] ?? null,
+});
 
 /**
  * 构建可视区行内装饰（仅 view.visibleRanges）。
@@ -107,8 +102,9 @@ export function buildInlineDecorations(view: EditorView): DecorationSet {
   const { state } = view;
   const doc = state.doc;
   const ranges: Range<Decoration>[] = [];
-  // 图片 vault 上下文一次取（构建期常量）：本地图相对路径据此解析并断言 vault 内（T-03-19）。
-  const imageVault = currentImageVault();
+  // 图片 vault 上下文一次取（构建期常量）：经 per-view facet 注入（WR-07），不读全局 store。
+  // 本地图相对路径据此解析并断言 vault 内（T-03-19）。
+  const imageVault = state.facet(imageVaultFacet);
   // 已 add 行级装饰的行号去重（同一标题/引用行只 add 一次 line 装饰）。
   const headedLines = new Set<number>();
   const quotedLines = new Set<number>();
@@ -158,11 +154,16 @@ export function buildInlineDecorations(view: EditorView): DecorationSet {
 
         // 图片 `![](url)`：整节点 replace 为 ImageWidget（本地 asset / 远程 https:）。
         // 活动行还原由顶部整行硬跳过接管；整节点替换故 return false（子 URL 不再单隐）。
+        // url 取自语法树 URL 子节点而非裸正则（WR-02）：titled `![a](u "t")`、spaced `![a]( u )`
+        // 形态正则会把标题/空格并入 url；URL 子节点对全部形态精确给出区间。无 URL 子节点（残缺图）则跳过。
         if (node.name === IMAGE_NODE) {
-          const url = state.doc.sliceString(node.from, node.to).replace(/^!\[[^\]]*]\(/, '').replace(/\)$/, '');
-          ranges.push(
-            Decoration.replace({ widget: new ImageWidget(url, imageVault) }).range(node.from, node.to),
-          );
+          const urlNode = node.node.getChild(URL_NODE);
+          if (urlNode) {
+            const url = state.doc.sliceString(urlNode.from, urlNode.to);
+            ranges.push(
+              Decoration.replace({ widget: new ImageWidget(url, imageVault) }).range(node.from, node.to),
+            );
+          }
           return false;
         }
 
@@ -226,7 +227,7 @@ export function buildInlineDecorations(view: EditorView): DecorationSet {
           ranges.push(HIDDEN_MARK.range(node.from, node.to));
         }
         // URL 节点（链接 [text](url) 的 url 部分）：隐藏（仅显 text）。
-        if (node.name === 'URL' && node.to > node.from) {
+        if (node.name === URL_NODE && node.to > node.from) {
           ranges.push(HIDDEN_MARK.range(node.from, node.to));
         }
         return undefined;
@@ -325,12 +326,14 @@ class InlinePluginValue {
       tr.effects.some((e) => e.is(refreshLivePreview)),
     );
 
-    // IME 冻结闸门（EDIT-06，root cause B）：组合期（compositionstart→compositionend）绝不调
+    // IME 冻结门（重构设计 §4.4，root cause B）：组合期（compositionstart→compositionend）绝不调
     // buildInlineDecorations 重建语法树——重建会撕掉正在合成的文本节点 DOM → Chromium 中止 IME（吞字）。
-    // 但 docChanged 时**必须把旧 RangeSet 经 changes 映射跟随位移**：返回未映射的旧集会让 CM6 的
-    // findChangedDeco 把插入点后所有 chunk 判为未共享 → 伪 changedRanges → 在合成节点上重建 DOM（同样吞字）。
-    // map 仅 O(chunks) 位移，不重算语法树（性能守恒）；refreshed 例外（解冻后的安全强刷，放行重建）。
-    if (!refreshed && (u.view.composing || isFrozen(u.view))) {
+    // 组合判据经门的 isComposing(u.view)（铁律 4 双判：view.composing ‖ frozen，覆盖 composing===0 启动窗 +
+    // dev#1069 残留），与块级层 isComposingTr(tr) 同源（CR-01 消除）。docChanged 时**必须把旧 RangeSet 经
+    // changes 映射跟随位移**：返回未映射的旧集会让 CM6 findChangedDeco 把插入点后所有 chunk 判为未共享 →
+    // 伪 changedRanges → 在合成节点上重建 DOM（同样吞字）。map 仅 O(chunks) 位移，不重算语法树（性能守恒）；
+    // refreshed 例外（解冻后的安全强刷，放行重建）。
+    if (!refreshed && isComposing(u.view)) {
       if (u.docChanged) this.decorations = this.decorations.map(u.changes);
       // 纯选区变化的组合事务：保持当前装饰不动（不重建、无可 map 的 changes）。
       return;

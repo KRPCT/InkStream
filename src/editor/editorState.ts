@@ -8,6 +8,7 @@ import { readLanguage } from './frontmatter';
 import { languageFromDoc, markAppliedLanguage } from './languages';
 import { getView } from './viewHandle';
 import { getRenderMode, isMarkdownDoc, setRenderMode } from './livepreview/renderMode';
+import { imageVaultFacet } from './livepreview/inlinePlugin';
 import type { RenderMode } from '../types/editor';
 
 /**
@@ -97,7 +98,11 @@ export function syncRichtext(view: EditorView): void {
  */
 export function openFile(view: EditorView, path: string, doc: string, ext: Extension): void {
   const cached = cache.get(path);
-  const state = cached ?? EditorState.create({ doc, extensions: ext });
+  // 图片 vault 上下文经 per-view facet 注入（WR-07）：装饰构建不读全局 store，绑定各自 EditorState；
+  // 换装入口是 store 读取合法位（同 applyRenderMode/syncRichtext），root+docPath 一次取写入门生命周期恒定。
+  const root = useVaultStore.getState().vault?.root ?? null;
+  const vaultFacet = imageVaultFacet.of(root ? { root, docPath: path } : null);
+  const state = cached ?? EditorState.create({ doc, extensions: [ext, vaultFacet] });
   view.setState(state);
   restoreScroll(view, scrollCache.get(path) ?? 0);
   syncRichtext(view);

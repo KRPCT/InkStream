@@ -7,7 +7,7 @@ import { EditorView } from '@codemirror/view';
 import { destroyTestView, dispatchComposition, makeTestView } from '../../test/composition';
 import { extensionsForLanguage } from '../languages';
 import { blockField, tableAtomicRanges } from './blockField';
-import { refreshLivePreview } from './composingGuard';
+import { refreshLivePreview } from '../composition';
 import { TableWidget } from './widgets/TableWidget';
 
 /**
@@ -17,9 +17,9 @@ import { TableWidget } from './widgets/TableWidget';
  *   1. 含 GFM 表格 doc 构建后 blockField 持的 DecorationSet 含 block widget（TableWidget）；
  *   2. 光标移入表格 range 内后该表不再被替换（整块还原源码，D-06）；
  *   3. tableAtomicRanges 覆盖表格 range（键盘光标移动跳过 widget，Pattern 4）；
- *   4. 规范重建：组合 userEvent 的 docChanged 照常全文重建（不再有 IME 冻结/映射闸门）；
+ *   4. IME 冻结门：组合事务的 docChanged 经 isComposingTr(tr) 短路 map，compositionend 后强刷全文重建；
  *   5. UAT #8 选区复用性能：普通选区移动零语法树访问（与 IME 正交，照旧保留）；
- *   6. 源纪律：provide 调 EditorView.decorations.from + block:true + atomicRanges，无 composition 残留。
+ *   6. 源纪律：provide 调 EditorView.decorations.from + block:true + atomicRanges + 接统一冻结门。
  */
 
 let view: EditorView | null = null;
@@ -303,9 +303,11 @@ describe('blockField 源纪律', () => {
     expect(src).toContain('EditorView.atomicRanges');
   });
 
-  it('接入 IME 冻结/映射闸门（input.type.compose 短路 map + refreshLivePreview 强刷重建，EDIT-06 freeze/map）', () => {
-    // 块级层无 view，据 CM6 原生 input.type.compose userEvent 识别组合事务并 map 旧装饰。
-    expect(src).toContain("isUserEvent('input.type.compose')");
+  it('接入统一冻结门（isComposingTr 短路 map + refreshLivePreview 强刷重建，重构设计 §4.4）', () => {
+    // 块级层无 view，据门的 isComposingTr(tr)（annotation ∪ CM6 原生标记 ∪ frozen 双判）识别组合事务并 map。
+    expect(src).toContain('isComposingTr(tr)');
+    // 判据与强刷 effect 均自统一冻结门 composition.ts 引入（与行内层 isComposing(view) 同源，CR-01）。
+    expect(src).toContain("from '../composition'");
     // 组合期 docChanged 时 map deco + 表格 range（mapPos），非全文扫描重建。
     expect(src).toContain('prev.deco.map(tr.changes)');
     expect(src).toContain('tr.changes.mapPos');

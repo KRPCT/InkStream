@@ -4,6 +4,7 @@ import { EditorView } from '@codemirror/view';
 import { destroyTestView, dispatchComposition, makeTestView } from '../../test/composition';
 import { extensionsForLanguage } from '../languages';
 import { baseExtensions } from '../extensions';
+import { compositionGate } from '../composition';
 import { inlinePlugin } from './inlinePlugin';
 
 const openExternal = vi.fn<(url: string) => Promise<void>>(() => Promise.resolve());
@@ -14,11 +15,12 @@ vi.mock('../../ipc/opener', () => ({
 const { livePreviewExtensions, renderModeCompartment } = await import('./livePreview');
 
 /**
- * 组合根接线回归门（Pattern 3：行内层 + 块级层 + composingGuard 经一个 Extension[] 共存，EDIT-06 freeze/map）。
+ * 组合根接线回归门（Pattern 3：行内层 + 块级层经一个 Extension[] 共存，重构设计 §4.4）。
  *
- * 断言 livePreviewExtensions() 挂上 inlinePlugin（标题渲染）+ composingGuard（IME 闸门），组合期
- * docChange 经闸门 map 装饰而非重建，compositionend 后强刷恰好重建一次；且 baseExtensions 默认
- * 装入 renderModeCompartment。
+ * 断言 livePreviewExtensions() 挂上 inlinePlugin（标题渲染）；组合冻结门已上移到 baseExtensions 顶层
+ * （compositionGate，不在本组合根），故测试 view 显式附 compositionGate 才能驱动组合期 map：组合期
+ * docChange 经门 map 装饰而非重建，compositionend 后强刷恰好重建一次；且 baseExtensions 默认装入
+ * renderModeCompartment。
  */
 
 let view: EditorView | null = null;
@@ -29,9 +31,10 @@ afterEach(() => {
 });
 
 describe('livePreviewExtensions 组合根', () => {
-  it('含 inlinePlugin（标题渲染）且组合期经 composingGuard 闸门 map（不重建），compositionend 后强刷重建', async () => {
+  it('含 inlinePlugin（标题渲染）且组合期经统一冻结门 map（不重建），compositionend 后强刷重建', async () => {
     view = makeTestView('# H1\n\n正文', [
       extensionsForLanguage('markdown'),
+      compositionGate,
       livePreviewExtensions(),
     ]);
     view.dispatch({ selection: EditorSelection.cursor(view.state.doc.length) });
@@ -58,7 +61,7 @@ describe('livePreviewExtensions 组合根', () => {
       return false;
     };
 
-    // 组合期文首插入新二级标题：composingGuard 冻结 → inlinePlugin map 旧集（不重建），
+    // 组合期文首插入新二级标题：统一冻结门冻结 → inlinePlugin map 旧集（不重建），
     // 故 cm-ink-h2 尚未出现（旧装饰仅位移，新结构未被扫描）。
     expect(hasH2()).toBe(false);
     dispatchComposition(view, { phase: 'compositionstart', data: '你' });

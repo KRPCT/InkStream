@@ -6,7 +6,7 @@ import { EditorView } from '@codemirror/view';
 import { destroyTestView, dispatchComposition, makeTestView } from '../../test/composition';
 import { extensionsForLanguage } from '../languages';
 import { inlinePlugin } from './inlinePlugin';
-import { composingGuard, refreshLivePreview } from './composingGuard';
+import { compositionGate, refreshLivePreview } from '../composition';
 
 /**
  * 行内层 ViewPlugin 回归门（EDIT-03 / RESEARCH Pattern 1，EDIT-06 Option 2）。
@@ -31,9 +31,9 @@ afterEach(() => {
   view = null;
 });
 
-/** 用 markdown(GFM) + inlinePlugin + composingGuard 构建 view（IME 冻结闸门随附，组合断言依赖）。 */
+/** 用 markdown(GFM) + inlinePlugin + compositionGate 构建 view（统一冻结门随附，组合断言依赖）。 */
 function lpView(doc: string): EditorView {
-  return makeTestView(doc, [extensionsForLanguage('markdown'), inlinePlugin, composingGuard]);
+  return makeTestView(doc, [extensionsForLanguage('markdown'), inlinePlugin, compositionGate]);
 }
 
 /** 收集装饰集合的 (from,to,spec) 序列。 */
@@ -249,6 +249,44 @@ describe('inlinePlugin 重型 widget（图片 / 任务复选框，D-09）', () =
   });
 });
 
+describe('inlinePlugin 图片 URL 取自语法树（WR-02：titled / spaced 形态正则会误并标题/空格）', () => {
+  /** 取首个 ImageWidget 实例（读其 url 验证解析正确）。 */
+  function firstImageUrl(v: EditorView): string | undefined {
+    const set = v.plugin(inlinePlugin)!.decorations;
+    const iter = set.iter();
+    while (iter.value) {
+      const widget = (iter.value.spec as { widget?: { url?: string } }).widget;
+      if (widget && typeof widget.url === 'string') return widget.url;
+      iter.next();
+    }
+    return undefined;
+  }
+
+  it('裸 `![](url)`：url 精确', () => {
+    view = lpView('![](https://x.com/a.png)\n\n尾');
+    cursorToEnd(view);
+    expect(firstImageUrl(view)).toBe('https://x.com/a.png');
+  });
+
+  it('titled `![a](url "标题")`：url 不含标题（正则旧实现会并入 ` "标题"`）', () => {
+    view = lpView('![a](https://x.com/a.png "图说")\n\n尾');
+    cursorToEnd(view);
+    expect(firstImageUrl(view)).toBe('https://x.com/a.png');
+  });
+
+  it('spaced `![a]( url )`：url 不含两侧空格（正则旧实现会并入空格）', () => {
+    view = lpView('![a]( https://x.com/a.png )\n\n尾');
+    cursorToEnd(view);
+    expect(firstImageUrl(view)).toBe('https://x.com/a.png');
+  });
+
+  it('本地相对图 `![](img/a.png)`：url 为原始相对路径（widget 内再解析 vault）', () => {
+    view = lpView('![](img/a.png)\n\n尾');
+    cursorToEnd(view);
+    expect(firstImageUrl(view)).toBe('img/a.png');
+  });
+});
+
 describe('inlinePlugin 列表 / 引用逐行还原（D-06）', () => {
   it('无序列表：ListMark 隐藏 + 渲染项目符号', () => {
     view = lpView('- a\n- b');
@@ -415,10 +453,12 @@ describe('inlinePlugin 源纪律', () => {
     expect(src).toContain('RangeSetBuilder');
   });
 
-  it('接入 IME 冻结闸门（isFrozen 短路 + refreshLivePreview 强刷重建，EDIT-06 freeze/map）', () => {
-    // 组合期短路据 isFrozen / view.composing；compositionend 后 refreshLivePreview effect 触发重建。
-    expect(src).toMatch(/isFrozen/);
+  it('接入统一冻结门（isComposing 短路 + refreshLivePreview 强刷重建，重构设计 §4.4）', () => {
+    // 组合期短路据门的 isComposing(u.view)（铁律 4 双判）；compositionend 后 refreshLivePreview 触发重建。
+    expect(src).toMatch(/isComposing\(u\.view\)/);
     expect(src).toMatch(/refreshLivePreview/);
+    // 判据与强刷 effect 均自统一冻结门 composition.ts 引入（不再各读各的真相源，CR-01）。
+    expect(src).toContain("from '../composition'");
     // 组合期 docChanged 时 map 旧集（this.decorations.map(u.changes)）而非重建。
     expect(src).toContain('this.decorations.map(u.changes)');
   });
@@ -440,5 +480,18 @@ describe('inlinePlugin 源纪律', () => {
   it('无硬编码色值（var(--cm-*) 纪律，同 highlightTheme.test.ts:67）', () => {
     expect(src).not.toMatch(/color:\s*['"]#/);
     expect(src).not.toMatch(/['"]#[0-9a-fA-F]{3,8}['"]/);
+  });
+
+  it('图片 URL 取自语法树 URL 子节点而非裸正则（WR-02）', () => {
+    // getChild(URL_NODE) 取 URL 子节点区间；旧裸正则 ^!\[...\]\( / \)$ 已删（不再 slice 整节点切 url）。
+    expect(src).toContain('getChild(URL_NODE)');
+    expect(src).not.toMatch(/replace\(\/\^!\\\[/);
+  });
+
+  it('装饰构建不读全局 store，图片 vault 经 per-view facet 注入（WR-07）', () => {
+    // buildInlineDecorations 经 state.facet(imageVaultFacet) 取上下文，绝不在构建路径 import/调 store。
+    expect(src).toContain('state.facet(imageVaultFacet)');
+    expect(src).not.toContain('useVaultStore');
+    expect(src).not.toContain('useEditorStore');
   });
 });

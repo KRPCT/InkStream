@@ -3,7 +3,7 @@ import { RangeSetBuilder, StateField, type EditorState } from '@codemirror/state
 import { Decoration, type DecorationSet, EditorView } from '@codemirror/view';
 import { BLOCK_REPLACE } from './nodeNames';
 import { TableWidget } from './widgets/TableWidget';
-import { refreshLivePreview } from './composingGuard';
+import { isComposingTr, refreshLivePreview } from '../composition';
 
 /**
  * 块级层 StateField（EDIT-03 / RESEARCH Pattern 2 + 4 / Pitfall 3，三层范式块级支柱）。
@@ -19,9 +19,9 @@ import { refreshLivePreview } from './composingGuard';
  * atomicRanges（Pattern 4）：`tableAtomicRanges` 喂同一替换 RangeSet，使键盘 moveByChar/Backspace
  * 把表格 widget 当原子跳过（光标不卡进 widget；进块经整块还原退回可编辑源码）。
  *
- * IME（EDIT-06，Option 1）：不再自建 composition 冻结闸门——CM6 6.43.1 内置合成范围保护，组合期的
- * docChange 事务照常走 buildBlockState 规范重建（CM6 自身保护正在合成的文本节点）。UAT #8 的选区复用
- * 优化（仅跨表格边界才重建、普通选区移动零语法树访问）是与 IME 正交的纯性能关切，照旧保留。
+ * IME（重构设计 §4.4）：组合判据收口到统一冻结门——块级 StateField 无 view，据门的 isComposingTr(tr)
+ * 识别组合事务，组合期 map 旧装饰而非重建（保住正在合成的文本节点 DOM）。UAT #8 的选区复用优化
+ * （仅跨表格边界才重建、普通选区移动零语法树访问）是与 IME 正交的纯性能关切，照旧保留。
  *
  * 与行内层（ViewPlugin）共存于 livePreviewExtensions——CM6 自动合并多个 decorations facet 输入
  * （行内 mark/line 装饰 + 块级 replace 装饰 range 不重叠，无冲突，Pattern 3）。
@@ -120,19 +120,20 @@ function selectionCrossesBoundary(prev: BlockState, tr: { startState: EditorStat
  * 块级层 StateField：持 BlockState（替换 DecorationSet + 全表 range），经 provide 提供其装饰子集。
  *
  * update 重建判据（按代价升序短路）：
- *   1. docChanged：全文扫描重建（doc 结构可能变，表格 range 须刷新）——组合期 docChange 亦走此路
- *      （CM6 6.43.1 内置合成保护，无需自建闸门，EDIT-06 Option 1）。
+ *   1. docChanged：全文扫描重建（doc 结构可能变，表格 range 须刷新）——组合期 docChange 先被门
+ *      isComposingTr(tr) 短路走 map（见 update 步骤 0），不进此重建路径。
  *   2. 选区变化：仅当主选区触及的表格块集合变化才重建（O(blocks) 行号判定）；普通移动原样复用——
  *      消除每次点击的 O(doc) 全树重算（UAT #8 卡顿根因，与 IME 正交的纯性能优化，照旧保留）。
  */
 export const blockField = StateField.define<BlockState>({
   create: (state) => buildBlockState(state),
   update(prev, tr) {
-    // 0. IME 冻结闸门（EDIT-06，root cause B）：块级 StateField 无 view，据 CM6 原生 userEvent
-    //    `input.type.compose` 识别组合事务。组合期绝不全文扫描重建（撕表格 widget DOM → 吞字）；
-    //    docChanged 时 map 旧 deco + 表格 range 跟随位移——返回未映射的旧集会让插入点后的替换装饰 /
-    //    atomicRanges 错位，CM6 据此重建合成中的 DOM（同样吞字）。映射为 O(blocks) 位移，不扫语法树。
-    if (tr.isUserEvent('input.type.compose')) {
+    // 0. IME 冻结门（重构设计 §4.4，root cause B）：块级 StateField 无 view，据门的 isComposingTr(tr)
+    //    （annotation ∪ CM6 原生 input.type.compose ∪ frozen 双判）识别组合事务，与行内层 isComposing(view)
+    //    同源（CR-01 消除）。组合期绝不全文扫描重建（撕表格 widget DOM → 吞字）；docChanged 时 map 旧 deco +
+    //    表格 range 跟随位移——返回未映射的旧集会让插入点后的替换装饰 / atomicRanges 错位，CM6 据此重建
+    //    合成中的 DOM（同样吞字）。映射为 O(blocks) 位移，不扫语法树。
+    if (isComposingTr(tr)) {
       if (!tr.docChanged) return prev; // 纯组合 selection 无文档变：保旧态不动。
       const mapped = {
         deco: prev.deco.map(tr.changes),

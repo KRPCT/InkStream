@@ -74,9 +74,16 @@ export const HTML_TAG_NODE = 'HTMLTag';
 
 /**
  * 图片节点（D-09）：`![alt](url)` 整节点 → Decoration.replace 为 ImageWidget（行内 replace，block:false）。
- * 子节点为 LinkMark + URL（03-07 lezerNodes dump 固化），整节点替换故子 URL 不再单独隐藏。
+ * 子节点为 LinkMark + URL（+ 可选 LinkTitle），整节点替换故子 URL 不再单独隐藏。
  */
 export const IMAGE_NODE = 'Image';
+
+/**
+ * 链接 / 图片的 URL 子节点（lezerNodes dump 固化）：取真实 url 须读此子节点而非裸正则切片（WR-02）。
+ * 裸正则 `^!\[...\]\(`/`\)$` 对 titled `![a](u "t")`、spaced `![a]( u )` 形态会把标题/空格并入 url，
+ * 解析失败。语法树 URL 子节点对全部形态精确给出 url 区间（lezerNodes.test 固化 [from-to]）。
+ */
+export const URL_NODE = 'URL';
 
 /**
  * 任务标记节点（D-09）：GFM `- [ ] x` 的 `[ ]`/`[x]`（TaskMarker，长 3，中间状态字符在 from+1）

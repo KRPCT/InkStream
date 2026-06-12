@@ -76,6 +76,35 @@ describe('TaskCheckboxWidget mousedown 改写（T-03-20 范围固定）', () => 
   });
 });
 
+describe('TaskCheckboxWidget 陈旧 pos 校验（WR-05：组合期 map 后 pos 错位则放弃改写）', () => {
+  it('pos 仍指向 TaskMarker → 正常翻转', () => {
+    view = taskView('- [ ] todo');
+    const dom = new TaskCheckboxWidget(false, 2).toDOM(view);
+    dom.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }));
+    expect(view.state.doc.toString()).toBe('- [x] todo');
+  });
+
+  it('pos 已错位（不再是 `[?]` 形状）→ 放弃改写，doc 不变（绝不盲改无关字符）', () => {
+    // 模拟陈旧 widget：doc 中 pos 2 处已不是 TaskMarker（文档已被改写但 widget pos 未更新）。
+    view = taskView('hello world here');
+    const before = view.state.doc.toString();
+    // widget 仍持旧 pos 2，但 doc[2..5]="llo" 非 `[?]`：校验失败，dispatch 被放弃。
+    const dom = new TaskCheckboxWidget(false, 2).toDOM(view);
+    dom.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }));
+    expect(view.state.doc.toString()).toBe(before);
+  });
+
+  it('pos 越界（超出 doc 长度）→ 放弃改写，不抛错', () => {
+    view = taskView('- [ ] x');
+    const before = view.state.doc.toString();
+    const dom = new TaskCheckboxWidget(false, 999).toDOM(view);
+    expect(() =>
+      dom.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true })),
+    ).not.toThrow();
+    expect(view.state.doc.toString()).toBe(before);
+  });
+});
+
 describe('TaskCheckboxWidget eq / ignoreEvent', () => {
   it('eq 按 checked+pos（同则 true，异则 false）', () => {
     const a = new TaskCheckboxWidget(false, 2);
@@ -100,6 +129,10 @@ describe('TaskCheckboxWidget 源纪律', () => {
     expect(src).toMatch(/dispatch/);
     expect(src).toMatch(/pos\s*\+\s*1/);
     expect(src).toMatch(/pos\s*\+\s*2/);
+  });
+
+  it('dispatch 前校验目标位仍是 TaskMarker（WR-05 陈旧 pos 守卫）', () => {
+    expect(src).toMatch(/isTaskMarkerAt/);
   });
 
   it('无硬编码色值（var(--cm-*) 纪律）', () => {
