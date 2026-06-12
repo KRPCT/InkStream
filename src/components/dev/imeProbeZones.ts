@@ -12,6 +12,7 @@ import {
   installFocusCycle,
   installTextareaRelay,
 } from './imeMitigations';
+import { installRelayZoneM, relayZoneMExtensions, type ZoneWiring } from './relayZoneM';
 
 /**
  * IME 探针受试区清单：A–H 二分定位器 + I/J/K 候选解法验证台。
@@ -43,10 +44,11 @@ export interface ZoneSpec {
   /** cm 区的 throwaway EditorView 扩展工厂；非 cm 区为 undefined。 */
   extensions?: () => Extension;
   /**
-   * cm 区的命令式接线钩子（I/J/K 候选解法专用）：EditorView 与受试区容器就绪后调用，挂监听 / textarea
-   * 中继等副作用，返回 cleanup（ProbeZone 卸载 throwaway view 前调）。A–H 区为 undefined。
+   * cm 区的命令式接线钩子（I/J/K/M 候选解法专用）：EditorView 与受试区容器就绪后调用，挂监听 / textarea
+   * 中继等副作用。返回 cleanup，或 ZoneWiring（M 区：input 指定探针对准的输入面——register/转焦/事件
+   * 日志全部改挂该元素，修 K 的「探头对准 contentDOM」接线错误）。A–H 区为 undefined。
    */
-  setup?: (view: EditorView, host: HTMLElement) => () => void;
+  setup?: (view: EditorView, host: HTMLElement) => (() => void) | ZoneWiring;
 }
 
 /** D–H 各 CM 区相对前一区只多挂一层嫌疑物（严格递增，保证二分单调）。 */
@@ -143,6 +145,16 @@ export const ZONES: ZoneSpec[] = [
     kind: 'cm',
     extensions: () => EditorView.editable.of(false),
     setup: (view, host) => installTextareaRelayOverlay(view, host),
+  },
+  {
+    id: 'M',
+    label: 'M. CM6 只读渲染层 + Monaco 式隐藏 textarea 中继（K 重做）',
+    hypothesis:
+      'M：textarea 为唯一焦点/输入面（1px 透明前景，非 opacity:0 覆盖），mousedown 导流转焦、探针全部' +
+      '对准 textarea、落子读数独立——修正 K 的焦点/观测接线后验证 textarea 中继路线（H-relay-design）。',
+    kind: 'cm',
+    extensions: relayZoneMExtensions,
+    setup: (view, host) => installRelayZoneM(view, host),
   },
 ];
 

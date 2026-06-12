@@ -61,6 +61,8 @@ function ImeProbePanel() {
           </p>
           <p className="text-[12px] leading-snug font-semibold text-[var(--interactive-accent)]">
             I/J 重点测试：点击该区后<strong>第一次</strong>打拼音是否直接成功（不再需要重试）；K 区直接打字即可。
+            M 区（K 重做）：点击 M 区文本或「转焦到 M」（焦点应落中继 textarea）→ 直接打拼音「nihao」→
+            看 M 区编辑器与下方 doc 行是否出现「你好」。
           </p>
         </div>
         <button

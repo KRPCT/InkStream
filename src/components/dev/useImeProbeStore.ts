@@ -16,3 +16,9 @@ export const useImeProbeStore = create<ImeProbeState>((set) => ({
   toggle: () => set((s) => ({ open: !s.open })),
   close: () => set({ open: false }),
 }));
+
+// DEV 诊断通道：CDP/控制台可 __imeProbeStore.getState().toggle() 直开面板（生产构建摇树移除）。
+if (import.meta.env.DEV && typeof window !== 'undefined') {
+  (window as unknown as { __imeProbeStore?: typeof useImeProbeStore }).__imeProbeStore =
+    useImeProbeStore;
+}

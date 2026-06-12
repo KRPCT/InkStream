@@ -43,8 +43,16 @@ export default function ProbeZone({ spec, register }: ProbeZoneProps) {
         state: EditorState.create({ doc: '在此输入中文', extensions: spec.extensions?.() ?? [] }),
       });
       target = view.contentDOM;
-      // I/J/K 候选解法：view 就绪后挂命令式接线（焦点循环 / ce 翻转 / textarea 中继），返回 cleanup。
-      teardownSetup = spec.setup?.(view, host) ?? null;
+      // I/J/K/M 候选解法：view 就绪后挂命令式接线，返回 cleanup 或 ZoneWiring。
+      // M 区返回 ZoneWiring：register/转焦/事件日志全部对准其 input（中继 textarea）——修 K 的
+      // 「探头与转焦都指向不可聚焦 contentDOM」接线错误（H-relay-design 根因 1/2）。
+      const wiring = spec.setup?.(view, host) ?? null;
+      if (typeof wiring === 'function') {
+        teardownSetup = wiring;
+      } else if (wiring) {
+        teardownSetup = wiring.teardown;
+        target = wiring.input;
+      }
     } else {
       target = host.querySelector<HTMLElement>('[data-probe-input]');
     }

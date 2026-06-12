@@ -28,11 +28,24 @@ describe('ImeProbe（A–H 二分 + I/J/K 候选解法）', () => {
     expect(screen.queryByLabelText('A 受试区')).not.toBeInTheDocument();
   });
 
-  it('打开后 11 个受试区 A–K 全渲染', () => {
+  it('打开后 12 个受试区 A–K+M 全渲染', () => {
     useImeProbeStore.setState({ open: true });
     render(<ImeProbe />);
-    expect(ZONES).toHaveLength(11);
-    expect(ZONES.map((z) => z.id)).toEqual(['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K']);
+    expect(ZONES).toHaveLength(12);
+    expect(ZONES.map((z) => z.id)).toEqual([
+      'A',
+      'B',
+      'C',
+      'D',
+      'E',
+      'F',
+      'G',
+      'H',
+      'I',
+      'J',
+      'K',
+      'M',
+    ]);
     for (const z of ZONES) {
       expect(screen.getByLabelText(`${z.id} 区事件日志`)).toBeInTheDocument();
     }
@@ -54,6 +67,21 @@ describe('ImeProbe（A–H 二分 + I/J/K 候选解法）', () => {
     expect(container.querySelector('textarea[data-relay-input]')).toBeInTheDocument();
   });
 
+  it('M 区：register 对准中继 textarea（转焦即落焦输入面），contentDOM 不可聚焦', () => {
+    useImeProbeStore.setState({ open: true });
+    const { container } = render(<ImeProbe />);
+    const relay = container.querySelector<HTMLTextAreaElement>('textarea[data-relay-m-input]');
+    expect(relay).toBeInTheDocument();
+    // 修 K 根因 1：转焦按钮聚焦的是 textarea（唯一焦点面），不是不可聚焦的 contentDOM。
+    fireEvent.click(screen.getByText('转焦到 M'));
+    expect(document.activeElement).toBe(relay);
+    // M 区 CM 渲染层 editable=false → contenteditable="false"（天然不可聚焦）。
+    const mHost = relay?.closest('.cm-probe-host');
+    expect(mHost?.querySelector('.cm-content')).toHaveAttribute('contenteditable', 'false');
+    // 落子读数独立于事件日志（修 K 根因 2 的观测盲区）。
+    expect(mHost?.querySelector('[data-relay-m-doc]')).toBeInTheDocument();
+  });
+
   it('C 区照抄 CM6 .cm-content 全套属性（来源 view@6.43.1 updateAttrs）', () => {
     useImeProbeStore.setState({ open: true });
     render(<ImeProbe />);
@@ -69,11 +97,11 @@ describe('ImeProbe（A–H 二分 + I/J/K 候选解法）', () => {
     expect(c.className).toContain('cm-lineWrapping');
   });
 
-  it('CM 区（D–K）挂载即各持一个真实 EditorView 实例', () => {
+  it('CM 区（D–K+M）挂载即各持一个真实 EditorView 实例', () => {
     useImeProbeStore.setState({ open: true });
     const { container } = render(<ImeProbe />);
     const cmZones = ZONES.filter((z) => z.kind === 'cm');
-    expect(cmZones).toHaveLength(8);
+    expect(cmZones).toHaveLength(9);
     // 每个 CM 区容器内恰好一个 .cm-editor（throwaway EditorView 已挂入 contentDOM）
     expect(container.querySelectorAll('.cm-editor')).toHaveLength(cmZones.length);
     expect(container.querySelectorAll('.cm-content')).toHaveLength(
