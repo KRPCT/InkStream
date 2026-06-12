@@ -24,6 +24,18 @@ function varValue(block: string, name: string): string {
   return m[1].trim();
 }
 
+/**
+ * 块内取变量并解析单层 var(--x) 别名到其 HSL 字面值。
+ *
+ * R5-typography 把 --cm-heading / --cm-blockquote-fg 定义为 var(--text-normal) / var(--text-muted)
+ * 别名（非裸 HSL），contrastRatio 需要字面 HSL——故先取值，若是 var(--x) 形态则在同块内再取一次。
+ */
+function resolvedValue(block: string, name: string): string {
+  const raw = varValue(block, name);
+  const ref = raw.match(/^var\(\s*(--[\w-]+)\s*\)$/);
+  return ref ? varValue(block, ref[1]) : raw;
+}
+
 /** 提取 6 组合之一的 --accent-hsl 值。 */
 function accentValue(mode: string, theme: string): string {
   const m = css.match(
@@ -38,6 +50,8 @@ function accentValue(mode: string, theme: string): string {
 /** Phase 3 Live Preview 装饰专用 token（UI-SPEC §Color 新增表，亮暗双套）。 */
 const LIVE_PREVIEW_TOKENS = [
   '--cm-inline-code-bg',
+  '--cm-code-block-bg',
+  '--cm-blockquote-fg',
   '--cm-blockquote-border',
   '--cm-table-border',
   '--cm-table-header-bg',
@@ -93,7 +107,7 @@ describe('theme.css 变量架构（D-14 立约）', () => {
     expect(varValue(themeBlock('dark'), '--background-modifier-border')).toContain('222');
   });
 
-  it('7 个 Live Preview 装饰 token 在 light 与 dark 块均定义（Phase 3）', () => {
+  it('Live Preview 装饰 token 在 light 与 dark 块均定义（Phase 3 + R5-typography 新增）', () => {
     const light = themeBlock('light');
     const dark = themeBlock('dark');
     for (const name of LIVE_PREVIEW_TOKENS) {
@@ -147,6 +161,27 @@ describe('WCAG 验收表 8 项（UI-SPEC §Color）', () => {
     ['creative', 'dark'],
   ] as const)('%s %s accent 指示条 vs 同主题 background-secondary ≥ 3.0', (mode, theme) => {
     expect(contrastRatio(accentValue(mode, theme), bgSecondary[theme])).toBeGreaterThanOrEqual(3.0);
+  });
+
+  // R5-typography §3.5 验收门 1：改值/新增的 Live Preview 正文级文本 token 对正文背景（--background-primary）
+  // 亮暗各验 ≥ 4.5:1（正文级文本 WCAG AA）。--cm-heading / --cm-blockquote-fg 为 var() 别名，经 resolvedValue 解参。
+  const bgPrimary = {
+    light: varValue(light, '--background-primary'),
+    dark: varValue(dark, '--background-primary'),
+  };
+
+  it.each([
+    ['--cm-heading', 'light'],
+    ['--cm-heading', 'dark'],
+    ['--cm-link', 'light'],
+    ['--cm-link', 'dark'],
+    ['--cm-blockquote-fg', 'light'],
+    ['--cm-blockquote-fg', 'dark'],
+  ] as const)('%s（%s）正文级文本 vs background-primary ≥ 4.5（R5-typography）', (token, theme) => {
+    const block = theme === 'light' ? light : dark;
+    expect(
+      contrastRatio(resolvedValue(block, token), bgPrimary[theme]),
+    ).toBeGreaterThanOrEqual(4.5);
   });
 });
 

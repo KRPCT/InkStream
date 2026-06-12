@@ -4,11 +4,30 @@
  */
 
 :root {
-  /* UI-SPEC §Design System 字体栈（系统栈，不打包字体） */
+  /* UI-SPEC §Design System 字体栈（系统栈，不打包字体）。
+     R5-typography §2：Segoe UI 须排 Microsoft YaHei 之前——YaHei 西文 hinting 差，
+     西文走 Segoe UI（命中即停，不污染中文），中文仍逐字回退到 YaHei。
+     UI chrome 用 YaHei UI（界面变体，间距更紧）。 */
   --font-ui:
-    -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB',
-    'Microsoft YaHei', 'Noto Sans CJK SC', sans-serif;
-  --font-mono: ui-monospace, 'Cascadia Mono', Consolas, monospace;
+    -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei UI',
+    'Hiragino Sans GB', 'Noto Sans CJK SC', sans-serif;
+  /* 编辑器正文栈（R5 §2.2，中文优先阅读向）：正文用 YaHei 文档变体，思源黑体作未预装时礼貌回退。 */
+  --font-editor:
+    -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei',
+    'Hiragino Sans GB', 'Source Han Sans SC', 'Noto Sans CJK SC', sans-serif;
+  /* 代码字体栈（R5 §2.2）：Cascadia Code（含连字，Windows 自带）/ JetBrains Mono 覆盖西文，
+     中文回退 Microsoft YaHei（非等宽但远好于系统默认方框）。 */
+  --font-mono:
+    'Cascadia Code', 'JetBrains Mono', ui-monospace, Consolas, 'Microsoft YaHei', monospace;
+
+  /* 编辑器正文排版 token（R5-typography §3.1，非颜色，正文/版心一处收口）。 */
+  --editor-font-size: 16px;
+  --editor-line-height: 1.7;
+  --editor-max-width: 46rem;
+  --editor-padding-x: clamp(16px, 5vw, 64px);
+  /* 标题上下边距（R5 §3.1，inlinePlugin 行级 cm-ink-hN 消费）。 */
+  --h-margin-top: 1.4em;
+  --h-margin-bottom: 0.5em;
 }
 
 *,

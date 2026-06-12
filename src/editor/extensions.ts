@@ -9,6 +9,33 @@ import { livePreviewExtensions, renderModeCompartment } from './livepreview/live
 import { compositionGate } from './composition';
 
 /**
+ * 编辑器正文排版基线 theme（R5-typography §3.3，D-1/D-3 修复）。
+ *
+ * 顶层挂入（与 compositionGate 同级，所有模式 / 语言生效）——正文字号 16px、行高 1.7（中文优先）、
+ * 版心 46rem 居中。取值全部消费 base.css 的 --editor-* / --font-editor token，**永不硬编码**。
+ *
+ * IME 安全（铁律 1）：纯静态 CSS（font-size / line-height / max-width / margin / padding），
+ * 不触焦点、不程序化抢焦点、不引重排时序，与组合冻结门正交。但 .cm-content 盒模型变更（max-width /
+ * margin-inline）会改 CM6 视口宽度计算——须按 specs/03 矩阵第 4 判据真机复验候选窗锚点（记入交付提醒）。
+ */
+const editorBaseTheme = EditorView.theme({
+  '.cm-scroller': {
+    fontFamily: 'var(--font-editor)',
+    fontSize: 'var(--editor-font-size)',
+    lineHeight: 'var(--editor-line-height)',
+  },
+  '.cm-content': {
+    maxWidth: 'var(--editor-max-width)',
+    marginInline: 'auto',
+    paddingInline: 'var(--editor-padding-x)',
+    paddingBlock: '2rem',
+    color: 'var(--text-normal)',
+    WebkitFontSmoothing: 'antialiased',
+    textRendering: 'optimizeLegibility',
+  },
+});
+
+/**
  * 基础扩展集（RESEARCH「基础扩展集」）：全 App 单内核的通用编辑能力。
  *
  * 高亮：syntaxHighlighting(inkstreamHighlightStyle) 接 theme.css 的 --cm-* 变量（亮暗双套）。
@@ -29,6 +56,7 @@ import { compositionGate } from './composition';
 export function baseExtensions(lang: string = 'markdown'): Extension[] {
   return [
     compositionGate,
+    editorBaseTheme,
     history(),
     drawSelection(),
     highlightActiveLine(),

@@ -251,38 +251,86 @@ export function buildInlineDecorations(view: EditorView): DecorationSet {
  */
 const inlineTheme = EditorView.theme({
   '.cm-ink-hidden': { fontSize: '0.1px', letterSpacing: '-1ch', color: 'transparent' },
-  '.cm-ink-h1': { fontSize: '1.802em', fontWeight: '600', color: 'var(--cm-heading)' },
-  '.cm-ink-h2': { fontSize: '1.602em', fontWeight: '600', color: 'var(--cm-heading)' },
-  '.cm-ink-h3': { fontSize: '1.424em', fontWeight: '600', color: 'var(--cm-heading)' },
-  '.cm-ink-h4': { fontSize: '1.266em', fontWeight: '600', color: 'var(--cm-heading)' },
-  '.cm-ink-h5': { fontSize: '1.125em', fontWeight: '600', color: 'var(--cm-heading)' },
-  '.cm-ink-h6': { fontSize: '1em', fontWeight: '600', color: 'var(--cm-heading)' },
+  // 标题字阶（Obsidian 默认 major-second 1.125 比例，R5 §1.3 保留不动）+ 标题色去红回正文色
+  // （var(--cm-heading) 已在 theme.css 改为 --text-normal，R5 D-2）+ 上下边距（行级 margin，R5 §3.4）。
+  '.cm-ink-h1': {
+    fontSize: '1.802em',
+    fontWeight: '600',
+    color: 'var(--cm-heading)',
+    marginTop: 'var(--h-margin-top)',
+    marginBottom: 'var(--h-margin-bottom)',
+  },
+  '.cm-ink-h2': {
+    fontSize: '1.602em',
+    fontWeight: '600',
+    color: 'var(--cm-heading)',
+    marginTop: 'var(--h-margin-top)',
+    marginBottom: 'var(--h-margin-bottom)',
+  },
+  '.cm-ink-h3': {
+    fontSize: '1.424em',
+    fontWeight: '600',
+    color: 'var(--cm-heading)',
+    marginTop: 'var(--h-margin-top)',
+    marginBottom: 'var(--h-margin-bottom)',
+  },
+  '.cm-ink-h4': {
+    fontSize: '1.266em',
+    fontWeight: '600',
+    color: 'var(--cm-heading)',
+    marginTop: 'var(--h-margin-top)',
+    marginBottom: 'var(--h-margin-bottom)',
+  },
+  '.cm-ink-h5': {
+    fontSize: '1.125em',
+    fontWeight: '600',
+    color: 'var(--cm-heading)',
+    marginTop: 'var(--h-margin-top)',
+    marginBottom: 'var(--h-margin-bottom)',
+  },
+  '.cm-ink-h6': {
+    fontSize: '1em',
+    fontWeight: '600',
+    color: 'var(--cm-heading)',
+    marginTop: 'var(--h-margin-top)',
+    marginBottom: 'var(--h-margin-bottom)',
+  },
   // 删除线：文本 line-through（颜色继承正文）。
   '.cm-ink-strike': { textDecoration: 'line-through' },
   // 行内代码：等宽 + 底纹 + 圆角（消费 var(--cm-inline-code-bg)，永不硬编色）。
+  // R5 D-4：修变量名笔误 var(--font-monospace)→var(--font-mono)（行内代码字体此前从未生效）；
+  // fontSize 0.9em（中文等宽偏大，缩一档更协调，R5 §3.4）。
   '.cm-ink-code': {
-    fontFamily: 'var(--font-monospace, monospace)',
+    fontFamily: 'var(--font-mono)',
+    fontSize: '0.9em',
     backgroundColor: 'var(--cm-inline-code-bg)',
     borderRadius: '4px',
-    padding: '0.1em 0.3em',
+    padding: '0.15em 0.4em',
   },
   // `<u>` 下划线（D-15）。
   '.cm-ink-underline': { textDecoration: 'underline' },
   // 链接：色 var(--cm-link)（隐 url 后仅 text 呈现），默认 cursor:text（手势层切 pointer）。
-  '.cm-link': { color: 'var(--cm-link)', cursor: 'text' },
+  // R5 §3.4：加下划线 + 2px 偏移（Obsidian 风，提辨识）。
+  '.cm-link': {
+    color: 'var(--cm-link)',
+    cursor: 'text',
+    textDecoration: 'underline',
+    textUnderlineOffset: '2px',
+  },
   // 列表项符号：隐原标记后由 ::before 呈现 •（项目符号缩进保排版）。
   '.cm-ink-list-mark': { fontSize: '0.1px', letterSpacing: '-1ch', color: 'transparent' },
-  // 引用块：行级左竖条 var(--cm-blockquote-border) + 缩进（逐行 D-06）。
+  // 引用块：行级左竖条 var(--cm-blockquote-border) 4px（对齐 Typora）+ 缩进 + 文字弱化为灰（逐行 D-06，R5 §3.4）。
   '.cm-ink-quote': {
-    borderLeft: '3px solid var(--cm-blockquote-border)',
+    borderLeft: '4px solid var(--cm-blockquote-border)',
     paddingLeft: '12px',
+    color: 'var(--cm-blockquote-fg)',
   },
   '.cm-ink-quote-mark': { fontSize: '0.1px', letterSpacing: '-1ch', color: 'transparent' },
-  // 水平线 widget：1px var(--cm-hr) 贯穿 + 上下留白。
+  // 水平线 widget：1px var(--cm-hr) 贯穿 + 上下留白（R5 §3.4：1.5em 留白更足）。
   '.cm-ink-hr': {
     border: 'none',
     borderTop: '1px solid var(--cm-hr)',
-    margin: '1em 0',
+    margin: '1.5em 0',
   },
   // 图片 widget：内容区宽等比缩放（max-width 100%）+ max-height ~60vh，块状呈现。
   '.cm-ink-image': { display: 'inline-block', maxWidth: '100%', verticalAlign: 'top' },

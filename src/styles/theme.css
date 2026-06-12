@@ -47,21 +47,27 @@ html[data-theme='light'] {
   --cm-type: hsl(35, 99%, 36%);
   --cm-variable: hsl(5, 74%, 59%);
   --cm-operator: hsl(230, 8%, 24%);
-  --cm-heading: hsl(5, 74%, 59%);
+  /* R5-typography D-2：标题去红改正文色（标题=正文深色加粗，Typora/Obsidian 惯例）。
+     对 background-primary(98% L) 对比 ≈ 10.85:1，远超 4.5。 */
+  --cm-heading: var(--text-normal);
   --cm-emphasis: hsl(301, 63%, 40%);
   --cm-strong: hsl(35, 99%, 36%);
-  --cm-link: hsl(221, 87%, 60%);
+  /* R5-typography §3.2：链接压暗到 42% L（旧 60% L 仅 3.86:1 < 4.5），对正文背景 ≈ 5.48:1。 */
+  --cm-link: hsl(212, 78%, 42%);
   --cm-meta: hsl(230, 6%, 44%);
   --cm-invalid: hsl(344, 84%, 43%);
 
   /* Live Preview 装饰专用 token（Phase 3，UI-SPEC §Color 新增表，取色同源既有中性层/accent）。 */
   /* 光标行标记淡显不透明度（UAT #4，Typora 风「显标记保排版」软化版，单 token 便于调参）。 */
   --cm-mark-faint-opacity: 0.45;
-  --cm-inline-code-bg: hsl(230, 1%, 92%);
-  --cm-blockquote-border: hsl(230, 4%, 86%);
-  --cm-table-border: hsl(230, 4%, 86%);
-  --cm-table-header-bg: hsl(230, 1%, 92%);
-  --cm-hr: hsl(230, 4%, 86%);
+  --cm-inline-code-bg: hsl(230, 8%, 92%);
+  --cm-code-block-bg: hsl(230, 8%, 96%);
+  /* 引用块文字弱化为灰（R5 §3.2，Typora/Obsidian 惯例）；对正文背景 ≈ 5.02:1。 */
+  --cm-blockquote-fg: var(--text-muted);
+  --cm-blockquote-border: hsl(230, 10%, 80%);
+  --cm-table-border: hsl(230, 8%, 82%);
+  --cm-table-header-bg: hsl(230, 8%, 94%);
+  --cm-hr: hsl(230, 6%, 82%);
   --cm-checkbox-checked: hsl(var(--accent-hsl));
   --cm-image-loading-bg: hsl(230, 1%, 95%);
 }
@@ -93,21 +99,27 @@ html[data-theme='dark'] {
   --cm-type: hsl(39, 67%, 69%);
   --cm-variable: hsl(355, 65%, 65%);
   --cm-operator: hsl(220, 14%, 71%);
-  --cm-heading: hsl(355, 65%, 65%);
+  /* R5-typography D-2：标题去红改正文色；对 background-primary(18% L) 对比 ≈ 6.55:1，超 4.5。 */
+  --cm-heading: var(--text-normal);
   --cm-emphasis: hsl(286, 60%, 67%);
   --cm-strong: hsl(29, 54%, 61%);
-  --cm-link: hsl(207, 82%, 66%);
+  /* R5-typography §3.2：暗态链接微提到 70% L 保暗背景对比 ≈ 6.63:1。 */
+  --cm-link: hsl(207, 82%, 70%);
   --cm-meta: hsl(220, 9%, 55%);
   --cm-invalid: hsl(355, 65%, 65%);
 
   /* Live Preview 装饰专用 token（Phase 3，UI-SPEC §Color 新增表，dark 镜像同源 Atom one-dark）。 */
   /* 光标行标记淡显不透明度（UAT #4）：dark 下略提一档保暗背景上仍可辨。 */
   --cm-mark-faint-opacity: 0.5;
-  --cm-inline-code-bg: hsl(220, 13%, 13%);
-  --cm-blockquote-border: hsl(222, 13%, 11%);
-  --cm-table-border: hsl(222, 13%, 11%);
-  --cm-table-header-bg: hsl(220, 13%, 13%);
-  --cm-hr: hsl(222, 13%, 11%);
+  /* R5 §3.2：暗态底纹提亮——13% 与正文背景 18% 几乎不可分，提到 24%/14% 才有「码片」感。 */
+  --cm-inline-code-bg: hsl(220, 13%, 24%);
+  --cm-code-block-bg: hsl(220, 13%, 14%);
+  /* 引用块文字弱化为灰（R5 §3.2）。暗态用 62% L（非 text-muted 55%=3.98:1<4.5），对正文背景 ≈ 5.03:1。 */
+  --cm-blockquote-fg: hsl(220, 9%, 62%);
+  --cm-blockquote-border: hsl(220, 13%, 32%);
+  --cm-table-border: hsl(220, 13%, 30%);
+  --cm-table-header-bg: hsl(220, 13%, 22%);
+  --cm-hr: hsl(220, 13%, 30%);
   --cm-checkbox-checked: hsl(var(--accent-hsl));
   --cm-image-loading-bg: hsl(220, 13%, 16%);
 }
