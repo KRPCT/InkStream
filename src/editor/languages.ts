@@ -179,7 +179,9 @@ export function switchLanguage(view: EditorView, lang: string): void {
     view.dispatch({ effects: langCompartment.reconfigure(extensionsForLanguage(lang)) });
   });
   if (lang === 'typst') {
-    void loadTypst(view, generation);
+    // 生产构建暂不打包 typst wasm（vite.config external，Phase 5 接 typst.ts 时正解）：
+    // 动态 import 失败保持占位空扩展（纯文本显示），不打扰用户。
+    void loadTypst(view, generation).catch(() => {});
   }
 }
 
