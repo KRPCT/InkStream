@@ -7,6 +7,7 @@ import { inkstreamHighlightStyle } from './highlightTheme';
 import { extensionsForLanguage, langCompartment } from './languages';
 import { livePreviewExtensions, renderModeCompartment } from './livepreview/livePreview';
 import { compositionGate } from './composition';
+import { mirrorListener } from './mirrorListener';
 
 /**
  * 编辑器正文排版基线 theme（R5-typography §3.3；F4 CDP 实机修正）。
@@ -57,6 +58,10 @@ const editorBaseTheme = EditorView.theme({
  * IME 组合冻结门（重构设计 §3.4 / 铁律 1#A）：compositionGate 挂在**顶层而非 renderModeCompartment 内**——
  * 渲染模式热切（Live↔Source）不得卸载门，Source 模式 / 代码文件 / 所有语言下门都须在册，否则
  * 组合期 setState/reconfigure 仍撕 DocView 吞字（A 独有的最深真缝）。门提供全项目唯一组合判据与排队收口。
+ *
+ * 镜像 listener（P0，PROD-RELAY-DESIGN §0）：mirrorListener（markDirty/autosave/语言热切/richtext
+ * 镜像）必须在此而非 useCodeMirror 初始 state——updateListener 是 state 级 facet，换装即失联（铁律 0）。
+ *
  */
 export function baseExtensions(lang: string = 'markdown'): Extension[] {
   return [
@@ -73,6 +78,7 @@ export function baseExtensions(lang: string = 'markdown'): Extension[] {
     syntaxHighlighting(inkstreamHighlightStyle),
     langCompartment.of(extensionsForLanguage(lang)),
     renderModeCompartment.of(livePreviewExtensions()),
+    mirrorListener,
   ];
 }
 
