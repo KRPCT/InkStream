@@ -8,7 +8,7 @@ import type { FileEntry, VaultInfo } from '../../types/vault';
 import CommandPalette from './CommandPalette';
 
 const openFileByPath = vi.hoisted(() => vi.fn());
-vi.mock('../../editor/vaultFlow', () => ({ openFileByPath }));
+vi.mock('../../editor/fileOpenFlow', () => ({ openFileByPath }));
 
 const VAULT: VaultInfo = { root: '/vault', repoRoot: null, name: 'vault' };
 const FILES: FileEntry[] = [

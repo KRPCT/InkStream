@@ -6,7 +6,7 @@ import { useVaultStore } from '../stores/useVaultStore';
 import { isComposing, queueAfterComposition } from './composition';
 import { reloadFromDisk } from './editorState';
 import { getView } from './viewHandle';
-import { refreshTree } from './vaultFlow';
+import { refreshTree } from './fileTreeData';
 
 /**
  * 外部变更冲突仲裁（FILE-02 / D-04 双路径）。

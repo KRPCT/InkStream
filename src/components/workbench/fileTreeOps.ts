@@ -1,5 +1,6 @@
 import { createDir, createFile, movePath, renamePath, trashPath } from '../../ipc/files';
-import { openFileByPath, refreshTree } from '../../editor/vaultFlow';
+import { openFileByPath } from '../../editor/fileOpenFlow';
+import { refreshTree } from '../../editor/fileTreeData';
 import { confirmDestructive } from '../../stores/useConfirmStore';
 import { showToast } from '../../stores/useToastStore';
 import { useVaultStore } from '../../stores/useVaultStore';

@@ -29,7 +29,7 @@ vi.mock('../stores/autosave', () => ({
 }));
 vi.mock('../stores/useToastStore', () => ({ showToast: vi.fn() }));
 vi.mock('./editorState', () => ({ reloadFromDisk: vi.fn() }));
-vi.mock('./vaultFlow', () => ({ refreshTree: vi.fn() }));
+vi.mock('./fileTreeData', () => ({ refreshTree: vi.fn() }));
 
 import { initExternalChangeArbiter, stopExternalChangeArbiter } from './externalChange';
 

@@ -1,5 +1,5 @@
 import { matchCommands } from '../../commands/match';
-import { openFileByPath } from '../../editor/vaultFlow';
+import { openFileByPath } from '../../editor/fileOpenFlow';
 import { useVaultStore } from '../../stores/useVaultStore';
 import type { PaletteItem, PaletteProvider } from '../../types/commands';
 import type { FileEntry } from '../../types/vault';

@@ -5,7 +5,7 @@ import {
   handleToggle,
   refreshTree,
   updateNodeChildren,
-} from './vaultFlow';
+} from './fileTreeData';
 import { useVaultStore } from '../stores/useVaultStore';
 import type { TreeEntry, TreeNode, VaultInfo } from '../types/vault';
 

@@ -17,7 +17,7 @@ vi.mock('../../editor/editorState', () => ({
 
 const refreshTree = vi.fn().mockResolvedValue(undefined);
 
-vi.mock('../../editor/vaultFlow', () => ({
+vi.mock('../../editor/fileTreeData', () => ({
   refreshTree: () => refreshTree(),
 }));
 

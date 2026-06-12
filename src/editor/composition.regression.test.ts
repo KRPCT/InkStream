@@ -23,7 +23,7 @@ vi.mock('./editorState', () => ({
   // getDocForPath 供 autosave 默认 deps 用（本测试不依赖其返回值）。
   getDocForPath: () => '',
 }));
-vi.mock('./vaultFlow', () => ({ refreshTree: vi.fn().mockResolvedValue(undefined) }));
+vi.mock('./fileTreeData', () => ({ refreshTree: vi.fn().mockResolvedValue(undefined) }));
 
 const showToast = vi.fn();
 vi.mock('../stores/useToastStore', () => ({ showToast: (...args: unknown[]) => showToast(...args) }));

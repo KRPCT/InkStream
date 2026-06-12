@@ -26,7 +26,7 @@ vi.mock('../../ipc/opener', () => ({
 }));
 
 const openFileByPath = vi.fn<(path: string) => Promise<void>>(() => Promise.resolve());
-vi.mock('../vaultFlow', () => ({
+vi.mock('../fileOpenFlow', () => ({
   openFileByPath: (path: string) => openFileByPath(path),
 }));
 

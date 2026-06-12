@@ -22,8 +22,10 @@ vi.mock('../../ipc/files', () => ({
 const openFileByPath = vi.fn().mockResolvedValue(undefined);
 const refreshTree = vi.fn().mockResolvedValue(undefined);
 
-vi.mock('../../editor/vaultFlow', () => ({
+vi.mock('../../editor/fileOpenFlow', () => ({
   openFileByPath: (...a: unknown[]) => openFileByPath(...a),
+}));
+vi.mock('../../editor/fileTreeData', () => ({
   refreshTree: (...a: unknown[]) => refreshTree(...a),
 }));
 

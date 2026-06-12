@@ -4,7 +4,7 @@ import { EditorView } from '@codemirror/view';
 import type { SyntaxNode } from '@lezer/common';
 import { openExternal } from '../../ipc/opener';
 import { useEditorStore } from '../../stores/useEditorStore';
-import { openFileByPath } from '../vaultFlow';
+import { openFileByPath } from '../fileOpenFlow';
 
 /**
  * 链接跳转手势（D-10 / RESEARCH「链接手势」/ 威胁 T-03-16）三路分流。
@@ -12,7 +12,7 @@ import { openFileByPath } from '../vaultFlow';
  * 分流（mousedown 层，非语法树职责）——Ctrl/Cmd+点击命中链接，据 URL 形态走三路：
  *   1. 外链 `^https?://` → openExternal(url)（Plan 02 http(s) 窄权限通道），return true（纯导航）；
  *   2. vault 内相对路径（无 scheme、非绝对路径）→ 据**活动文档目录**折叠解析为 vault 相对路径，
- *      断言仍在 vault 内后 openFileByPath(resolvedRelPath)（单内核打开，vaultFlow），return true；
+ *      断言仍在 vault 内后 openFileByPath(resolvedRelPath)（单内核打开，fileOpenFlow），return true；
  *   3. 越界 / 无法解析（`../` 上跳越过 vault 根、绝对路径、含 scheme 的非 http(s)）→ 不动作，return false。
  *   - 普通点击（无修饰键）命中链接 → return false（CM 默认置光标，该行显源码进编辑 D-10）；
  *   - 非链接位置 / 坐标未命中 → return false（交回 CM 默认行为）。

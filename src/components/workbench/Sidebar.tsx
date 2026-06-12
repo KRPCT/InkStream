@@ -1,6 +1,7 @@
 import { FilePlus, FolderOpen, FolderPlus, ListCollapse, RefreshCw, type LucideIcon } from 'lucide-react';
 import EmptyState from '../common/EmptyState';
-import { refreshTree, requestOpenFolder } from '../../editor/vaultFlow';
+import { requestOpenFolder } from '../../editor/vaultFlow';
+import { refreshTree } from '../../editor/fileTreeData';
 import { useVaultStore } from '../../stores/useVaultStore';
 import FileTree from './FileTree';
 import GitGuidanceBar from './GitGuidanceBar';

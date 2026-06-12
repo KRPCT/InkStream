@@ -9,7 +9,8 @@ import {
   type NodeRendererProps,
   type RenameHandler,
 } from 'react-arborist';
-import { handleToggle, openFileInEditor } from '../../editor/vaultFlow';
+import { handleToggle } from '../../editor/fileTreeData';
+import { openFileInEditor } from '../../editor/fileOpenFlow';
 import { getView } from '../../editor/viewHandle';
 import { useEditorStore } from '../../stores/useEditorStore';
 import { showToast } from '../../stores/useToastStore';
