@@ -1,7 +1,9 @@
 import { selectAll, undo, redo } from '@codemirror/commands';
 import { openSearchPanel } from '@codemirror/search';
 import type { EditorView } from '@codemirror/view';
-import { focusEditor } from './relay/relayFocus';
+import { RELAY_ENABLED } from './relay';
+import { relayPasteFromClipboard } from './relay/relayClipboard';
+import { focusEditor, getRelayInput } from './relay/relayFocus';
 import { getView } from './viewHandle';
 
 /**
@@ -45,28 +47,40 @@ export function doReplace(): void {
 }
 
 /**
- * 剪贴板三命令：菜单手势后经 focusEditor 回焦输入面再走浏览器原生剪贴板。
- * 旧路径（flag 关）：焦点落 contentDOM，execCommand 触发 CM6 既有 cut/copy/paste 处理。
- * 中继路径：焦点落隐藏 textarea——paste 经 execCommand 注入 textarea 触发 input 中继可用；
- * copy/cut 需 textarea 侧剪贴板事件接管（Wave 3，PROD-RELAY-DESIGN §2.8），当前暂降级。
+ * 复制/剪切（菜单手势，PROD-RELAY-DESIGN §2.8）：focusEditor 回焦输入面后走浏览器原生
+ * execCommand——在聚焦的 textarea（中继）或 contentDOM（旧路径）上触发同名事件，分别由
+ * relayClipboard 的 copy/cut handler 或 CM6 内建处理接管。菜单点击是合法用户手势，
+ * execCommand('copy'/'cut') 在 WebView2/Chromium 此语境下可靠。
  */
-function clipboard(action: 'cut' | 'copy' | 'paste'): void {
+function copyCut(action: 'cut' | 'copy'): void {
   withView((view) => {
     focusEditor(view);
-    // execCommand 已弃用但在 WebView2/Chromium 仍受支持，且菜单点击是合法手势——
-    // 是触发既有剪贴板处理最稳的桥（不引 navigator.clipboard 权限复杂度）。
     document.execCommand(action);
   });
 }
 
 export function doCut(): void {
-  clipboard('cut');
+  copyCut('cut');
 }
 
 export function doCopy(): void {
-  clipboard('copy');
+  copyCut('copy');
 }
 
+/**
+ * 粘贴（菜单手势，§2.8）：中继下 WebView2 常禁脚本触发的 execCommand('paste')，故接线在册时
+ * 走 relayPasteFromClipboard（navigator.clipboard.readText + 智能粘贴/relayInsert）；旧路径
+ * （flag 关 / 未接线）回焦 contentDOM 后 execCommand 触发 CM6 内建 paste（含 richtext 白名单）。
+ * 键盘 Ctrl+V 始终走浏览器原生 paste 事件，不依赖本命令。
+ */
 export function doPaste(): void {
-  clipboard('paste');
+  withView((view) => {
+    if (RELAY_ENABLED && getRelayInput(view)) {
+      focusEditor(view);
+      void relayPasteFromClipboard(view);
+      return;
+    }
+    focusEditor(view);
+    document.execCommand('paste');
+  });
 }

@@ -92,6 +92,31 @@ export function isUrl(text: string): boolean {
 }
 
 /**
+ * 智能链接粘贴纯逻辑（D-16）：文本为 http(s) URL 且当前有选区 → 把选区包成 `[选区](URL)` 并
+ * 返回 `true`；其余情形（无选区 / 非 URL）返回 `false`，不动文档。
+ *
+ * 抽出为不依赖 ClipboardEvent 的纯函数，使 contentDOM paste 事件（richtextPasteHandler）与
+ * 中继 textarea paste / 菜单 navigator.clipboard 路径（relayPasteText）复用同一受信白名单逻辑。
+ */
+export function smartLinkPaste(view: EditorView, text: string): boolean {
+  if (!isUrl(text)) return false;
+  const range = view.state.selection.main;
+  if (range.empty) return false;
+  const url = text.trim();
+  view.dispatch(
+    view.state.changeByRange((r) => {
+      const label = view.state.doc.sliceString(r.from, r.to);
+      const insert = `[${label}](${url})`;
+      return {
+        changes: { from: r.from, to: r.to, insert },
+        range: EditorSelection.cursor(r.from + insert.length),
+      };
+    }),
+  );
+  return true;
+}
+
+/**
  * 智能粘贴（D-16）：剪贴板为 http(s) URL 且当前有选区 → 阻止默认 + 把选区包成 `[选区](粘贴URL)`。
  * 其余情形（无选区 / 非 URL / 无剪贴板数据）放行默认粘贴。
  *
@@ -104,20 +129,7 @@ export function isUrl(text: string): boolean {
  */
 export function richtextPasteHandler(event: ClipboardEvent, view: EditorView): boolean {
   const text = event.clipboardData?.getData('text/plain') ?? '';
-  if (!isUrl(text)) return false;
-  const range = view.state.selection.main;
-  if (range.empty) return false;
+  if (!smartLinkPaste(view, text)) return false;
   event.preventDefault();
-  const url = text.trim();
-  view.dispatch(
-    view.state.changeByRange((r) => {
-      const label = view.state.doc.sliceString(r.from, r.to);
-      const insert = `[${label}](${url})`;
-      return {
-        changes: { from: r.from, to: r.to, insert },
-        range: EditorSelection.cursor(r.from + insert.length),
-      };
-    }),
-  );
   return true;
 }

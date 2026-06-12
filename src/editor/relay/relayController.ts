@@ -1,5 +1,6 @@
 import { EditorSelection } from '@codemirror/state';
 import type { EditorView } from '@codemirror/view';
+import { installRelayClipboard } from './relayClipboard';
 import { registerRelayWiring, unregisterRelayWiring } from './relayFocus';
 import {
   createRelayTextarea,
@@ -138,6 +139,8 @@ export function installRelayController(
   view.contentDOM.addEventListener('focus', onContentFocus);
 
   const input = installRelayInput(view, textarea, defer);
+  // 剪贴板（§2.8）：copy/cut/paste 从 CM doc 选区取/写（textarea 恒空），Ctrl+C/X/V 原生派发至此。
+  const detachClipboard = installRelayClipboard(view, textarea);
   registerRelayWiring(view, {
     textarea,
     syncCaret,
@@ -149,6 +152,7 @@ export function installRelayController(
     disposed = true;
     endDrag();
     unregisterRelayWiring(view);
+    detachClipboard();
     input.detach();
     view.scrollDOM.removeEventListener('mousedown', onMouseDownNet);
     view.scrollDOM.removeEventListener('scroll', onScroll);

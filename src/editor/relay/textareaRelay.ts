@@ -61,15 +61,21 @@ export function createRelayTextarea(view: EditorView): HTMLTextAreaElement {
   return ta;
 }
 
-/** 统一落子原语：替换当前选区插入文本，光标移到其后，带 input.type 语义（history/扩展可识别）。 */
-export function relayInsert(view: EditorView, text: string): void {
+/**
+ * 统一落子原语：替换当前选区插入文本，光标移到其后。
+ *
+ * userEvent 决定 CM6 history 撤销分组（§2.9）：默认 `input.type`（连续输入相邻事务自动归组）；
+ * 粘贴传 `input.paste`（独立成组，不与相邻键入合并）。组合落子复用默认 `input.type`——
+ * compositionend 已解冻，作为「组合结束的常规提交」整词一事务，装饰层正常重建（§2.5 裁决）。
+ */
+export function relayInsert(view: EditorView, text: string, userEvent = 'input.type'): void {
   if (!text) return;
   const { from, to } = view.state.selection.main;
   view.dispatch({
     changes: { from, to, insert: text },
     selection: EditorSelection.cursor(from + text.length),
     scrollIntoView: true,
-    userEvent: 'input.type',
+    userEvent,
   });
 }
 
