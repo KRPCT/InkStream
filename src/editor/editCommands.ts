@@ -1,6 +1,7 @@
 import { selectAll, undo, redo } from '@codemirror/commands';
 import { openSearchPanel } from '@codemirror/search';
 import type { EditorView } from '@codemirror/view';
+import { focusEditor } from './relay/relayFocus';
 import { getView } from './viewHandle';
 
 /**
@@ -43,12 +44,17 @@ export function doReplace(): void {
   });
 }
 
-/** 剪贴板三命令：菜单手势后回焦编辑器再走浏览器原生剪贴板（CM6 已处理 cut/copy/paste DOM 事件）。 */
+/**
+ * 剪贴板三命令：菜单手势后经 focusEditor 回焦输入面再走浏览器原生剪贴板。
+ * 旧路径（flag 关）：焦点落 contentDOM，execCommand 触发 CM6 既有 cut/copy/paste 处理。
+ * 中继路径：焦点落隐藏 textarea——paste 经 execCommand 注入 textarea 触发 input 中继可用；
+ * copy/cut 需 textarea 侧剪贴板事件接管（Wave 3，PROD-RELAY-DESIGN §2.8），当前暂降级。
+ */
 function clipboard(action: 'cut' | 'copy' | 'paste'): void {
   withView((view) => {
-    view.focus();
+    focusEditor(view);
     // execCommand 已弃用但在 WebView2/Chromium 仍受支持，且菜单点击是合法手势——
-    // 是触发 CM6 既有 cut/copy/paste 处理最稳的桥（不引 navigator.clipboard 权限复杂度）。
+    // 是触发既有剪贴板处理最稳的桥（不引 navigator.clipboard 权限复杂度）。
     document.execCommand(action);
   });
 }

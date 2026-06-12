@@ -131,6 +131,33 @@ const compositionTrExtender = EditorState.transactionExtender.of((tr) => {
 export const compositionGate: Extension = [compositionDomHandlers, compositionTrExtender];
 
 /**
+ * 中继组合喂源（PROD-RELAY-DESIGN §2.5，API 不动、喂源切换）。
+ *
+ * 中继架构下组合发生在隐藏 textarea：view.composing 恒 false、contentDOM 门事件恒不触发，
+ * 但冻结语义仍然需要——组合期 setState 换装/外部 reload 会让 compositionend 的一次性落子
+ * 插进错误的 doc/selection（数据损坏）。本入口写同一 frozenFlags/frozenStartStates/refreshGen：
+ * isComposing/isComposingTr/queueAfterComposition 全部既有消费方语义不变、零改动。
+ *
+ * 调用序（textareaRelay.onCompositionEnd）：setRelayComposing(false)（解冻，同步）→
+ * relayInsert 落子（组合已结束的常规提交）→ 本处排的微任务 drain（落子事务必先于排队任务）。
+ * contentDOM 门 domEventHandlers 保留在册（flag 关回退路径 + 既有测试继续绿）。
+ */
+export function setRelayComposing(view: EditorView, on: boolean): void {
+  if (on) {
+    frozenFlags.set(view, true);
+    frozenStartStates.add(view.state);
+    // 代际自增：作废上一组合在飞的强刷与排队任务（跨组合竞态守卫，与 contentDOM 门同款）。
+    refreshGen.set(view, (refreshGen.get(view) ?? 0) + 1);
+    return;
+  }
+  frozenFlags.set(view, false);
+  // 组合期 CM 零事务：view.state 仍是 start 记入的那个 state，同步移除防误判后续普通编辑。
+  frozenStartStates.delete(view.state);
+  const gen = refreshGen.get(view) ?? 0;
+  Promise.resolve().then(() => drain(view, gen));
+}
+
+/**
  * compositionend 微任务体：三守卫 + 固定顺序 drain。
  *   (a) 代际已变：被后续 compositionstart 取代，陈旧强刷作废。
  *   (b) view.composing：composing>0 仍在合成。

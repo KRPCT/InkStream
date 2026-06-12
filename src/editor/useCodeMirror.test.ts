@@ -38,6 +38,8 @@ describe('useCodeMirror', () => {
     });
     // StrictMode 开发态 effect 双跑：cleanup 内 destroy 必须严格配对，DOM 只剩一个 .cm-editor
     expect(container.querySelectorAll('.cm-editor')).toHaveLength(1);
+    // 中继控制器同纪律：teardown 与 install 配对，隐藏 textarea 恰一个。
+    expect(container.querySelectorAll('[data-relay-input]')).toHaveLength(1);
   });
 
   it('docChanged mirrors dirty flag into useEditorStore (单向镜像)', () => {

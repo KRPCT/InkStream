@@ -8,6 +8,7 @@ import { baseExtensions } from './extensions';
 import { readLanguage } from './frontmatter';
 import { languageFromDoc, markAppliedLanguage } from './languages';
 import { getView } from './viewHandle';
+import { relayNotifySwap } from './relay/relayFocus';
 import { imageVaultFacet } from './livepreview/inlinePlugin';
 import {
   applyRenderMode,
@@ -68,11 +69,16 @@ function restoreScroll(view: EditorView, top: number): void {
  * 用户点 tab 触发的 openFile/switchToTab 至此也过门，不再裸奔。
  */
 function swapState(view: EditorView, key: string, doSwap: () => void): void {
+  const run = (): void => {
+    doSwap();
+    // setState 不触 updateListener：中继 caret 跟随显式补一帧（flag 关/未接线为 no-op）。
+    relayNotifySwap(view);
+  };
   if (isComposing(view)) {
-    queueAfterComposition(view, 'swap:' + key, doSwap);
+    queueAfterComposition(view, 'swap:' + key, run);
     return;
   }
-  doSwap();
+  run();
 }
 
 /**

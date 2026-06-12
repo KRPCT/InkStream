@@ -1,5 +1,6 @@
 import { EditorSelection } from '@codemirror/state';
 import type { EditorView } from '@codemirror/view';
+import { focusEditor } from '../relay/relayFocus';
 
 /**
  * richtext 文本变换命令（EDIT-05 / RESEARCH Pattern 7 / D-15 / D-16）。
@@ -29,7 +30,7 @@ export function wrapSelection(view: EditorView, before: string, after: string): 
       };
     }),
   );
-  view.focus();
+  focusEditor(view);
   return true;
 }
 
@@ -74,7 +75,7 @@ export function insertLink(view: EditorView): boolean {
       };
     }),
   );
-  view.focus();
+  focusEditor(view);
   return true;
 }
 

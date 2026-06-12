@@ -1,6 +1,7 @@
 import { EditorSelection, Prec, type ChangeSpec, type Extension } from '@codemirror/state';
 import { keymap, type Command, type EditorView } from '@codemirror/view';
 import { useEditorStore } from '../stores/useEditorStore';
+import { focusEditor } from './relay/relayFocus';
 import { insertLink, wrapSelection } from './richtext/commands';
 import { getView } from './viewHandle';
 
@@ -46,7 +47,7 @@ export const clearFormat: Command = (view) => {
       return { range };
     }),
   );
-  view.focus();
+  focusEditor(view);
   return true;
 };
 
@@ -71,7 +72,7 @@ function eachLine(view: EditorView, transform: (text: string, index: number) => 
     if (next !== line.text) changes.push({ from: line.from, to: line.to, insert: next });
   }
   if (changes.length === 0) {
-    view.focus();
+    focusEditor(view);
     return true;
   }
   const tr = view.state.update({ changes });
@@ -80,7 +81,7 @@ function eachLine(view: EditorView, transform: (text: string, index: number) => 
   const endPos = tr.changes.mapPos(view.state.doc.line(to).to, 1);
   view.dispatch(tr);
   view.dispatch({ selection: EditorSelection.range(startPos, endPos) });
-  view.focus();
+  focusEditor(view);
   return true;
 }
 
@@ -117,7 +118,7 @@ export const codeFence: Command = (view) => {
       };
     }),
   );
-  view.focus();
+  focusEditor(view);
   return true;
 };
 
@@ -132,7 +133,7 @@ export const mathBlock: Command = (view) => {
       };
     }),
   );
-  view.focus();
+  focusEditor(view);
   return true;
 };
 
@@ -145,7 +146,7 @@ export const table: Command = (view) => {
       range: EditorSelection.cursor(range.from + 2),
     })),
   );
-  view.focus();
+  focusEditor(view);
   return true;
 };
 
@@ -161,7 +162,7 @@ export const insertImage: Command = (view) => {
       };
     }),
   );
-  view.focus();
+  focusEditor(view);
   return true;
 };
 

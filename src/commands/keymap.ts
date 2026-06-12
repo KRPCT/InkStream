@@ -46,6 +46,9 @@ export function bind(accelerator: string, commandId: string): () => void {
 function onKeydown(e: KeyboardEvent): void {
   // Pitfall 4：中文 IME 组合中（含旧引擎/WebView 的 keyCode 229）一律不分发
   if (e.isComposing || e.keyCode === 229) return;
+  // 防双消费（PROD-RELAY-DESIGN §2.4）：中继 keydown 桥经 runScopeHandlers 消费的键
+  // （Ctrl+Z/F 等）已 preventDefault 后仍冒泡到 window——此处必须短路，避免命令二次执行。
+  if (e.defaultPrevented) return;
   const accel = normalizeEvent(e);
   if (!accel) return;
   const id = bindings.get(accel);
