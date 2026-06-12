@@ -36,7 +36,7 @@ import { isComposing, refreshLivePreview } from '../composition';
  *     （[firstLine,lastLine]）**整行不发任何行内装饰**——既不隐藏标记，也不 inline replace（image/hr/task），
  *     该行渲染为纯源码：一个与 doc 切片逐字节相等的文本节点。这是 CM6 findCompositionRange 文本相等闸门的
  *     硬前提——活动行若被拆成多 span（隐藏/widget），相等判定失败，中文 IME 重复字（咕咕咕）与长句合成仍吞字。
- *     整行硬跳过取代旧的逐元素 REVEALABLE / LINE_REVEAL 还原。非活动行保持全套 Live Preview 渲染。
+ *     非活动行保持全套 Live Preview 渲染。
  *   - IME（重构设计 §4.4，root cause B）：组合判据收口到统一冻结门，update() 据 isComposing(u.view)
  *     在组合期短路——保旧 RangeSet 不重建（撕合成中的文本节点 DOM = 吞字），docChanged 时 map 跟随位移；
  *     compositionend 后门派发 refreshLivePreview 强刷，恰好重建一次还原渲染态（CR-01）。活动行纯源码契约
@@ -127,10 +127,9 @@ export function buildInlineDecorations(view: EditorView): DecorationSet {
       from,
       to,
       enter: (node) => {
-        // 活动行硬跳过（EDIT-06 Option 2，FIRST CHECK）：节点所在行与主选区相交 → 不发任何装饰
-        // （无 HIDDEN/FAINT/list/quote 隐藏，无 image/hr/task inline replace，无标题行级 class）。
+        // 活动行硬跳过（FIRST CHECK）：节点所在行与主选区相交 → 不发任何装饰
+        // （无标记隐藏，无 image/hr/task inline replace，无标题行级 class）。
         // 该行整行保持纯源码：单个与 doc 逐字节相等的文本节点，保住中文 IME 合成相等闸门。
-        // 旧的逐元素 REVEALABLE 还原 / FAINT 淡显 / LINE_REVEAL 逐行还原全被本契约吸收。
         if (isActiveLine(node.from)) {
           return undefined; // 继续迭代子树以快速越过，但任何分支都不 push 装饰。
         }

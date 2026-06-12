@@ -27,26 +27,8 @@ export const HIDE_MARK: ReadonlySet<string> = new Set([
 ]);
 
 /**
- * 可还原元素节点：光标落在其 range 内时 inlinePlugin return false（显标记保排版，D-07）。
- * 这些是「整个元素」节点（含其标记 + 内容），非标记节点本身。
- */
-export const REVEALABLE: ReadonlySet<string> = new Set([
-  'ATXHeading1',
-  'ATXHeading2',
-  'ATXHeading3',
-  'ATXHeading4',
-  'ATXHeading5',
-  'ATXHeading6',
-  'StrongEmphasis', // **加粗**
-  'Emphasis', // *斜体*
-  'Strikethrough', // ~~删除线~~（GFM，Plan 06 渲染）
-  'InlineCode', // `代码`（Plan 06 渲染）
-  'Link', // [文本](url)（Plan 06 渲染）
-]);
-
-/**
  * 行内「内容样式」节点：渲染态给「整个元素 range」加 Decoration.mark 视觉样式（line-through / 等宽底纹），
- * 与 HIDE_MARK（隐藏其内部标记）正交叠加。光标行还原由 REVEALABLE 统一接管（return false 跳过子树）。
+ * 与 HIDE_MARK（隐藏其内部标记）正交叠加。光标行还原由活动行整行硬跳过统一接管（inlinePlugin）。
  *
  * - Strikethrough → 删除线 line-through；InlineCode → 等宽 + var(--cm-inline-code-bg) 底纹圆角。
  */
@@ -58,8 +40,7 @@ export const INLINE_STYLE: ReadonlyMap<string, string> = new Map([
 /**
  * 逐行还原节点（D-06 行级）：列表项 / 引用块——光标所在行显标记保排版，其余行保渲染。
  *
- * 与 REVEALABLE（按 head ∈ [from,to] 整节点还原）不同：列表/引用是多行容器，须按「光标所在行」
- * 粒度还原（cursorInLineRange），而非整个容器一并还原。判定经 isCursorOnLineOf（revealLine.ts）。
+ * 列表/引用是多行容器，按「光标所在行」粒度还原（inlinePlugin 活动行整行硬跳过），而非整个容器一并还原。
  */
 export const LINE_REVEAL_MARK: ReadonlySet<string> = new Set([
   'ListMark', // - / * / + / 1. 列表项标记（逐行还原）

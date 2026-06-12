@@ -1,10 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { HIDE_MARK, REVEALABLE } from './nodeNames';
+import { HIDE_MARK, LINE_REVEAL_MARK } from './nodeNames';
 
 /**
  * lezer 节点名集中表回归门（前向兼容扩展点 1 / RESEARCH「元素识别 via tree」）。
  *
- * HIDE_MARK：标记字符节点（行内隐藏的对象）；REVEALABLE：可还原元素节点（光标进入显源码）。
+ * HIDE_MARK：标记字符节点（行内隐藏的对象）。光标行还原已由 inlinePlugin 活动行整行硬跳过统一接管，
+ * 旧的逐元素 REVEALABLE 还原集随之退役（删 revealLine.ts 同波）。
  * 节点名取自 03-01 的 lezerNodes.test.ts 固化结构（markdown + GFM）。
  */
 
@@ -19,17 +20,8 @@ describe('nodeNames 集中表', () => {
     expect(HIDE_MARK.has('ListMark')).toBe(true);
   });
 
-  it('REVEALABLE 含标题与强调元素节点', () => {
-    for (const h of ['ATXHeading1', 'ATXHeading2', 'ATXHeading3', 'ATXHeading4', 'ATXHeading5', 'ATXHeading6']) {
-      expect(REVEALABLE.has(h), `${h} 应在 REVEALABLE`).toBe(true);
-    }
-    expect(REVEALABLE.has('StrongEmphasis')).toBe(true);
-    expect(REVEALABLE.has('Emphasis')).toBe(true);
-  });
-
-  it('两表互斥：标记节点不出现在 REVEALABLE，元素节点不出现在 HIDE_MARK', () => {
-    for (const mark of HIDE_MARK) {
-      expect(REVEALABLE.has(mark), `${mark} 不应同时在 REVEALABLE`).toBe(false);
-    }
+  it('LINE_REVEAL_MARK 含列表项与引用前缀（逐行还原）', () => {
+    expect(LINE_REVEAL_MARK.has('ListMark')).toBe(true);
+    expect(LINE_REVEAL_MARK.has('QuoteMark')).toBe(true);
   });
 });
