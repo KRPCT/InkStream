@@ -1,5 +1,5 @@
 import { Search, X } from 'lucide-react';
-import { useRef, type KeyboardEvent } from 'react';
+import type { KeyboardEvent } from 'react';
 import { rankFiles } from '../palette/fileProvider';
 import { openFileByPath } from '../../editor/fileOpenFlow';
 import { useVaultStore } from '../../stores/useVaultStore';
@@ -21,8 +21,6 @@ interface SearchBoxProps {
 
 /** 搜索输入：左置 Search 图标、清空按钮；Esc 清空（IME 组合期 Esc 仍清空，纯清状态不 dispatch）。 */
 export function SidebarSearch({ query, onQueryChange }: SearchBoxProps) {
-  const inputRef = useRef<HTMLInputElement>(null);
-
   const onKeyDown = (e: KeyboardEvent<HTMLInputElement>): void => {
     // IME 组合期 Enter 防御（铁律 isComposing||keyCode===229）：组合上屏的 Enter 绝不打开文件。
     if (e.key === 'Enter') {
@@ -42,7 +40,6 @@ export function SidebarSearch({ query, onQueryChange }: SearchBoxProps) {
     <div className="flex h-8 shrink-0 items-center gap-1.5 border-b border-[var(--background-modifier-border)] px-2">
       <Search size={14} strokeWidth={1.75} aria-hidden="true" className="shrink-0 text-[var(--text-muted)]" />
       <input
-        ref={inputRef}
         id="sidebar-search-input"
         name="sidebar-search"
         type="text"

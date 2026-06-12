@@ -93,7 +93,9 @@ function ImeProbePanel() {
             key={z.id}
             zone={z.id}
             label={z.label}
-            register={(el) => (refs.current[z.id] = el)}
+            register={(el) => {
+              refs.current[z.id] = el;
+            }}
           />
         ))}
       </div>
