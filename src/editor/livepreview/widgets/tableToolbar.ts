@@ -25,6 +25,8 @@ const ICONS: Record<string, readonly string[]> = {
   alignLeft: ['M21 5H3', 'M15 12H3', 'M17 19H3'],
   alignCenter: ['M21 5H3', 'M17 12H7', 'M19 19H5'],
   alignRight: ['M21 5H3', 'M21 12H9', 'M21 19H7'],
+  // table-x（lucide）：整表 + 右下角叉 = 删除整张表。
+  tableX: ['M12 3v6', 'M3 9h18', 'M3 15h6', 'M3 3v18h6', 'm16 16 5 5', 'm21 16-5 5'],
 };
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
@@ -56,7 +58,12 @@ interface ButtonSpec {
   readonly op: TableOp;
 }
 
-/** 工具条按钮列表（§5 操作集，含分组分隔）。 */
+/**
+ * 工具条按钮列表（§5 操作集，含分组分隔）。
+ *
+ * 对齐正名「列对齐」（TABLE-REDESIGN §4a）：GFM 对齐是列级语法，作用于当前光标所在列（非单元格级），
+ * tooltip 明确「将本列设为…」，避免误以为单元格级。删整表（§5.2）是删格的唯一显式入口（禁 Backspace 删格）。
+ */
 const BUTTONS: readonly (ButtonSpec | 'sep')[] = [
   { icon: ICONS.arrowUp, label: '在上方插入行', op: { kind: 'insertRowAbove' } },
   { icon: ICONS.arrowDown, label: '在下方插入行', op: { kind: 'insertRowBelow' } },
@@ -66,9 +73,11 @@ const BUTTONS: readonly (ButtonSpec | 'sep')[] = [
   { icon: ICONS.arrowRight, label: '在右侧插入列', op: { kind: 'insertColRight' } },
   { icon: ICONS.trash, label: '删除当前列', op: { kind: 'deleteCol' } },
   'sep',
-  { icon: ICONS.alignLeft, label: '左对齐', op: { kind: 'align', align: 'left' } },
-  { icon: ICONS.alignCenter, label: '居中对齐', op: { kind: 'align', align: 'center' } },
-  { icon: ICONS.alignRight, label: '右对齐', op: { kind: 'align', align: 'right' } },
+  { icon: ICONS.alignLeft, label: '本列左对齐', op: { kind: 'align', align: 'left' } },
+  { icon: ICONS.alignCenter, label: '本列居中对齐', op: { kind: 'align', align: 'center' } },
+  { icon: ICONS.alignRight, label: '本列右对齐', op: { kind: 'align', align: 'right' } },
+  'sep',
+  { icon: ICONS.tableX, label: '删除整张表', op: { kind: 'deleteTable' } },
 ];
 
 /** 删行/删列按钮（其 op.kind）——删列只剩一列时禁用提示由命令层静默拦截，这里不预禁。 */

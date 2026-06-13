@@ -13,12 +13,12 @@ import { TableWidget } from './widgets/TableWidget';
 /**
  * 表格就地编辑手势回归门（Typora 式反转 / TABLE-WYSIWYG-DESIGN §2.3-2.4）。
  *
- * 断言（反转旧「点表格→整块还原」）：
+ * 断言（方案 B / 反转旧「点表格→整块还原」）：
  *   1. 点击单元格 td → setTableEdit 进就地编辑态（tableFrom + cellIndex）、表格仍渲染（不整块还原）、
- *      不 preventDefault（return false，浏览器原生聚焦 contenteditable）；
+ *      return true（接管 → preventDefault 主编辑器默认，焦点交子编辑器，CDP 实测 root cause）；
  *   2. 点击表格外 → 清就地编辑态（return false）；
  *   3. posAtCoords 未命中且无 cell DOM → return false 不抛错；
- *   4. 源纪律：setTableEdit/clearTableEdit dispatch + DOM 上溯 data-cell-index + 不 preventDefault。
+ *   4. 源纪律：setTableEdit/clearTableEdit dispatch + DOM 上溯 data-cell-index + setPendingClick。
  */
 
 let view: EditorView | null = null;
@@ -78,7 +78,7 @@ function outsideMousedown(): { event: MouseEvent; prevented: () => boolean } {
 }
 
 describe('handleTableMousedown 进就地编辑态（反转）', () => {
-  it('点击单元格 td → setTableEdit + 表格仍渲染 + return false（不 preventDefault）', () => {
+  it('点击单元格 td → setTableEdit + 表格仍渲染 + return true（接管 preventDefault，焦点交子编辑器）', () => {
     view = tgView(TABLE_DOC);
     view.dispatch({ selection: EditorSelection.cursor(0) });
     expect(tableStillReplaced(view)).toBe(true);
@@ -86,8 +86,8 @@ describe('handleTableMousedown 进就地编辑态（反转）', () => {
     const event = cellMousedown(TABLE_FROM, 2); // 第 3 个 cell（首个数据格）。
     const handled = handleTableMousedown(event, view);
 
-    // 不接管（让浏览器原生聚焦 contenteditable td）。
-    expect(handled).toBe(false);
+    // 接管（preventDefault 主编辑器默认，防抢焦点，焦点交子编辑器）。
+    expect(handled).toBe(true);
     // 就地编辑态落到该单元格。
     expect(view.state.field(tableEditState)).toEqual({ tableFrom: TABLE_FROM, cellIndex: 2 });
     // 表格仍渲染（不整块还原）。
@@ -118,11 +118,11 @@ describe('handleTableMousedown 进就地编辑态（反转）', () => {
     expect(handleTableMousedown(event, view)).toBe(false);
   });
 
-  it('posAtCoords 落表格块内（边界，无 cell DOM）→ 进编辑态首格', () => {
+  it('posAtCoords 落表格块内（边界，无 cell DOM）→ 进编辑态首格 + 接管', () => {
     view = tgView(TABLE_DOC);
     pinPosAtCoords(view, TABLE_FROM);
     const { event } = outsideMousedown();
-    handleTableMousedown(event, view);
+    expect(handleTableMousedown(event, view)).toBe(true);
     expect(view.state.field(tableEditState)).toEqual({ tableFrom: TABLE_FROM, cellIndex: 0 });
   });
 });
@@ -143,9 +143,10 @@ describe('tableGesture 源纪律', () => {
     expect(src).toContain('clearTableEdit');
   });
 
-  it('命中单元格不 preventDefault（return false，浏览器原生聚焦 IME 武装）', () => {
-    // 进编辑态路径 return false 让浏览器聚焦 contenteditable（注释明示 IME 武装铁律）。
-    expect(src).toMatch(/return false/);
+  it('命中单元格接管并 preventDefault（防主编辑器抢焦点）+ setPendingClick 定位 caret', () => {
+    // 进编辑态路径 return true → domEventHandlers 包装层 event.preventDefault（焦点交子编辑器）。
+    expect(src).toContain('preventDefault');
+    expect(src).toContain('setPendingClick');
     expect(src).toContain('domEventHandlers');
   });
 });

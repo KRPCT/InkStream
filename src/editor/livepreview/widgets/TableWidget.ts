@@ -1,42 +1,39 @@
-import { EditorSelection } from '@codemirror/state';
 import { type EditorView, WidgetType } from '@codemirror/view';
-import { isComposing, queueAfterComposition } from '../../composition';
-import {
-  type CellRange,
-  type NavDir,
-  appendRowChange,
-  escapePipes,
-  navigateCell,
-  tableModelAt,
-  unescapePipes,
-} from '../tableModel';
+import { type CellRange, unescapePipes } from '../tableModel';
 import type { ColumnAlign } from '../tableOps';
-import { clearTableEdit, setTableEdit, tableEditState } from '../tableEditState';
+import { tableEditState } from '../tableEditState';
+import {
+  destroyActive,
+  destroyForWrap,
+  getActiveCellEditor,
+  mountCell,
+  registerWrapOwner,
+} from '../tableCellEditor';
 import { buildTableToolbar } from './tableToolbar';
 
 /**
- * GFM 表格 widget（块级层 / Typora 式就地编辑 Wave 1 / Security V5 XSS 防护）。
+ * GFM 表格 widget（块级层 / 方案 B 嵌套 EditorView 就地编辑 / Security V5 XSS 防护）。
  *
- * 职责（反转旧「点表格→整块还原源码」）：把 GFM 表格片段渲染为真 `<table>`，并据就地编辑态
- * `activeCellIndex` 把对应 td/th 设 `contenteditable=true`；输入经 input/composition 同步回主 doc 的
- * 对应 `TableCell` 源区间（state.doc 仍唯一真相源），Tab/Shift+Tab/Enter 单元格导航，Esc 退出。
+ * 职责（方案 B，TABLE-REDESIGN §3，反转方案 A 的 contenteditable td + textContent commit）：把 GFM 表格
+ * 片段渲染为真 `<table>`（**恒渲染、永不显示源码**），并据就地编辑态 `activeCellIndex` 在对应 td/th 内挂一个
+ * **嵌套迷你 CM6 EditorView**（`tableCellEditor.mountCell`）——光标任意定位 / 拖拽选区 / 删字符不删格 / 撤销 /
+ * 中文 IME 全由 CM6 内核**原生**承载。同一时刻只激活当前单元格一个子编辑器（其余 td 静态只读）。
+ * 子→主同步、跨格导航、删除收口全在 `tableCellEditor.ts`；本 widget 只管渲染 + 武装/卸载子编辑器。
  *
- * 真相源映射（TABLE-WYSIWYG-DESIGN §3 + delimiter 切分修正）：构建时由 blockField 传入每个 td/th 的源区间
- * （cellRanges，文档序扁平；区间 = 相邻 `|` 之间，含两侧填充空格——对空 cell 也稳健，lezer 不产空 TableCell）。
- * commit = `escapePipes(textContent)` 包单空格 → 单点 dispatch 替换 `[cellFrom,cellTo]`，列宽无语义、不需维护。
+ * 真相源映射（§3 + delimiter 切分）：blockField 传入每个 td/th 的源区间（cellRanges，文档序扁平；区间 =
+ * 相邻 `|` 之间，含两侧填充空格——对空 cell 也稳健，lezer 不产空 TableCell）。子编辑器 docChanged 即
+ * `escapePipes` 写回 `[cellFrom,cellTo]`（详见 tableCellEditor.commitSub）；state.doc 仍唯一 GFM 真相源。
  *
- * IME（§3.3 / §6.1）：单元格 contenteditable 是 contentDOM 子树，composition 事件天然冒泡进统一冻结门，
- * `isComposing(view)` 在单元格组合期为真。commit 在组合期经 `queueAfterComposition` 排队、compositionend
- * 后执行一次——绝不在组合期 dispatch（dispatch→可能重建 widget→撕合成中子树→吞字）。
+ * IME（§3.3）：子 contentDOM 是独立 IME 宿主、与主编辑器同款 CM6、同份 @codemirror 类、同 Chromium 148
+ * 路径；组合期 CM6 内核自管不撕子 DocView，子→主写回经主门 queueAfterComposition 排队（不在组合期 dispatch
+ * 主 doc → 不撕承载子编辑器的 widget DOM）。
  *
- * widget 复用（§7 Wave 1 关键点 R2）：`eq()` 把 sourceText + activeCellIndex 纳入相等判据；
- * `updateDOM` 在结构（sourceText）不变、仅编辑态变时**原地更新** contenteditable 标志/焦点而不重建整表
- * （保 caret 与组合存活），仅 sourceText 变才回退重建。
+ * widget 复用（§3.4 R2 关键）：`eq()` 把 sourceText + activeCellIndex 纳入判据；`updateDOM` 在结构
+ * （renderSig）不变时**原地更新**（重武装 → mountCell 幂等复用同一子编辑器实例，**保 caret/组合存活、不吞字**），
+ * 仅结构变（行列增删 / 对齐）才重建。子编辑器实例存模块级 WeakMap（绝不进 Zustand），destroy 与挂载配对。
  *
- * 安全（T-03-12 / Security V5）：DOM 一律 `document.createElement` 逐元素构建，单元格文本经
- * `textContent` 写入，**绝不用 HTML 字符串赋值拼用户内容**（不走 inner-HTML 赋值路径）。
- *
- * 样式经 class 消费 var(--cm-table-*)，**永不硬编码色值**（tableTheme 提供）。
+ * 安全（T-03-12 / Security V5）：静态 td/th 文本经 `textContent` 写入，DOM 一律 createElement 构建，
+ * **绝不走 HTML 字符串赋值路径**。样式经 class 消费 var(--cm-table-*)，**永不硬编码色值**（tableTheme 提供）。
  */
 export class TableWidget extends WidgetType {
   constructor(
@@ -70,11 +67,15 @@ export class TableWidget extends WidgetType {
   }
 
   /**
-   * 放行就地编辑所需的输入类事件（让单元格 contenteditable 的输入不被 CM 当「不属于编辑器」吞掉），
-   * 同时放行 mousedown（手势层据此进编辑态）。其余无关事件仍吞掉（避免误触）。
+   * 事件归属（方案 B）：放行 mousedown（返回 false）使 tableGesture 的 domEventHandlers 能在 widget 内
+   * 命中——CM6 对 `ignoreEvent` 返回 true 的 widget 内事件**不触发** view 级 domEventHandlers（CDP 实测：
+   * 误返 true 时点单元格零事务、子编辑器不挂载 root cause）。进编辑态后由 tableGesture 对该 mousedown
+   * **preventDefault**（防主编辑器抢焦点/移主选区，焦点交子编辑器）。其余事件（子编辑器 input/keydown/
+   * composition）一律忽略——它们是**子 contentDOM 自己的**事件，由子 EditorView 内核消费，主编辑器不解析；
+   * 子组合事件冒泡到 document，主门仍能识别做写回排队（§3.4）。
    */
   ignoreEvent(event: Event): boolean {
-    return !PASSTHROUGH_EVENTS.has(event.type);
+    return event.type !== 'mousedown';
   }
 
   /**
@@ -85,6 +86,11 @@ export class TableWidget extends WidgetType {
   toDOM(view: EditorView): HTMLElement {
     const wrap = document.createElement('div');
     wrap.className = 'cm-ink-table-wrap';
+    // 整表 widget 标记为不可编辑岛（CM6 官方嵌套编辑器范式）：主编辑器 DOMObserver 不下钻解析 widget 内部
+    // DOM 变化——否则子 EditorView 在自己 contentDOM 里键入会被主 observer 误读为「主 doc 在 widget 边界处
+    // 的编辑」（CDP 实测：子编辑器有焦点、却把 X 插到主 doc pos 0 的 root cause）。活动单元格内子 contentDOM
+    // 显式 contenteditable=true 覆盖此 false，成为唯一可编辑区。
+    wrap.contentEditable = 'false';
     wrap.dataset.tableFrom = String(this.tableFrom);
     // 渲染体签名（sourceText + aligns）：updateDOM 据此判定「仅编辑态变（原地武装）」vs「体变（须重建）」。
     wrap.dataset.renderSig = this.renderSig();
@@ -126,20 +132,38 @@ export class TableWidget extends WidgetType {
     return true;
   }
 
-  /** 按 activeCellIndex 给每个 td/th 设/撤 contenteditable，并聚焦活动单元格。 */
+  /**
+   * widget DOM 被 CM6 移除时销毁本表关联的活动子编辑器（删表 / 视口滚出 / 结构重建另起 DOM），
+   * 杜绝子 EditorView 泄漏（§3.4 R2 destroy 与挂载严格配对，StrictMode 纪律）。
+   */
+  destroy(dom: HTMLElement): void {
+    destroyForWrap(dom);
+  }
+
+  /**
+   * 武装活动单元格（方案 B）：在 activeCellIndex 对应 td 内挂嵌套子 EditorView（mountCell 幂等复用），
+   * 其余 td 静态只读（保留 textContent）。无活动格（activeCellIndex=null，且当前活动子编辑器属本表）时卸载。
+   *
+   * 活动 td 的静态 textContent 须清空——子编辑器的 contentDOM 才是该格可视内容（否则源文本与子编辑器双显）。
+   */
   private armCells(root: HTMLElement, view: EditorView): void {
+    registerWrapOwner(root, view); // 供 destroy(dom) 反查持有主 view（销毁配对）。
     const cells = root.querySelectorAll<HTMLTableCellElement>('th, td');
+    const active = this.activeCellIndex;
+    if (active == null) {
+      // 本表无活动格：若当前活动子编辑器属本表，卸载（点别表 / 退出态）。
+      const cur = getActiveCellEditor(view);
+      if (cur && cur.tableFrom === this.tableFrom) destroyActive(view);
+      return;
+    }
     cells.forEach((cell, index) => {
-      const editing = index === this.activeCellIndex;
-      if (editing) {
-        if (cell.contentEditable !== 'true') cell.contentEditable = 'true';
-        cell.classList.add('cm-ink-cell-editing');
-        bindCellHandlers(cell, index, view);
-        focusCell(cell, view);
-      } else {
-        if (cell.contentEditable === 'true') cell.contentEditable = 'inherit';
+      if (index !== active) {
         cell.classList.remove('cm-ink-cell-editing');
+        return;
       }
+      cell.classList.add('cm-ink-cell-editing');
+      cell.textContent = ''; // 让位给子编辑器 contentDOM（避免源文本与子编辑器双显）。
+      mountCell(view, cell, this.tableFrom, index);
     });
   }
 }
@@ -169,20 +193,6 @@ function cssTextAlign(align: ColumnAlign | undefined): string {
   }
 }
 
-/** 放行的事件类型集（输入/键盘/组合/指针落点）。 */
-const PASSTHROUGH_EVENTS: ReadonlySet<string> = new Set([
-  'mousedown',
-  'beforeinput',
-  'input',
-  'keydown',
-  'compositionstart',
-  'compositionupdate',
-  'compositionend',
-]);
-
-/** 标记位：避免对同一 cell 重复绑定 keydown/blur（updateDOM 多次调用时）。 */
-const BOUND = '__inkTableBound';
-
 /**
  * 构建表体：据 sourceText 行切分（首行表头、次行对齐分隔、其余数据行），每 cell 经 textContent 写入
  * （反转义 `\|`/`<br>`），并打上 data-cell-index / data-cell-from / data-cell-to。
@@ -210,26 +220,6 @@ function buildTableBody(table: HTMLElement, widget: TableWidget): void {
     }
     table.appendChild(tbody);
   }
-}
-
-/** 给单元格绑定 keydown（导航）+ blur（兜底 commit）+ composition（结束后 commit）一次。 */
-function bindCellHandlers(cell: HTMLTableCellElement, index: number, view: EditorView): void {
-  const marked = cell as HTMLTableCellElement & { [BOUND]?: boolean };
-  if (marked[BOUND]) return;
-  marked[BOUND] = true;
-
-  cell.addEventListener('keydown', (e) => handleCellKeydown(e, cell, view));
-  // 失焦兜底 commit（点表格外/切焦点时落最后一次内容）。组合期不 commit（排队到结束）。
-  cell.addEventListener('blur', () => commitCell(cell, view));
-  // 组合结束后 commit 一次（中文上屏落 doc）。组合期门内排队，结束后执行。
-  cell.addEventListener('compositionend', () => {
-    queueAfterComposition(view, `table-cell-commit-${index}`, () => commitCell(cell, view));
-  });
-  // 非组合输入即时 commit（英文/删改实时同步回 doc）；组合期由 compositionend 接管。
-  cell.addEventListener('input', () => {
-    if (isComposing(view)) return;
-    commitCell(cell, view);
-  });
 }
 
 /** 拆一行 GFM 表格的单元格文本（按未转义 `|` 分列，去首尾空格；`\|` 不分列）。 */
@@ -285,162 +275,4 @@ function buildRow(
     col += 1;
   }
   return { tr, next: idx };
-}
-
-/**
- * 提交单元格内容回 doc（§3.2）：escapePipes(textContent) → 单点 dispatch 替换该 cell 区间。
- *
- * 组合期排队（绝不在组合期 dispatch）；内容与 doc 现值相等则跳过（避免空 dispatch/多余 history）。
- *
- * 区间**每次在 commit 时从 live 语法树重新解析**（据 cell 的 tableFrom + cellIndex 经 tableModelAt 取最新
- * cellRanges），而非信赖构建期固化的 `data-cell-from/to`——后者在前一次 commit 触发 widget 重建后即陈旧
- * （旧 DOM 节点的 data 属性不更新），盲用会写错位、双提交叠加致内容重复（CDP 实测 root cause，仿
- * TaskCheckboxWidget WR-05 陈旧 pos 校验）。重解析后 cellIndex 越界（结构已变）则放弃本次 commit。
- */
-function commitCell(cell: HTMLTableCellElement, view: EditorView): void {
-  if (isComposing(view)) {
-    queueAfterComposition(view, `table-cell-commit-${cellIndexOf(cell)}`, () =>
-      commitCell(cell, view),
-    );
-    return;
-  }
-  const tableFrom = Number(cell.closest<HTMLElement>('table')?.dataset.tableFrom);
-  const cellIndex = cellIndexOf(cell);
-  if (!Number.isFinite(tableFrom)) return;
-  // 从 live 语法树重解析该表当前 cell 区间（防陈旧 data 属性写错位 / 双提交叠加）。
-  const model = tableModelAt(view.state, tableFrom);
-  const range = model?.cells[cellIndex];
-  if (!range) return;
-  if (range.to > view.state.doc.length) return;
-  // cell 区间含两侧填充空格（delimiter 切分所得）：写回时给内容包单空格 ` 内容 `，保 GFM 列可读、列宽无语义。
-  const escaped = escapePipes(cell.textContent ?? '');
-  const insert = ` ${escaped} `;
-  const current = view.state.doc.sliceString(range.from, range.to);
-  if (insert === current) return;
-  view.dispatch({
-    changes: { from: range.from, to: range.to, insert },
-    userEvent: 'input.table.cell',
-  });
-}
-
-/**
- * 聚焦活动单元格并把 caret 落到末尾（IME 武装关键）。
- *
- * 同步聚焦 + 经 requestAnimationFrame 再聚焦一次：armCells 在 CM6 measure/update 阶段运行，此刻同步
- * `focus()` 易被「浏览器对原始非编辑 td 的点击焦点解析」或 CM 的 update 周期覆盖（CDP 实测 activeEl 回落
- * BODY）。rAF 把聚焦推到本帧绘制后、点击焦点已解析之后再补一次，使 contenteditable 稳获焦点（148 实测
- * 直接 focus() 可武装 IME）。组合期不抢焦点（避免打断合成）；目标已在该 cell 内则跳过。
- */
-function focusCell(cell: HTMLTableCellElement, view: EditorView): void {
-  if (isComposing(view)) return;
-  const doFocus = (): void => {
-    if (!cell.isConnected || isComposing(view)) return;
-    if (document.activeElement === cell) return;
-    cell.focus();
-    placeCaretAtEnd(cell);
-  };
-  doFocus();
-  requestAnimationFrame(doFocus);
-}
-
-/** 把 caret 落到单元格文本末尾（聚焦后 / commit 后定位，单文本节点简单 Range，不踩 #3339）。 */
-function placeCaretAtEnd(cell: HTMLElement): void {
-  const sel = window.getSelection();
-  if (!sel) return;
-  const range = document.createRange();
-  range.selectNodeContents(cell);
-  range.collapse(false);
-  sel.removeAllRanges();
-  sel.addRange(range);
-}
-
-/**
- * 单元格键盘导航（§4 Wave 1 子集）：Tab/Shift+Tab（左右移；末格追加行）、Enter（下移；末行追加）、Esc（退出）。
- * 导航前必 commit（保 doc 是最新真相源）；preventDefault + stopPropagation 不让事件冒泡到 CM 主 keymap。
- * 方向键/Shift+Enter/`<br>` 留 Wave 2，此处不拦（让浏览器在 cell 内原生处理）。
- */
-function handleCellKeydown(
-  event: KeyboardEvent,
-  cell: HTMLTableCellElement,
-  view: EditorView,
-): void {
-  // 组合期（IME 候选框打开）的 Enter/Tab 是上屏/选词，绝不拦截为导航——交浏览器原生处理。
-  if (isComposing(view) || event.isComposing) return;
-
-  let dir: NavDir | null = null;
-  if (event.key === 'Tab') dir = event.shiftKey ? 'prev' : 'next';
-  else if (event.key === 'Enter' && !event.shiftKey) dir = 'down';
-  else if (event.key === 'Escape') {
-    event.preventDefault();
-    event.stopPropagation();
-    commitCell(cell, view);
-    exitTableEdit(view);
-    return;
-  }
-  if (!dir) return;
-
-  event.preventDefault();
-  event.stopPropagation();
-  commitCell(cell, view);
-  moveCell(cell, view, dir);
-}
-
-/** 退出就地编辑态：清 tableEditState 并把光标落在表格末尾后（光标位置合理、可继续编辑文档）。 */
-function exitTableEdit(view: EditorView): void {
-  const editing = currentEditCellIndex(view);
-  const model = editing ? tableModelAt(view.state, editing.tableFrom) : null;
-  const pos = model
-    ? Math.min(model.tableTo, view.state.doc.length)
-    : view.state.selection.main.head;
-  view.dispatch({
-    effects: clearTableEdit.of(null),
-    selection: EditorSelection.cursor(pos),
-  });
-  view.focus();
-}
-
-/** 据 data-cell-index 取当前 cell 在文档序的下标。 */
-function cellIndexOf(cell: HTMLTableCellElement): number {
-  return Number(cell.dataset.cellIndex ?? '0');
-}
-
-/** 当前编辑态（tableFrom + cellIndex）；读自字段而非 DOM，保与 state 一致。 */
-function currentEditCellIndex(view: EditorView): { tableFrom: number; cellIndex: number } | null {
-  return view.state.field(tableEditState, false) ?? null;
-}
-
-/**
- * 移动到下一单元格（§4）：算目标 → commit 后 dispatch 新编辑态（cell）/ 退出（exit）/ 末尾追加行（appendRow）。
- * 追加行：先插空行 changes，再 setTableEdit 落新行首列；同一 dispatch 完成（doc 与编辑态原子推进）。
- */
-function moveCell(cell: HTMLTableCellElement, view: EditorView, dir: NavDir): void {
-  const tableFrom = Number(cell.closest<HTMLElement>('table')?.dataset.tableFrom ?? '0');
-  const model = tableModelAt(view.state, tableFrom);
-  if (!model) return;
-  const index = cellIndexOf(cell);
-  const result = navigateCell(index, model.columns, model.cells.length, dir);
-
-  if (result.kind === 'cell') {
-    view.dispatch({
-      effects: setTableEdit.of({ tableFrom: model.tableFrom, cellIndex: result.cellIndex }),
-    });
-    return;
-  }
-  if (result.kind === 'exit') {
-    const pos = result.before
-      ? Math.max(0, model.tableFrom - 1)
-      : Math.min(model.tableTo, view.state.doc.length);
-    view.dispatch({ effects: clearTableEdit.of(null), selection: EditorSelection.cursor(pos) });
-    view.focus();
-    return;
-  }
-  // appendRow：插一空行，编辑态落新行第 result.column 列（= firstCellIndexAfter + column）。
-  const change = appendRowChange(model);
-  view.dispatch({
-    changes: { from: change.at, insert: change.insert },
-    effects: setTableEdit.of({
-      tableFrom: model.tableFrom,
-      cellIndex: change.firstCellIndexAfter + result.column,
-    }),
-  });
 }

@@ -1,6 +1,7 @@
 import type { EditorView } from '@codemirror/view';
 import { queueAfterComposition, isComposing } from '../composition';
 import { setTableEdit, tableEditState } from './tableEditState';
+import { clearTableEdit } from './tableEditState';
 import {
   type ColumnAlign,
   type TableChange,
@@ -8,6 +9,7 @@ import {
   columnOf,
   deleteColumnChanges,
   deleteRowChange,
+  deleteTableChange,
   insertColumnChanges,
   insertRowChange,
   setAlignChange,
@@ -35,6 +37,7 @@ export type TableOp =
   | { readonly kind: 'insertColLeft' }
   | { readonly kind: 'insertColRight' }
   | { readonly kind: 'deleteCol' }
+  | { readonly kind: 'deleteTable' }
   | { readonly kind: 'align'; readonly align: ColumnAlign };
 
 /** 从 live 语法树取 tableFrom 处表格的当前结构（每次 op 前重解析，防陈旧位置/双提交）。 */
@@ -43,7 +46,7 @@ function structOf(view: EditorView, tableFrom: number): TableStruct | null {
 }
 
 /** 据 op 构造该表的 changes（空数组 = 无操作/被边界拦截）。 */
-function changesForOp(struct: TableStruct, cellIndex: number, op: TableOp): TableChange[] {
+function changesForOp(view: EditorView, struct: TableStruct, cellIndex: number, op: TableOp): TableChange[] {
   const col = columnOf(struct, cellIndex);
   switch (op.kind) {
     case 'insertRowAbove':
@@ -60,6 +63,12 @@ function changesForOp(struct: TableStruct, cellIndex: number, op: TableOp): Tabl
       return insertColumnChanges(struct, col, false);
     case 'deleteCol':
       return deleteColumnChanges(struct, col);
+    case 'deleteTable':
+      return [
+        deleteTableChange(struct, view.state.doc.length, (pos) =>
+          view.state.doc.sliceString(pos, pos + 1),
+        ),
+      ];
     case 'align': {
       const ch = setAlignChange(struct, col, op.align);
       return ch ? [ch] : [];
@@ -80,6 +89,8 @@ function userEventForOp(op: TableOp): string {
       return 'table.insertColumn';
     case 'deleteCol':
       return 'table.deleteColumn';
+    case 'deleteTable':
+      return 'table.deleteTable';
     case 'align':
       return 'table.align';
   }
@@ -106,9 +117,15 @@ export function applyTableOp(
   }
   const struct = structOf(view, tableFrom);
   if (!struct) return;
-  const changes = changesForOp(struct, cellIndex, op);
+  const changes = changesForOp(view, struct, cellIndex, op);
   if (changes.length === 0) return;
 
+  // 删整表：表已不存在，编辑态必须清空（否则指向已删表 → 子编辑器孤挂；clearTableEdit 触发重建卸载子编辑器）。
+  if (op.kind === 'deleteTable') {
+    view.dispatch({ changes, userEvent: userEventForOp(op), effects: clearTableEdit.of(null) });
+    view.focus();
+    return;
+  }
   const nextEdit = nextEditState(struct, cellIndex, op);
   view.dispatch({
     changes,

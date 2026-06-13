@@ -206,9 +206,13 @@ const tableTheme = EditorView.theme({
     backgroundColor: 'var(--cm-table-header-bg)',
     fontWeight: '600',
   },
-  // 就地编辑中的单元格：去原生 focus 轮廓、给一圈强调内描边（var(--cm-checkbox-checked) 已在册），
-  // 提示「此格可编辑」。textContent 直接可改，光标在格内。
-  '.cm-ink-cell-editing': {
+  // 就地编辑中的单元格（方案 B）：清零 td 自身 padding 让嵌套子 EditorView 撑满整格（点单元格任意处都落在
+  // 子 contentDOM → 稳获焦点 / 拖拽框选，CDP 实测；padding 由子 .cm-content 补回）。去原生 focus 轮廓、给
+  // 一圈强调内描边（var(--cm-checkbox-checked) 已在册）提示「此格编辑中」。
+  // 选择器须比 `.cm-ink-table td`（特异度 0,1,1）更高，否则 padding 被 td 默认 8px12px 覆盖（CDP 实测 bug）：
+  // 用 `.cm-ink-table td.cm-ink-cell-editing`（0,2,1）压过。
+  '.cm-ink-table td.cm-ink-cell-editing, .cm-ink-table th.cm-ink-cell-editing': {
+    padding: '0',
     outline: 'none',
     boxShadow: 'inset 0 0 0 2px var(--cm-checkbox-checked)',
   },

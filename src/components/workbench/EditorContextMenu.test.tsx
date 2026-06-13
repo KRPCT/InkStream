@@ -81,14 +81,15 @@ describe('editorMenuConfig.buildTableMenuEntries（表格右键，Wave 2 §5）'
     expect(buildTableMenuEntries(null, vi.fn())).toEqual([]);
   });
 
-  it('ctx 非空 → 追加分隔 + 「表格」子菜单（行列操作 + 对齐）', () => {
+  it('ctx 非空 → 追加分隔 + 「表格」子菜单（行列操作 + 列对齐 + 删整表）', () => {
     const entries = buildTableMenuEntries({ tableFrom: 0, cellIndex: 2 }, vi.fn());
     const table = entries.find((e) => e.id === 'ctx-table');
     expect(table).toBeDefined();
     const subIds = (table!.submenu ?? []).filter((s) => !s.separator).map((s) => s.label);
     expect(subIds).toContain('在上方插入行');
     expect(subIds).toContain('删除当前列');
-    expect(subIds).toContain('右对齐');
+    expect(subIds).toContain('本列右对齐'); // 对齐正名「列对齐」（TABLE-REDESIGN §4a）。
+    expect(subIds).toContain('删除整张表'); // 删格唯一入口（§5.2）。
   });
 });
 

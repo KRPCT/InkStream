@@ -292,3 +292,20 @@ export function setAlignChange(
   if (col + 1 >= bars.length) return null;
   return { from: bars[col] + 1, to: bars[col + 1], insert: alignToDelimiterCell(align) };
 }
+
+/**
+ * 删除整表（§5.2，删格唯一入口走悬浮栏/右键，禁 Backspace 删格）：删去整张表的文档区间。
+ *
+ * 连同表前一个换行删除（不留空行），保删表后上下文无残留空行。表起点为文档首行（tableFrom-1 < 0）则只删
+ * 表本体。`readAfter` 注入表后首字符以判断尾随换行——若表后紧跟换行则一并吃掉一个（避免删表后留双空行）。
+ */
+export function deleteTableChange(
+  struct: TableStruct,
+  docLength: number,
+  readAfter: (pos: number) => string,
+): TableChange {
+  const from = Math.max(0, struct.tableFrom - 1); // 连表前换行删除（表在文档首则从 0）。
+  let to = Math.min(struct.tableTo, docLength);
+  if (to < docLength && readAfter(to) === '\n') to += 1; // 表后紧跟换行则吃掉一个，不留双空行。
+  return { from, to, insert: '' };
+}

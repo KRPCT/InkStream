@@ -9,6 +9,7 @@ import {
   columnOf,
   deleteColumnChanges,
   deleteRowChange,
+  deleteTableChange,
   insertColumnChanges,
   insertRowChange,
   parseAligns,
@@ -255,6 +256,28 @@ describe('setAlignChange 列对齐（§5，GFM 语法）', () => {
     const m = tableModelAt(mdState(next), 0)!;
     expect(m.columns).toBe(2);
     expect(m.cells.length).toBe(4);
+  });
+});
+
+describe('deleteTableChange 删整表（§5.2，删格唯一入口）', () => {
+  it('表在文档中段：连前后换行删净，上下文保留无残留空表', () => {
+    const doc = '前段\n\n| a | b |\n| --- | --- |\n| 1 | 2 |\n\n后段';
+    const s = tableStructAt(mdState(doc), doc.indexOf('| a') + 2)!;
+    const ch = deleteTableChange(s, doc.length, (p) => doc.slice(p, p + 1));
+    const next = applyChanges(doc, [ch]);
+    expect(tableModelAt(mdState(next), 0)).toBeNull(); // 已无表。
+    expect(next).toContain('前段');
+    expect(next).toContain('后段');
+  });
+
+  it('表在文档首：from 落 0（无前置换行可删）', () => {
+    const doc = '| a | b |\n| --- | --- |\n| 1 | 2 |\n\n后段';
+    const s = tableStructAt(mdState(doc), 2)!;
+    const ch = deleteTableChange(s, doc.length, (p) => doc.slice(p, p + 1));
+    expect(ch.from).toBe(0);
+    const next = applyChanges(doc, [ch]);
+    expect(tableModelAt(mdState(next), 0)).toBeNull();
+    expect(next).toContain('后段');
   });
 });
 

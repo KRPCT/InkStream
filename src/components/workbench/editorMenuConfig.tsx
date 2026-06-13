@@ -107,9 +107,11 @@ const TABLE_ITEMS: readonly (TableItem | 'sep')[] = [
   { id: 'tbl-col-right', label: '在右侧插入列', op: { kind: 'insertColRight' } },
   { id: 'tbl-col-del', label: '删除当前列', op: { kind: 'deleteCol' } },
   'sep',
-  { id: 'tbl-align-left', label: '左对齐', op: { kind: 'align', align: 'left' } },
-  { id: 'tbl-align-center', label: '居中对齐', op: { kind: 'align', align: 'center' } },
-  { id: 'tbl-align-right', label: '右对齐', op: { kind: 'align', align: 'right' } },
+  { id: 'tbl-align-left', label: '本列左对齐', op: { kind: 'align', align: 'left' } },
+  { id: 'tbl-align-center', label: '本列居中对齐', op: { kind: 'align', align: 'center' } },
+  { id: 'tbl-align-right', label: '本列右对齐', op: { kind: 'align', align: 'right' } },
+  'sep',
+  { id: 'tbl-delete', label: '删除整张表', op: { kind: 'deleteTable' } },
 ];
 
 /**
