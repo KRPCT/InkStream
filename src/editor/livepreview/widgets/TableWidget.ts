@@ -1,5 +1,6 @@
 import { type EditorView, WidgetType } from '@codemirror/view';
 import { type CellRange, unescapePipes } from '../tableModel';
+import { renderInlineCell } from '../renderInlineCell';
 import type { ColumnAlign } from '../tableOps';
 import { tableEditState } from '../tableEditState';
 import {
@@ -158,7 +159,7 @@ export class TableWidget extends WidgetType {
       // 若不回填则该格永久空白（CDP 实测：编辑后退出表格 → 格空）。
       cells.forEach((cell, index) => {
         cell.classList.remove('cm-ink-cell-editing');
-        cell.textContent = unescapePipes(texts[index] ?? '');
+        setCellContent(cell, texts[index] ?? '');
       });
       const cur = getActiveCellEditor(view);
       if (cur && cur.tableFrom === this.tableFrom) destroyActive(view);
@@ -168,9 +169,10 @@ export class TableWidget extends WidgetType {
       if (index !== active) {
         cell.classList.remove('cm-ink-cell-editing');
         // 关键修复（「不渲染内容」根因）：原地更新路径（renderSig 不含 cell 文本，为保活动格 caret/IME
-        // 不重建整表）下，非活动格必须从当前源回填 textContent——否则曾激活被清空、子编辑器销毁后 DOM
-        // 被移除的格会永久空白（CDP 实测：编辑 a 格 → Tab 离开 → a 显示为空，尽管 doc 已含其文本）。
-        cell.textContent = unescapePipes(texts[index] ?? '');
+        // 不重建整表）下，非活动格必须从当前源回填内容——否则曾激活被清空、子编辑器销毁后 DOM 被移除的
+        // 格会永久空白（CDP 实测：编辑 a 格 → Tab 离开 → a 显示为空，尽管 doc 已含其文本）。回填走
+        // setCellContent 渲染行内 markdown（非纯 textContent）。
+        setCellContent(cell, texts[index] ?? '');
         return;
       }
       cell.classList.add('cm-ink-cell-editing');
@@ -247,6 +249,15 @@ function flatCellTexts(sourceText: string): string[] {
   return out;
 }
 
+/**
+ * 设单元格内容：原始 cell 源（splitCells 输出，含 `\|`）经 unescapePipes 还原显示文本后，渲染**行内
+ * markdown**（renderInlineCell，createElement 构建，不走 HTML 字符串赋值路径）写入。非活动格的唯一内容
+ * 写入口——与旧 `textContent=` 行为对齐（纯文本仍纯文本），额外渲染 **粗** / *斜* / `代码` / ~~删除~~ / [链接]。
+ */
+function setCellContent(cell: HTMLElement, rawSource: string): void {
+  cell.replaceChildren(renderInlineCell(unescapePipes(rawSource)));
+}
+
 /** 拆一行 GFM 表格的单元格文本（按未转义 `|` 分列，去首尾空格；`\|` 不分列）。 */
 function splitCells(line: string): string[] {
   const trimmed = line.trim().replace(/^\|/, '').replace(/\|$/, '');
@@ -286,7 +297,7 @@ function buildRow(
   let col = 0;
   for (const source of cellSources) {
     const cell = document.createElement(tag);
-    cell.textContent = unescapePipes(source);
+    setCellContent(cell, source); // 行内 markdown 渲染（**粗**/*斜*/`代码`/~~删~~/[链接]）。
     cell.dataset.cellIndex = String(idx);
     const range = ranges[idx];
     if (range) {
