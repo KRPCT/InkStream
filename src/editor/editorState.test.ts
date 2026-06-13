@@ -5,6 +5,7 @@ import { undo } from '@codemirror/commands';
 import {
   disposeState,
   openFile,
+  scrollContainer,
   snapshotBeforeSwitch,
   switchToTab,
   __clearCacheForTest,
@@ -148,6 +149,29 @@ describe('editorState 滚动位置缓存/还原（D-03）', () => {
     // 释放后重开：滚动缓存已清，回到 0（不残留 120）
     openFile(view, 'd.md', 'ddd', baseExtensions());
     expect(scroll.get()).toBe(0);
+    view.destroy();
+  });
+});
+
+describe('scrollContainer 选真实滚动容器（#17：.cm-scroller 恒 0，真滚在外层 overflow-auto）', () => {
+  it('选中最近的可滚外层祖先（overflow-y:auto 且内容溢出）', () => {
+    const scroller = document.createElement('div');
+    scroller.style.overflowY = 'auto';
+    Object.defineProperty(scroller, 'scrollHeight', { configurable: true, value: 1000 });
+    Object.defineProperty(scroller, 'clientHeight', { configurable: true, value: 400 });
+    document.body.appendChild(scroller);
+    const view = new EditorView({
+      state: EditorState.create({ doc: '', extensions: baseExtensions() }),
+      parent: scroller,
+    });
+    expect(scrollContainer(view)).toBe(scroller); // 命中外层 div，而非 view.scrollDOM。
+    view.destroy();
+    scroller.remove();
+  });
+
+  it('无可滚外层（无 overflow / 无溢出，含 jsdom 无布局）时回退 view.scrollDOM', () => {
+    const view = mountView(); // parent 默认 overflow:visible、jsdom scrollHeight=clientHeight=0。
+    expect(scrollContainer(view)).toBe(view.scrollDOM);
     view.destroy();
   });
 });
