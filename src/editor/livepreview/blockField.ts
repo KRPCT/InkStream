@@ -1,4 +1,4 @@
-import { syntaxTree } from '@codemirror/language';
+import { ensureSyntaxTree, syntaxTree } from '@codemirror/language';
 import { RangeSetBuilder, StateField, type EditorState } from '@codemirror/state';
 import { Decoration, type DecorationSet, EditorView } from '@codemirror/view';
 import { BLOCK_REPLACE } from './nodeNames';
@@ -37,6 +37,9 @@ import { isComposingTr, refreshLivePreview } from '../composition';
  */
 const TABLE_GAP_LINE = Decoration.line({ class: 'cm-ink-table-gap' });
 
+/** ensureSyntaxTree 强制解析整篇的时间预算（ms）；长文档远处表格须强制解析才有 Table 节点可渲染。 */
+const FORCE_PARSE_BUDGET_MS = 100;
+
 /** 块级表格 range（from,to 闭区间起止）。 */
 export interface TableRange {
   readonly from: number;
@@ -70,7 +73,9 @@ function buildBlockState(state: EditorState): BlockState {
   const edit = state.field(tableEditState, false) ?? null;
   // 上一张表末行行号（无则 -1）：用于判定本表与上表间是否「恰好一空行」（任务一分隔空行收口）。
   let prevTableLastLine = -1;
-  syntaxTree(state).iterate({
+  // 强制解析整篇（长文档关键）：CM6 默认只解析到视口附近，远处 Table 节点未产出致表格显示源码。
+  const tree = ensureSyntaxTree(state, state.doc.length, FORCE_PARSE_BUDGET_MS) ?? syntaxTree(state);
+  tree.iterate({
     enter: (node) => {
       if (!BLOCK_REPLACE.has(node.name)) return undefined;
       tables.push({ from: node.from, to: node.to });
@@ -181,6 +186,15 @@ export const blockField = StateField.define<BlockState>({
     if (tr.docChanged || refreshed || editChanged) {
       const rebuilt = buildBlockState(tr.state);
       return rebuilt;
+    }
+    // 1.5 语法树推进即重建（长文档关键，根治「只有开头几张表渲染」）：CM6 增量解析器有工作预算，长文档
+    //    初始 syntaxTree(state) 只解析到视口附近，远处 Table 节点尚未产出 → buildBlockState 扫不到 → 那些表
+    //    显示源码。后台 parseWorker 在 idle 中逐步补齐，每推进一步 dispatch 一条**无 docChange/selection**
+    //    的事务——旧 update 不重建故装饰永不刷新。此处比对语法树对象身份：解析推进时 syntaxTree 产出新树
+    //    → 重建，使新解析出的表格渲染。纯选区/无关事务树身份不变，不触发。组合期事务已在步骤 0 提前返回，
+    //    不达此处（不撕合成 DOM）。
+    if (syntaxTree(tr.state) !== syntaxTree(tr.startState)) {
+      return buildBlockState(tr.state);
     }
     // 2. 选区变化：表格恒渲染，仅当触及的表格集合变化才重建（保装饰新鲜），普通移动原样复用（UAT #8）。
     if (tr.selection && selectionCrossesBoundary(prev, tr)) {
