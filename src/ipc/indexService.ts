@@ -1,3 +1,5 @@
+import Database from '@tauri-apps/plugin-sql';
+import { useVaultStore } from '../stores/useVaultStore';
 import { invoke } from './invoke';
 
 /**
@@ -38,4 +40,78 @@ export function indexRebuild(root: string): Promise<null> {
 /** 仅打开/切换索引库（不全量重建）：worker 开 <root>/.inkstream/index.db。 */
 export function indexSwitchVault(root: string): Promise<null> {
   return invoke('index_switch_vault', { root });
+}
+
+// ---- 只读查询（W4 反链 / unlinked mentions）-------------------------------------------
+//
+// 前端经 tauri-plugin-sql 只读连接（capability sql:default，无 allow-execute——写全在 Rust）打开同一
+// <vault>/.inkstream/index.db（WAL 由 Rust 写连接持久化，读连接自动继承）。库路径在本层强拼当前 vault 根
+// （业务代码不得自由传 URI）。连接懒开（首次查询时，此刻 Rust 写连接早已建好库 + WAL）+ 切 vault 重连。
+
+let dbConn: Promise<Database> | null = null;
+let dbRoot: string | null = null;
+
+/** 当前 vault 的只读索引连接（懒开；切 vault 重连；无 vault 返 null）。 */
+function indexDb(): Promise<Database> | null {
+  const root = useVaultStore.getState().vault?.root ?? null;
+  if (root === null) return null;
+  if (dbRoot !== root) {
+    dbConn = null;
+    dbRoot = root;
+  }
+  if (dbConn === null) {
+    dbConn = Database.load(`sqlite:${toSlash(root)}/.inkstream/index.db`);
+  }
+  return dbConn;
+}
+
+/** 查询/连接失败后弃连接，下次重开（如库尚未建好、切 vault）。 */
+function resetConn(): void {
+  dbConn = null;
+}
+
+/** 文件路径 → 反链匹配键（裸名 / 无扩展路径 / 全路径，对应 links.target_raw 三形态）。 */
+function backlinkKeys(filePath: string): { nameNoExt: string; pathNoMd: string; path: string } {
+  const path = toSlash(filePath);
+  const pathNoMd = path.endsWith('.md') ? path.slice(0, -3) : path;
+  const nameNoExt = pathNoMd.split('/').pop() ?? pathNoMd;
+  return { nameNoExt, pathNoMd, path };
+}
+
+/** 反链：哪些文件以 `[[]]` 引用了 filePath（按 target_raw 三形态匹配，排除自身），返回 source_path 列表。 */
+export async function queryBacklinks(filePath: string): Promise<string[]> {
+  const conn = indexDb();
+  if (!conn) return [];
+  const k = backlinkKeys(filePath);
+  try {
+    const db = await conn;
+    const rows = await db.select<Array<{ source_path: string }>>(
+      'SELECT DISTINCT source_path FROM links WHERE target_raw IN (?, ?, ?) AND source_path <> ? ORDER BY source_path',
+      [k.nameNoExt, k.pathNoMd, k.path, k.path],
+    );
+    return rows.map((r) => r.source_path);
+  } catch {
+    resetConn();
+    return [];
+  }
+}
+
+/** unlinked mentions：正文提及文件名却未建 `[[]]` 链的文件（trigram MATCH 文件名，排除自身 + 已反链）。 */
+export async function queryUnlinkedMentions(filePath: string): Promise<string[]> {
+  const conn = indexDb();
+  if (!conn) return [];
+  const k = backlinkKeys(filePath);
+  if (k.nameNoExt.length < 3) return []; // trigram 最小可搜 3 字，短名跳过。
+  try {
+    const db = await conn;
+    const rows = await db.select<Array<{ path: string }>>(
+      'SELECT path FROM files_fts WHERE files_fts MATCH ? ORDER BY path LIMIT 100',
+      [`"${k.nameNoExt}"`],
+    );
+    const linked = new Set(await queryBacklinks(filePath));
+    return rows.map((r) => r.path).filter((p) => p !== k.path && !linked.has(p));
+  } catch {
+    resetConn();
+    return [];
+  }
 }

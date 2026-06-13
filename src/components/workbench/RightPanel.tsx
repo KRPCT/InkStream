@@ -1,6 +1,7 @@
 import { MODE_PRESETS, TAB_ICONS, TAB_LABELS } from '../../modes/presets';
 import { useWorkbenchStore } from '../../stores/useWorkbenchStore';
 import type { TabId } from '../../types/workbench';
+import BacklinksPanel from './BacklinksPanel';
 import EmptyState from '../common/EmptyState';
 import PanelTabs from './PanelTabs';
 
@@ -43,7 +44,11 @@ export default function RightPanel() {
             className="h-full"
             style={{ display: activeTab === id ? undefined : 'none' }}
           >
-            <EmptyState icon={TAB_ICONS[id]} heading={TAB_EMPTY[id].heading} body={TAB_EMPTY[id].body} />
+            {id === 'backlinks' ? (
+              <BacklinksPanel />
+            ) : (
+              <EmptyState icon={TAB_ICONS[id]} heading={TAB_EMPTY[id].heading} body={TAB_EMPTY[id].body} />
+            )}
           </div>
         ))}
       </div>
