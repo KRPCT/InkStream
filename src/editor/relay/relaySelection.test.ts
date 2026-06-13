@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { EditorState } from '@codemirror/state';
 import { EditorView } from '@codemirror/view';
 import { baseExtensions } from '../extensions';
@@ -134,6 +134,34 @@ describe('relayGesture × 拖拽（mousedown → mousemove → mouseup）', () =
     flush();
     expect(view.state.selection.main.head).toBe(0);
     expect(view.state.selection.main.empty).toBe(true);
+  });
+
+  it('纯单击（mousedown→mouseup 无 mousemove）：mousedown 仅一次 focus，mouseup 零 focus（I 退化锁）', () => {
+    const { view, textarea, pin } = mount('abcdef');
+    pin(2);
+    const focusSpy = vi.spyOn(textarea, 'focus');
+    view.contentDOM.dispatchEvent(mouse('mousedown', { detail: 1 }));
+    expect(focusSpy).toHaveBeenCalledTimes(1); // 可信 mousedown 内唯一一次武装。
+    document.dispatchEvent(mouse('mouseup')); // 无 mousemove → 纯单击。
+    expect(focusSpy).toHaveBeenCalledTimes(1); // mouseup 不得二次 focus（武装命脉）。
+    expect(view.state.selection.main.head).toBe(2);
+    expect(document.activeElement).toBe(textarea);
+    focusSpy.mockRestore();
+  });
+
+  it('真拖拽结束：焦点未离 textarea 时 mouseup 不重入 focus（守卫生效）', () => {
+    const { view, textarea, flush, pin } = mount('abcdef');
+    pin(1);
+    const focusSpy = vi.spyOn(textarea, 'focus');
+    view.contentDOM.dispatchEvent(mouse('mousedown', { detail: 1 }));
+    pin(4);
+    document.dispatchEvent(mouse('mousemove')); // 首个 move → 真拖拽。
+    flush();
+    document.dispatchEvent(mouse('mouseup'));
+    // 拖拽全程焦点未离 textarea，守卫 activeElement===textarea 短路补焦：仍仅 mousedown 一次。
+    expect(focusSpy).toHaveBeenCalledTimes(1);
+    expect(view.state.selection.main.head).toBe(4);
+    focusSpy.mockRestore();
   });
 
   it('Shift+点击扩展选区，拖拽延续同一 anchor', () => {

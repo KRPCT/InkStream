@@ -66,12 +66,21 @@ export function installRelayController(
   /**
    * 拖拽选区（PROD-RELAY-DESIGN §2.3）：editable=false 后 CM 内建 MouseSelection 不再工作
    * （依赖 contentDOM 可聚焦 + 原生选区），自研最小实现——relayGesture 单击置 anchor 后调
-   * beginDrag，document 段 mousemove 经 defer（真机 rAF）节流 posAtCoords → dispatch
-   * range(anchor, head)，head 带 scrollIntoView（边缘自动滚动最小实现）；mouseup 卸载并回焦。
-   * 范围收敛：单 range + 字符粒度（词粒度拖拽为后续可选项），不复刻 Alt 矩形/bidi 长尾。
+   * beginDrag「武装」（仅挂 document mousemove/mouseup，尚未 dragging），首个 mousemove
+   * 才真正进入拖拽：经 defer（真机 rAF）节流 posAtCoords → dispatch range(anchor, head)，
+   * head 带 scrollIntoView（边缘自动滚动最小实现）；mouseup 卸载。范围收敛：单 range +
+   * 字符粒度（词粒度拖拽为后续可选项），不复刻 Alt 矩形/bidi 长尾。
+   *
+   * 输入面武装纪律（I 退化根因）：纯单击（press→release 无 move）绝不进入拖拽路径、绝不
+   * 在 mouseup 程序化 focus——可信 mousedown 内那唯一一次 textarea.focus() 是 WebView2 武装
+   * OS 输入面的命脉，同手势内任何二次程序化 focus 都会把它打回（英文/中文均打不进）。故：
+   *   - armed 但未真正 dragging 的 mouseup（纯单击）→ 只卸载监听，零 focus；
+   *   - 真拖拽结束 → 拖拽全程焦点未离 textarea，仅在确有焦点逃逸（activeElement≠textarea）
+   *     时才补焦，杜绝对已聚焦元素的 focus 重入。
    */
   let dragAnchor = 0;
-  let dragging = false;
+  let dragArmed = false; // mousedown 已挂监听，等待首个 mousemove 决定是否成拖拽。
+  let dragging = false; // 首个 mousemove 后置真：真正进入选区拖拽。
   let dragFrame: number | null = null;
   let dragCoords: { x: number; y: number } | null = null;
 
@@ -90,12 +99,14 @@ export function installRelayController(
   };
 
   const onDragMove = (e: MouseEvent): void => {
+    dragging = true; // 首个 mousemove：从「武装」升级为真正拖拽。
     dragCoords = { x: e.clientX, y: e.clientY };
     if (dragFrame == null) dragFrame = defer.schedule(dragFlush);
   };
 
   const endDrag = (): void => {
-    if (!dragging) return;
+    if (!dragArmed) return;
+    dragArmed = false;
     dragging = false;
     document.removeEventListener('mousemove', onDragMove);
     document.removeEventListener('mouseup', onDragUp);
@@ -107,15 +118,18 @@ export function installRelayController(
   };
 
   const onDragUp = (): void => {
-    dragFlush(); // 收尾帧：mouseup 前最后一段位移即最终选区。
+    const wasDragging = dragging; // endDrag 会清零，先捕获。
+    if (wasDragging) dragFlush(); // 收尾帧：mouseup 前最后一段位移即最终选区。
     endDrag();
-    textarea.focus(); // 拖拽结束焦点必回输入面（候选窗/键入即续）。
+    // 纯单击（从未 mousemove）：mousedown 已武装输入面，零 focus 操作（I 退化修复核心）。
+    // 真拖拽：焦点全程未离 textarea，仅确有逃逸才补焦，避免对已聚焦元素的 focus 重入。
+    if (wasDragging && document.activeElement !== textarea) textarea.focus();
   };
 
   const beginDrag = (anchor: number): void => {
     endDrag(); // 防御：异常路径（窗口失焦丢 mouseup）残留的上一轮拖拽先卸干净。
     dragAnchor = anchor;
-    dragging = true;
+    dragArmed = true; // 仅武装：挂监听等首个 mousemove，纯单击不会变 dragging。
     document.addEventListener('mousemove', onDragMove);
     document.addEventListener('mouseup', onDragUp);
   };

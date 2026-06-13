@@ -149,7 +149,11 @@ export function installRelayInput(
    * 组合中途点击的 blur-commit（PROD-RELAY-DESIGN §2.5 风险对策）：焦点不离 textarea 时浏览器
    * 不自动 commit，点击 dispatch 会移走插入点 → compositionend 一次性落子错位。先 blur 触发
    * 浏览器标准 compositionend（onCompositionEnd 按旧选区正常落子）；个别 IME / jsdom 不派发时
-   * 走强制兜底：按当前 value 落子 + 解冻，状态与正常 end 完全一致。最后回焦保持输入面武装。
+   * 走强制兜底：按当前 value 落子 + 解冻，状态与正常 end 完全一致。
+   *
+   * 回焦守卫（I 退化同类风险收口）：blur 已主动移走焦点，故仅在「焦点确实离开 textarea」时
+   * 才补焦——杜绝对已聚焦元素的程序化 focus 重入（与拖拽机同纪律，避免无谓 focus 抖动解除
+   * WebView2 输入面武装）。非组合期早返回，本守卫只在组合中途点击触发。
    */
   const commitComposition = (): void => {
     if (!composing) return;
@@ -165,7 +169,7 @@ export function installRelayInput(
         pendingReset = null;
       }
     }
-    textarea.focus();
+    if (document.activeElement !== textarea) textarea.focus();
   };
 
   textarea.addEventListener('compositionstart', onCompositionStart);
