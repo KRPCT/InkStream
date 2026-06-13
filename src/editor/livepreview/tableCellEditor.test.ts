@@ -200,9 +200,46 @@ describe('点击定位（CDP 自验 a）', () => {
   });
 });
 
+describe('撤销本地优先（B2 修复：子内 Ctrl+Z 先撤子、不跳主/不跳顶）', () => {
+  it('子内编辑后 Ctrl+Z → 撤销子 doc 并经 commit 回写主（本地优先，不回落主 undo）', () => {
+    view = mainView(DOC);
+    const sub = mount(view, 2); // "1"
+    sub.dispatch({ changes: { from: sub.state.doc.length, insert: 'X' } }); // "1X"
+    expect(sub.state.doc.toString()).toBe('1X');
+    expect(view.state.doc.toString()).toContain('1X'); // 已 commit 到主 doc。
+    runMod(sub, 'z'); // Ctrl+Z：子有可撤 → undo(sub) 先生效，不委派主。
+    expect(sub.state.doc.toString()).toBe('1'); // 子 undo 撤回。
+    expect(view.state.doc.toString()).not.toContain('1X'); // 主 doc 经 commit 同步回 "1"。
+    expect(view.state.doc.toString()).toContain('| 1 |');
+  });
+});
+
+describe('进格锚主选区（B2 修复：主选区移入表内，回落主 undo 不跳文档顶）', () => {
+  it('表格非文首时进格 → 微任务后主选区落入表格区间（修主选区停 pos 0 致 undo 跳顶）', async () => {
+    const doc = ['前言一段', '', '| a | b |', '| - | - |', '| 1 | 2 |'].join('\n');
+    view = mainView(doc);
+    const model = tableModelAt(view.state, doc.indexOf('|'))!;
+    expect(view.state.selection.main.head).toBe(0); // 初始主选区在文首（表外）。
+    const cell = document.createElement('td');
+    document.body.appendChild(cell);
+    view.dispatch({ effects: setTableEdit.of({ tableFrom: model.tableFrom, cellIndex: 2 }) });
+    mountCell(view, cell, model.tableFrom, 2);
+    await Promise.resolve(); // 等 anchorMainSelection 的微任务。
+    const head = view.state.selection.main.head;
+    expect(head).toBeGreaterThanOrEqual(model.tableFrom);
+    expect(head).toBeLessThanOrEqual(model.tableTo); // 主选区已锚入表内（不再停 pos 0）。
+  });
+});
+
 /** 在子 view 上同步派发一个 keymap 绑定（绕过真实 DOM 键事件，直跑 run）。 */
 function runKey(sub: EditorView, key: string): void {
   const event = new KeyboardEvent('keydown', { key: keyName(key), shiftKey: key.startsWith('Shift-') });
+  sub.contentDOM.dispatchEvent(event);
+}
+
+/** 派发一个 Mod（非 mac 下 ctrl）修饰的键（测撤销本地优先 keymap）。 */
+function runMod(sub: EditorView, key: string): void {
+  const event = new KeyboardEvent('keydown', { key, ctrlKey: true });
   sub.contentDOM.dispatchEvent(event);
 }
 

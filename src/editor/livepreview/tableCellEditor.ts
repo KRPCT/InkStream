@@ -1,6 +1,6 @@
 import { EditorSelection, EditorState, Prec, type Extension } from '@codemirror/state';
 import { drawSelection, EditorView, keymap } from '@codemirror/view';
-import { defaultKeymap, history, historyKeymap } from '@codemirror/commands';
+import { defaultKeymap, history, historyKeymap, redo, undo } from '@codemirror/commands';
 import { isComposing, queueAfterComposition } from '../composition';
 import {
   type NavDir,
@@ -26,11 +26,12 @@ import { clearTableEdit, setTableEdit } from './tableEditState';
  * 不重建子编辑器 → 保 caret / 组合 / 不吞字，§3.4 R2）；目标变了才销毁旧、新建。`destroyActive` 与挂载
  * 严格配对（StrictMode 纪律）。
  *
- * 子→主同步（§3.4 撤销 / commit）：子编辑器**装 history()**（承接子 doc 内部撤销栈），但 **Ctrl+Z/Y
- * 快捷键委派主编辑器**（cellNavKeymap 的 delegateHistory）——真相源与权威 history 都在主 doc，子的 undo
- * 快捷键落主 doc；docChanged 即把子 doc 文本经 `escapePipes` 写回主 doc 的 TableCell 区间（每次从 live
- * 语法树重解析区间，防陈旧）。组合期经 `queueAfterComposition` 排队、绝不在组合期 dispatch 主 doc
- * （防主 blockField 重建撕掉承载子编辑器的 widget DOM → 吞字）。
+ * 子→主同步（§3.4 撤销 / commit）：子编辑器**装 history()**（承接本格编辑撤销栈，跨 commit 存活——见
+ * mountCell 复用分支）。撤销**本地优先**：Ctrl+Z 先撤子（经 commit 回写主 doc、不动主选区不滚动），子无可撤
+ * 再回落主编辑器 undo（cellNavKeymap 的 delegateHistory）。docChanged 即把子 doc 文本经 `escapePipes` 写回
+ * 主 doc 的 TableCell 区间（每次从 live 语法树重解析区间，防陈旧）；state.doc 仍唯一真相源。组合期经
+ * `queueAfterComposition` 排队、绝不在组合期 dispatch 主 doc（防主 blockField 重建撕掉承载子编辑器的
+ * widget DOM → 吞字）。
  *
  * 删除（§5.2）：Backspace/Delete 在子编辑器内是 CM6 原生删字符；单元格删空也是子 doc 内 no-op（不删格）；
  * 子编辑器 keydown 对会越界到主 keymap 的键 `stopPropagation`，绝不冒泡触发主 atomicRanges 原子删整表。
@@ -113,21 +114,26 @@ export function mountCell(
     existing.cell.isConnected &&
     existing.sub.dom.isConnected
   ) {
-    // 子编辑器实例跨 widget 重建存活：若新 DOM 节点不是旧 cell（updateDOM 复用同一 wrap 时通常相同），
-    // 把子编辑器迁移进新 cell（保实例不销毁）。
+    // 子编辑器实例跨 widget 重建存活（B1 根治）：原地 updateDOM 复用同一 wrap 时，活动 td 已不再被 armCells
+    // 预清（清空逻辑移到下方重建分支），故 sub.dom 仍连通 → 走此复用分支，子编辑器实例 / caret / 组合 /
+    // 子 history 全部存活，每次 commit 不再重建子编辑器、光标不再跳末尾。若新 DOM 节点不是旧 cell（迁移），
+    // 用 replaceChildren 清掉新 cell 可能的静态内容再装 sub.dom（防源文本与子编辑器双显）。
     if (existing.cell !== cell) {
-      cell.appendChild(existing.sub.dom);
+      cell.replaceChildren(existing.sub.dom);
       (existing as { cell: HTMLElement }).cell = cell;
     }
-    // 复用同格：消费可能的待处理点击坐标（重点同一格不同位置定位 caret）；并补一次 focus——重建后焦点可能
-    // 短暂落回主编辑器，不补则键入落主 doc（CDP 实测：连点同格偶发夺焦 root cause）。
+    // 复用同格：仅消费可能的待处理点击坐标（同一格不同位置定位 caret）；无点击则保留子编辑器当前选区
+    // （不弹末尾，根治 IME 确认 / 中部编辑后光标跳末尾）。focus 由 focusSub 在焦点丢失且非组合期时才补。
     const click = pendingClick;
     pendingClick = null;
-    focusSub(existing.sub, click);
+    focusSub(existing.sub, click, true);
     return;
   }
   destroyActive(main);
 
+  // 清空目标 cell（统一在此清，armCells 活动分支不再预清）：toDOM 路径 buildTableBody 会给所有 td（含活动格）
+  // 写静态内容，新建子编辑器前须清掉，否则静态文本与子 contentDOM 双显。
+  cell.replaceChildren();
   const initial = unescapePipes(cellTextAt(main, tableFrom, cellIndex));
   const sub = new EditorView({
     state: EditorState.create({
@@ -140,7 +146,9 @@ export function mountCell(
   // 聚焦 + caret 落点（有待处理点击坐标 → 落点击处，CDP 自验 a；否则落末尾，导航/工具条进入）。
   const click = pendingClick;
   pendingClick = null;
-  focusSub(sub, click);
+  focusSub(sub, click, false);
+  // 进新格一次性锚主选区（修撤销跳顶 B2）：延后到微任务脱离 mousedown 手势链，仅当主选区在表外时设到本格起点。
+  anchorMainSelection(main, tableFrom, cellIndex);
 }
 
 /** 销毁当前主 view 的活动子编辑器（与 mountCell 配对，StrictMode 纪律）。 */
@@ -154,18 +162,51 @@ export function destroyActive(main: EditorView): void {
 /**
  * 聚焦子编辑器 + 定位 caret（同步 + rAF 双补，与主编辑器 focus 同路，IME 武装）。
  *
- * 有点击坐标（click 非空）→ 经 `sub.posAtCoords` 把 caret 落到点击处（CDP 自验 a，点中部不跳末尾）；
- * 坐标解析不出（点空白 / 越界）或无坐标 → 落文本末尾（导航/工具条进入）。
+ * - 有点击坐标（click 非空）→ 经 `sub.posAtCoords` 把 caret 落到点击处（CDP 自验 a，点中部不跳末尾）。
+ * - 新建态（preserveSelection=false）且无坐标 → 落文本末尾（导航/工具条进入）。
+ * - 复用态（preserveSelection=true）且无坐标 → **保留子编辑器当前选区不动**（根治 IME 确认 / 中部编辑后
+ *   光标跳末尾 B1）；且仅在焦点不在子且非组合期时才补 `sub.focus()`——反复 focus 承载 IME 的 contentDOM
+ *   有平台相关吞字 / 打断组合风险（Zettlr 同步时从不 focus），已聚焦或组合中一律跳过。
  */
-function focusSub(sub: EditorView, click: { x: number; y: number } | null): void {
+function focusSub(
+  sub: EditorView,
+  click: { x: number; y: number } | null,
+  preserveSelection: boolean,
+): void {
   const doFocus = (): void => {
     if (!sub.dom.isConnected) return;
+    if (preserveSelection && !click) {
+      if (!sub.composing && !sub.hasFocus) sub.focus();
+      return;
+    }
     sub.focus();
     const head = coordsToPos(sub, click) ?? sub.state.doc.length;
     sub.dispatch({ selection: EditorSelection.cursor(head) });
   };
   doFocus();
   requestAnimationFrame(doFocus);
+}
+
+/**
+ * 进新单元格时一次性把主编辑器选区锚到本格起点（修撤销跳顶 B2）。
+ *
+ * 进格手势 / 导航本不动主 selection（防主据表内选区夺焦，见 tableGesture），故主 caret 长期停 pos 0；
+ * 子内 undo 耗尽回落主 undo 时，主 undo 恢复 pos 0 选区并 scrollIntoView → 跳文档顶。此处把主选区移进本格
+ * 区间：后续 commit 经 changes 映射自然保持表内，回落主 undo 时滚到表格（已在视口）而非文档顶。延后到微任务
+ * 执行以脱离 mousedown 手势链（防主据新选区夺焦）；主未聚焦时 CM6 不画光标，无杂散 caret；仅当主选区当前
+ * 在表外才设，避免多余事务（doc 起始即表格时 pos 0 已在表内，天然跳过）。
+ */
+function anchorMainSelection(main: EditorView, tableFrom: number, cellIndex: number): void {
+  queueMicrotask(() => {
+    const active = activeEditors.get(main);
+    if (!active || active.tableFrom !== tableFrom || active.cellIndex !== cellIndex) return;
+    const model = tableModelAt(main.state, tableFrom);
+    const range = model?.cells[cellIndex];
+    if (!model || !range) return;
+    const head = main.state.selection.main.head;
+    if (head >= model.tableFrom && head <= model.tableTo) return;
+    main.dispatch({ selection: EditorSelection.cursor(range.from) });
+  });
 }
 
 /** 点击坐标 → 子 doc 位置（posAtCoords）；坐标缺失/越界/测量不可用（jsdom）则 null（回落末尾）。 */
@@ -293,10 +334,12 @@ function cellNavKeymap(main: EditorView, get: () => ActiveCellEditor | null): Ex
     { key: 'ArrowLeft', run: nav('prev', true) },
     { key: 'ArrowDown', run: nav('down', true) },
     { key: 'ArrowUp', run: nav('up', true) },
-    // historyKeymap 委派主编辑器（子不持权威 history；Ctrl+Z/Y 落主 doc 真相源）。
-    { key: 'Mod-z', run: () => delegateHistory(main, 'undo'), preventDefault: true },
-    { key: 'Mod-y', run: () => delegateHistory(main, 'redo'), preventDefault: true },
-    { key: 'Mod-Shift-z', run: () => delegateHistory(main, 'redo'), preventDefault: true },
+    // 撤销本地优先（修 B2 跳顶）：子编辑器跨 commit 存活后子 history 累积本格编辑，Ctrl+Z 先撤子（经 commit
+    // 回写主、不动主选区不滚动 → 不跳顶），子无可撤再回落主编辑器 undo（此时主选区已被 anchorMainSelection
+    // 锚在表内，主 undo 滚到表格而非文档顶）。redo 同理。
+    { key: 'Mod-z', run: (sub) => undo(sub) || delegateHistory(main, 'undo'), preventDefault: true },
+    { key: 'Mod-y', run: (sub) => redo(sub) || delegateHistory(main, 'redo'), preventDefault: true },
+    { key: 'Mod-Shift-z', run: (sub) => redo(sub) || delegateHistory(main, 'redo'), preventDefault: true },
   ]);
 }
 

@@ -145,7 +145,8 @@ export class TableWidget extends WidgetType {
    * 武装活动单元格（方案 B）：在 activeCellIndex 对应 td 内挂嵌套子 EditorView（mountCell 幂等复用），
    * 其余 td 静态只读（保留 textContent）。无活动格（activeCellIndex=null，且当前活动子编辑器属本表）时卸载。
    *
-   * 活动 td 的静态 textContent 须清空——子编辑器的 contentDOM 才是该格可视内容（否则源文本与子编辑器双显）。
+   * 活动 td 的让位清空由 mountCell 重建分支负责（仅新建子编辑器时清，复用时保 sub.dom 存活，根治 B1）；
+   * 此处不再预清 textContent，否则会断连 sub.dom 致每次 commit 重建子编辑器、光标跳末尾。
    */
   private armCells(root: HTMLElement, view: EditorView): void {
     registerWrapOwner(root, view); // 供 destroy(dom) 反查持有主 view（销毁配对）。
@@ -176,7 +177,8 @@ export class TableWidget extends WidgetType {
         return;
       }
       cell.classList.add('cm-ink-cell-editing');
-      cell.textContent = ''; // 让位给子编辑器 contentDOM（避免源文本与子编辑器双显）。
+      // 不在此预清 textContent（会断连子 sub.dom 致每次 commit 重建子编辑器、光标跳末尾 B1）：让位清空统一
+      // 移到 mountCell 重建分支（仅新建时清，复用时保 sub.dom 存活，保 caret/组合/子 history）。
       mountCell(view, cell, this.tableFrom, index);
     });
   }
