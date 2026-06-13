@@ -138,7 +138,8 @@ describe('wiki-link Live Preview 渲染', () => {
     expect(view.state.doc.sliceString(wl.from, wl.to)).toBe('Disp'); // 展示别名
     // target "Note" 被隐藏（含在 cm-ink-hidden 中）。
     const hidden = decos.filter((d) => d.cls === 'cm-ink-hidden');
-    expect(hidden.some((h) => view.state.doc.sliceString(h.from, h.to) === 'Note')).toBe(true);
+    const doc = view.state.doc;
+    expect(hidden.some((h) => doc.sliceString(h.from, h.to) === 'Note')).toBe(true);
   });
 
   it('活动行：光标所在 wiki-link 行显源码（无 wikilink/隐藏装饰）', () => {

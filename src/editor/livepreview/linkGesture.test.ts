@@ -36,6 +36,20 @@ vi.mock('../../stores/useEditorStore', () => ({
   useEditorStore: { getState: () => ({ activePath }) },
 }));
 
+// W3 wiki-link 跳转替身：createFile / refreshTree / showToast / vault 文件清单。
+const createFile = vi.fn<(root: string, path: string) => Promise<null>>(() => Promise.resolve(null));
+vi.mock('../../ipc/files', () => ({ createFile: (root: string, path: string) => createFile(root, path) }));
+const refreshTree = vi.fn(() => Promise.resolve());
+vi.mock('../fileTreeData', () => ({ refreshTree: () => refreshTree() }));
+const showToast = vi.fn();
+vi.mock('../../stores/useToastStore', () => ({ showToast: (...a: unknown[]) => showToast(...a) }));
+let vaultFiles: Array<{ name: string; path: string }> = [];
+vi.mock('../../stores/useVaultStore', () => ({
+  useVaultStore: {
+    getState: () => ({ vault: { root: '/v', repoRoot: null, name: 'v' }, files: vaultFiles }),
+  },
+}));
+
 // mock 后再引入被测件（确保闭包到的是替身）。
 const { handleLinkMousedown, resolveVaultRelative } = await import('./linkGesture');
 
@@ -49,6 +63,10 @@ afterEach(() => {
 beforeEach(() => {
   openExternal.mockClear();
   openFileByPath.mockClear();
+  createFile.mockClear();
+  refreshTree.mockClear();
+  showToast.mockClear();
+  vaultFiles = [];
   activePath = 'notes/doc.md';
 });
 
@@ -56,6 +74,56 @@ beforeEach(() => {
 function mdView(doc: string): EditorView {
   return makeTestView(doc, [extensionsForLanguage('markdown')]);
 }
+
+/** Ctrl+mousedown 事件替身（posAtCoords 另行桩）。 */
+function ctrlDown(): MouseEvent {
+  return {
+    clientX: 0,
+    clientY: 0,
+    ctrlKey: true,
+    metaKey: false,
+    preventDefault: () => {},
+  } as unknown as MouseEvent;
+}
+
+describe('handleLinkMousedown wiki-link 跳转（Phase 4 W3 / LINK-03）', () => {
+  it('Ctrl+点击 [[english]] → 解析并 openFileByPath(english.md)', () => {
+    vaultFiles = [{ name: 'english.md', path: 'english.md' }];
+    view = mdView('[[english]]');
+    Object.defineProperty(view, 'posAtCoords', { configurable: true, value: () => 4 });
+    expect(handleLinkMousedown(ctrlDown(), view)).toBe(true);
+    expect(openFileByPath).toHaveBeenCalledWith('english.md');
+    expect(createFile).not.toHaveBeenCalled();
+  });
+
+  it('Ctrl+点击 [[a|别名]] → 用 target a 跳转（非别名）', () => {
+    vaultFiles = [{ name: 'a.md', path: 'a.md' }];
+    view = mdView('[[a|别名]]');
+    Object.defineProperty(view, 'posAtCoords', { configurable: true, value: () => 5 }); // 落别名内
+    handleLinkMousedown(ctrlDown(), view);
+    expect(openFileByPath).toHaveBeenCalledWith('a.md');
+  });
+
+  it('Ctrl+点击不存在目标 → createFile + 打开 + 提示', async () => {
+    view = mdView('[[新页]]');
+    Object.defineProperty(view, 'posAtCoords', { configurable: true, value: () => 3 });
+    handleLinkMousedown(ctrlDown(), view);
+    expect(createFile).toHaveBeenCalledWith('/v', '新页.md');
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(openFileByPath).toHaveBeenCalledWith('新页.md');
+    expect(showToast).toHaveBeenCalled();
+  });
+
+  it('普通点击（无 Ctrl）命中 wiki-link → 不跳转 return false', () => {
+    vaultFiles = [{ name: 'english.md', path: 'english.md' }];
+    view = mdView('[[english]]');
+    Object.defineProperty(view, 'posAtCoords', { configurable: true, value: () => 4 });
+    const ev = { clientX: 0, clientY: 0, ctrlKey: false, metaKey: false, preventDefault() {} } as unknown as MouseEvent;
+    expect(handleLinkMousedown(ev, view)).toBe(false);
+    expect(openFileByPath).not.toHaveBeenCalled();
+  });
+});
 
 describe('handleLinkMousedown 手势分流（D-10）', () => {
   it('Ctrl+mousedown 命中链接 → openExternal(url) + preventDefault + return true', () => {

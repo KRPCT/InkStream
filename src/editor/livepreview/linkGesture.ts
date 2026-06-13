@@ -3,8 +3,14 @@ import type { EditorState } from '@codemirror/state';
 import { EditorView } from '@codemirror/view';
 import type { SyntaxNode } from '@lezer/common';
 import { openExternal } from '../../ipc/opener';
+import { createFile } from '../../ipc/files';
 import { useEditorStore } from '../../stores/useEditorStore';
+import { useVaultStore } from '../../stores/useVaultStore';
+import { showToast } from '../../stores/useToastStore';
 import { openFileByPath } from '../fileOpenFlow';
+import { refreshTree } from '../fileTreeData';
+import { WIKI_LINK_NODE, WIKI_LINK_TARGET } from './nodeNames';
+import { resolveWikiTarget, wikiTargetPath, wikiTargetToCreatePath } from './wikiTarget';
 
 /**
  * 链接跳转手势（D-10 / RESEARCH「链接手势」/ 威胁 T-03-16）三路分流。
@@ -23,8 +29,9 @@ import { openFileByPath } from '../fileOpenFlow';
  *   - 相对打开仅解析在 vault 根内的路径——上跳越界（`../../secret`）、绝对路径、含 scheme 的 url 一律
  *     不 openFileByPath（镜像 ImageWidget.resolveVaultImage 的 vault 边界收口纪律，T-03-19 同源）。
  *
- * Phase 4：`[[wiki-link]]` 内部跳转 + 缺失目标即建（languages.ts:91 标注的注入点）复用本手势分流骨架
- * （读修饰键、resolve Link/WikiLink 节点、vault 相对解析）——本阶段尚无 wiki-link 语法扩展，故不处理。
+ * Phase 4 W3（已落地）：`[[wiki-link]]` 内部跳转 + 缺失目标即建——Ctrl/Cmd+点击优先命中 WikiLink 节点，
+ * 解析 WikiLinkTarget（剥 #heading/^block）经 wikiTarget.ts 解析为 vault 文件，命中即单内核打开，
+ * 不存在则新建 `target.md` + 打开 + 刷新树 + 提示（Obsidian 风）。`[[` fuzzy 补全见 wikiLinkComplete.ts。
  */
 
 /**
@@ -92,8 +99,53 @@ export function resolveVaultRelative(url: string, activePath: string | null): st
   return stack.join('/');
 }
 
+/** 取文件名末段（toast 用）。 */
+function baseName(path: string): string {
+  const segs = path.split('/');
+  return segs[segs.length - 1] || path;
+}
+
+/** 从 pos 向上找最近的 WikiLink 节点（点渲染出的 alias/target 落其子节点，上溯到容器）；无则 null。 */
+function findWikiLinkNode(state: EditorState, pos: number): SyntaxNode | null {
+  let node: SyntaxNode | null = syntaxTree(state).resolve(pos, -1);
+  while (node) {
+    if (node.name === WIKI_LINK_NODE) return node;
+    node = node.parent;
+  }
+  return null;
+}
+
 /**
- * mousedown 手势分流核心（纯逻辑，配对单测穷举：Ctrl/Cmd 外链、相对、越界、普通点击、未命中）。
+ * wiki-link 跳转（Phase 4 W3 / LINK-03）：解析 WikiLinkTarget 内核（剥 #heading/^block）→ vault 文件。
+ * 命中即单内核打开；目标不存在 → 新建 `target.md` + 打开 + 刷新树 + 提示（Obsidian 风，点击即建）。
+ */
+async function navigateWikiLink(view: EditorView, wiki: SyntaxNode): Promise<void> {
+  const targetNode = wiki.getChild(WIKI_LINK_TARGET);
+  const path = wikiTargetPath(targetNode ? view.state.doc.sliceString(targetNode.from, targetNode.to) : '');
+  if (!path) {
+    showToast('warning', '无法解析该 wiki 链接的目标。');
+    return;
+  }
+  const vault = useVaultStore.getState().vault;
+  if (!vault) return;
+  const resolved = resolveWikiTarget(path, useVaultStore.getState().files);
+  if (resolved !== null) {
+    void openFileByPath(resolved);
+    return;
+  }
+  const rel = wikiTargetToCreatePath(path);
+  try {
+    await createFile(vault.root, rel);
+    await openFileByPath(rel);
+    void refreshTree();
+    showToast('warning', `「${baseName(rel)}」不存在，已新建并打开。`);
+  } catch {
+    showToast('error', `无法新建「${baseName(rel)}」（目标目录可能不存在）。`);
+  }
+}
+
+/**
+ * mousedown 手势分流核心（纯逻辑，配对单测穷举：Ctrl/Cmd 外链、相对、越界、wiki-link、普通点击、未命中）。
  *
  * @returns true = 已处理（导航，CM 不再默认置光标）；false = 交回 CM 默认行为。
  */
@@ -101,11 +153,19 @@ export function handleLinkMousedown(event: MouseEvent, view: EditorView): boolea
   const pos = view.posAtCoords({ x: event.clientX, y: event.clientY });
   if (pos == null) return false;
 
-  const link = findLinkNode(view.state, pos);
-  if (!link) return false;
-
   // 仅 Ctrl/Cmd+点击触发跳转；普通点击交回 CM 默认（置光标进编辑该行显源码）。
   if (!(event.metaKey || event.ctrlKey)) return false;
+
+  // wiki-link 跳转优先（Phase 4 W3）：命中 WikiLink → 解析 target 打开/新建。
+  const wiki = findWikiLinkNode(view.state, pos);
+  if (wiki) {
+    event.preventDefault();
+    void navigateWikiLink(view, wiki);
+    return true;
+  }
+
+  const link = findLinkNode(view.state, pos);
+  if (!link) return false;
 
   const url = extractUrl(view.state, link);
   if (url == null) return false;

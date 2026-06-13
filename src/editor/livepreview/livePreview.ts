@@ -3,6 +3,7 @@ import { inlinePlugin } from './inlinePlugin';
 import { blockExtensions } from './blockField';
 import { linkGesture } from './linkGesture';
 import { tableGesture } from './tableGesture';
+import { wikiLinkCompletion } from './wikiLinkComplete';
 
 /**
  * Live Preview 组合根（Pattern Map「livePreview.ts」/ RESEARCH Pattern 3+5）。
@@ -39,7 +40,7 @@ import { tableGesture } from './tableGesture';
  * Option 2 的「活动行整行纯源码」build 路径不变，作为重建路径的文本相等闸门不变量与门叠加。
  */
 export function livePreviewExtensions(): Extension[] {
-  return [inlinePlugin, blockExtensions, linkGesture, tableGesture];
+  return [inlinePlugin, blockExtensions, linkGesture, tableGesture, wikiLinkCompletion];
 }
 
 /**
