@@ -1,5 +1,6 @@
 import { pickFile, pickFolder } from '../ipc/dialog';
 import { startWatch, stopWatch } from '../ipc/events';
+import { indexRebuild } from '../ipc/indexService';
 import { listDir, listFiles, openVault } from '../ipc/vault';
 import { showToast } from '../stores/useToastStore';
 import { useGitGuidanceStore } from '../stores/useGitGuidanceStore';
@@ -60,6 +61,9 @@ export async function openVaultByPath(path: string): Promise<void> {
     } catch {
       useVaultStore.getState().setFiles([]);
     }
+    // Phase 4 W1：打开 vault 即全量重建 FTS5 索引（worker 开 <root>/.inkstream/index.db + 扫 .md 重灌），
+    // 保索引与当前磁盘一致；会话内增量由 autosave/外部变更钩子维护。fire-and-forget，不阻断打开。
+    void indexRebuild(info.root).catch(() => {});
   } catch (e) {
     showToast('error', '无法打开这个文件夹，它可能已被移动或删除。');
     throw e instanceof Error ? e : new Error(String(e));

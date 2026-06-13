@@ -30,4 +30,9 @@ export interface IpcCommands {
   // watcher 生命周期（切 vault 时 stop 旧 start 新）。
   start_watch: { args: { root: string }; result: null };
   stop_watch: { args: undefined; result: null };
+  // Phase 4 W1 FTS5 索引写侧（投递到 Rust 单写入队列；前端只读查询走 plugin-sql Database API，不登记于此）。
+  index_upsert_doc: { args: { path: string; content: string }; result: null };
+  index_remove_doc: { args: { path: string }; result: null };
+  index_rebuild: { args: { root: string }; result: null };
+  index_switch_vault: { args: { root: string }; result: null };
 }

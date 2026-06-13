@@ -3,6 +3,7 @@ import { isDraftPath } from '../editor/draftPath';
 import { getDocForPath } from '../editor/editorState';
 import { getView } from '../editor/viewHandle';
 import { writeFileAtomic } from '../ipc/files';
+import { indexUpsertDoc, isIndexable } from '../ipc/indexService';
 import { useEditorStore } from './useEditorStore';
 import { useToastStore } from './useToastStore';
 import { useVaultStore } from './useVaultStore';
@@ -111,6 +112,9 @@ async function writeOnce(path: string): Promise<void> {
     // 写成功：从落盘完成时刻起续窗，确保 rename 的尾随事件全落在窗口内被吞。
     suppressNextWatch(path);
     clearDirty(path);
+    // Phase 4 W1：写盘成功后增量更新 FTS5 索引（autosave 主路径，已有内存内容无需读盘）。
+    // fire-and-forget——索引投递失败绝不阻断/回滚保存（doc 真相源已落盘，可经 index_rebuild 恢复）。
+    if (isIndexable(path)) void indexUpsertDoc(path, content).catch(() => {});
   } catch {
     // WR-01：写失败时无 watcher 事件落地，必须撤回抑制窗口，否则它会吞掉
     // 下一次该路径的真实外部变更（consumeSuppressedWatch 误返 true）。

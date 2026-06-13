@@ -20,6 +20,7 @@
       "allow": [{ "url": "http://*" }, { "url": "https://*" }]
     },
     "dialog:allow-open",
-    "dialog:allow-save"
+    "dialog:allow-save",
+    "sql:default"
   ]
 }
