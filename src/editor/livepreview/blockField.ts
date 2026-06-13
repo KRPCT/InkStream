@@ -324,6 +324,11 @@ const tableTheme = EditorView.theme({
     backgroundColor: 'var(--background-modifier-hover)',
     color: 'var(--text-normal)',
   },
+  // 对齐按钮当前态高亮（C）：本列当前对齐对应的按钮以强调色 + 浅底标示（var 已在册，永不硬编色）。
+  '.cm-ink-table-toolbar-btn-active': {
+    backgroundColor: 'var(--background-modifier-hover)',
+    color: 'var(--cm-checkbox-checked)',
+  },
   '.cm-ink-table-toolbar-sep': {
     width: '1px',
     height: '16px',

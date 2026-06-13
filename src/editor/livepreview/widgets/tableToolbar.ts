@@ -1,5 +1,6 @@
 import type { EditorView } from '@codemirror/view';
 import { applyTableOp, type TableOp } from '../tableCommands';
+import type { ColumnAlign } from '../tableOps';
 
 /**
  * 表格悬浮工具条（TABLE-WYSIWYG-DESIGN §5 入口 a）：鼠标进入表格时浮现的轻量操作条。
@@ -115,6 +116,19 @@ export function buildTableToolbar(
   return bar;
 }
 
+/**
+ * 高亮当前列对齐对应的按钮（C：工具条对齐按钮指示本列当前对齐，再点同项即取消为 GFM 默认）。
+ *
+ * GFM 'none'（`---`，渲染视同左）高亮「左」按钮；其余按 data-align 精确匹配。由 TableWidget.armCells 在
+ * toDOM/updateDOM（含切列导航、改对齐）时据目标列对齐调用，保高亮随当前列实时更新。
+ */
+export function markActiveAlign(bar: HTMLElement, align: ColumnAlign): void {
+  const active = align === 'center' ? 'center' : align === 'right' ? 'right' : 'left';
+  bar.querySelectorAll<HTMLElement>('[data-align]').forEach((btn) => {
+    btn.classList.toggle('cm-ink-table-toolbar-btn-active', btn.dataset.align === active);
+  });
+}
+
 /** 构建单个工具条按钮（mousedown 防夺焦、click 派发 op）。 */
 function buildButton(
   spec: ButtonSpec,
@@ -127,6 +141,8 @@ function buildButton(
   btn.className = 'cm-ink-table-toolbar-btn';
   btn.setAttribute('aria-label', spec.label);
   btn.title = spec.label;
+  // 对齐按钮打 data-align（C：供 markActiveAlign 高亮本列当前对齐）。
+  if (spec.op.kind === 'align') btn.dataset.align = spec.op.align;
   btn.appendChild(buildIcon(spec.icon));
   // mousedown 不夺走单元格焦点（保 IME 武装、保编辑态读取）；操作落在 click。
   btn.addEventListener('mousedown', (e) => e.preventDefault());

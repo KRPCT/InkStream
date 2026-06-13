@@ -10,6 +10,7 @@ import {
   tableModelAt,
   unescapePipes,
 } from './tableModel';
+import { type ColumnAlign, columnOf, tableStructAt } from './tableOps';
 import { clearTableEdit, setTableEdit } from './tableEditState';
 
 /**
@@ -106,6 +107,7 @@ export function mountCell(
   tableFrom: number,
   cellIndex: number,
 ): void {
+  const align = columnAlignAt(main, tableFrom, cellIndex);
   const existing = activeEditors.get(main);
   if (
     existing &&
@@ -124,6 +126,7 @@ export function mountCell(
     }
     // 复用同格：仅消费可能的待处理点击坐标（同一格不同位置定位 caret）；无点击则保留子编辑器当前选区
     // （不弹末尾，根治 IME 确认 / 中部编辑后光标跳末尾）。focus 由 focusSub 在焦点丢失且非组合期时才补。
+    applyCellAlign(existing.sub, align); // 跟随列对齐（A）：列对齐可能在编辑中经工具条变更。
     const click = pendingClick;
     pendingClick = null;
     focusSub(existing.sub, click, true);
@@ -143,6 +146,7 @@ export function mountCell(
     parent: cell,
   });
   activeEditors.set(main, { sub, cell, tableFrom, cellIndex, syncing: false });
+  applyCellAlign(sub, align); // 活动格文字跟随该列 GFM 对齐（A：编辑居中/右列时不再左对齐，与非活动格一致）。
   // 聚焦 + caret 落点（有待处理点击坐标 → 落点击处，CDP 自验 a；否则落末尾，导航/工具条进入）。
   const click = pendingClick;
   pendingClick = null;
@@ -207,6 +211,18 @@ function anchorMainSelection(main: EditorView, tableFrom: number, cellIndex: num
     if (head >= model.tableFrom && head <= model.tableTo) return;
     main.dispatch({ selection: EditorSelection.cursor(range.from) });
   });
+}
+
+/** 取某 cell 所在列的 GFM 对齐（活动格跟随列对齐 A）；结构缺失则 'none'。 */
+function columnAlignAt(main: EditorView, tableFrom: number, cellIndex: number): ColumnAlign {
+  const struct = tableStructAt(main.state, tableFrom);
+  if (!struct) return 'none';
+  return struct.aligns[columnOf(struct, cellIndex)] ?? 'none';
+}
+
+/** 把列对齐应用到子编辑器（inline text-align，子 .cm-content/.cm-line 经 inherit 跟随；'none' 视同左）。 */
+function applyCellAlign(sub: EditorView, align: ColumnAlign): void {
+  sub.dom.style.textAlign = align === 'center' ? 'center' : align === 'right' ? 'right' : 'left';
 }
 
 /** 点击坐标 → 子 doc 位置（posAtCoords）；坐标缺失/越界/测量不可用（jsdom）则 null（回落末尾）。 */
@@ -405,7 +421,8 @@ function moveToCell(main: EditorView, active: ActiveCellEditor, dir: NavDir): vo
  * 换行（与 td 一致，TABLE-ACTIVE-RENDER-DIAG 修复）：软换行靠 `EditorView.lineWrapping` 扩展（见
  * subEditorExtensions），本 theme 仅配套——content `white-space:pre-wrap`（保行内空格 + 配合软换行）、
  * scroller `overflow-x:hidden`（兜底去横滚，即便有不可折断长串也不出滚动条，与表格语义一致）、
- * content/line `text-align:left`（钉死左对齐，杜绝继承漂移与单行溢出的伪居中错觉）。激活前后版式一致。
+ * content/line `text-align:inherit`（跟随 mountCell 在 sub.dom 上按列 GFM 对齐设的 text-align，A；
+ * 左/'none' 列仍显式左对齐无漂移）。激活前后版式一致。
  */
 const subTheme = EditorView.theme({
   '&': { backgroundColor: 'transparent', width: '100%' },
@@ -433,12 +450,14 @@ const subTheme = EditorView.theme({
     minHeight: 'auto',
     whiteSpace: 'pre-wrap',
     overflowWrap: 'break-word',
-    textAlign: 'left',
+    // 对齐跟随该列 GFM 对齐（A）：由 mountCell 在 sub.dom 上设 inline text-align，此处 inherit 不再钉死左对齐
+    // （'none'/左列仍显式左对齐，无继承漂移；居中/右列编辑时文字与非活动格一致）。
+    textAlign: 'inherit',
   },
   // .cm-line 左 padding 归零（任务二：左边缘对齐）：CM6 baseTheme 给 `.cm-line` 默认 `padding:0 2px 0 6px`，
   // 叠在 .cm-content 的 13px 左 padding 上 → 激活态文字左起 19px，比未激活 td（直接 13px）多 6px、点击前后位移。
   // 单 class `.cm-line`（0,1,0）特异度不足以压过 baseTheme（lineWrapping 命中后更高/同序在后，实测残留 6px），
   // 故用 `.cm-scroller .cm-line`（0,3,0）无条件归零——激活态文字左起 = .cm-content 的 13px，与未激活 td 完全对齐。
-  '.cm-scroller .cm-line': { padding: '0', textAlign: 'left' },
+  '.cm-scroller .cm-line': { padding: '0', textAlign: 'inherit' },
   '&.cm-focused': { outline: 'none' },
 });

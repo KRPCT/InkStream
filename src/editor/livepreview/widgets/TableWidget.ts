@@ -10,7 +10,7 @@ import {
   mountCell,
   registerWrapOwner,
 } from '../tableCellEditor';
-import { buildTableToolbar } from './tableToolbar';
+import { buildTableToolbar, markActiveAlign } from './tableToolbar';
 
 /**
  * GFM 表格 widget（块级层 / 方案 B 嵌套 EditorView 就地编辑 / Security V5 XSS 防护）。
@@ -99,9 +99,16 @@ export class TableWidget extends WidgetType {
     table.className = 'cm-ink-table';
     table.dataset.tableFrom = String(this.tableFrom);
     buildTableBody(table, this);
+    // 记录最近悬停的单元格（D：工具条/操作目标在无激活格时落到鼠标所指格，而非恒回落首格 0）。
+    table.addEventListener('mouseover', (e) => {
+      const t = e.target;
+      if (!(t instanceof Element)) return;
+      const c = t.closest<HTMLElement>('td, th');
+      if (c?.dataset.cellIndex != null) wrap.dataset.hoverCell = c.dataset.cellIndex;
+    });
     wrap.appendChild(table);
-    // 悬浮工具条：操作目标 cellIndex = 当前就地编辑态（无则首格 0）。hover 显隐由 CSS 控制。
-    buildTableToolbar(wrap, this.tableFrom, view, () => activeCellIndexFor(view, this.tableFrom));
+    // 悬浮工具条：操作目标 = 当前就地编辑格（本表）→ 最近悬停格 → 首格 0（D）。hover 显隐由 CSS 控制。
+    buildTableToolbar(wrap, this.tableFrom, view, () => toolbarTarget(view, this.tableFrom, wrap));
     this.armCells(wrap, view);
     return wrap;
   }
@@ -154,6 +161,11 @@ export class TableWidget extends WidgetType {
     // 文档序扁平的各 cell 当前源文本（与 DOM/cellIndex 同序）：用于回填非活动格的静态 textContent。
     const texts = flatCellTexts(this.sourceText);
     const active = this.activeCellIndex;
+    // 高亮目标列当前对齐（C）：每次 armCells（toDOM/updateDOM，含切列导航）据目标列对齐刷新对齐按钮高亮。
+    const toolbar = root.querySelector<HTMLElement>('.cm-ink-table-toolbar');
+    if (toolbar && this.columns > 0) {
+      markActiveAlign(toolbar, this.aligns[(active ?? 0) % this.columns] ?? 'none');
+    }
     if (active == null) {
       // 本表无活动格（退出态 / 点别表）：恢复所有格的静态文本 + 卸载属本表的子编辑器。
       // 退出态必须回填——某格曾激活时被清空（textContent=''）、子编辑器销毁后其 DOM 被移除，
@@ -191,10 +203,15 @@ function sameAligns(a: readonly ColumnAlign[], b: readonly ColumnAlign[]): boole
   return true;
 }
 
-/** 取 view 当前就地编辑态在 tableFrom 表内的 cellIndex（无/异表则回落首格 0，供工具条操作有据）。 */
-function activeCellIndexFor(view: EditorView, tableFrom: number): number {
+/**
+ * 工具条/操作目标 cellIndex（D）：优先当前就地编辑格（本表）→ 最近悬停格（wrap.data-hover-cell）→ 首格 0。
+ * 消除「无激活格时操作恒落首格」歧义：未编辑时把行列操作落到鼠标所指那一格/行/列。
+ */
+function toolbarTarget(view: EditorView, tableFrom: number, wrap: HTMLElement): number {
   const edit = view.state.field(tableEditState, false) ?? null;
-  return edit && edit.tableFrom === tableFrom ? edit.cellIndex : 0;
+  if (edit && edit.tableFrom === tableFrom) return edit.cellIndex;
+  const hovered = Number(wrap.dataset.hoverCell);
+  return Number.isInteger(hovered) ? hovered : 0;
 }
 
 /** ColumnAlign → CSS text-align（'none' = 不设，继承默认左对齐）。 */
@@ -257,7 +274,11 @@ function flatCellTexts(sourceText: string): string[] {
  * 写入口——与旧 `textContent=` 行为对齐（纯文本仍纯文本），额外渲染 **粗** / *斜* / `代码` / ~~删除~~ / [链接]。
  */
 function setCellContent(cell: HTMLElement, rawSource: string): void {
-  cell.replaceChildren(renderInlineCell(unescapePipes(rawSource)));
+  const rendered = renderInlineCell(unescapePipes(rawSource));
+  // 空单元格补一个 <br> 占满一行高（B：根治插入的全空行比内容行矮——空 cell 无行盒会坍缩）；
+  // <br> 不贡献 textContent（仍为空），与文本格同 line-height，全空行与内容行等高。
+  if (!rendered.hasChildNodes()) rendered.appendChild(document.createElement('br'));
+  cell.replaceChildren(rendered);
 }
 
 /** 拆一行 GFM 表格的单元格文本（按未转义 `|` 分列，去首尾空格；`\|` 不分列）。 */

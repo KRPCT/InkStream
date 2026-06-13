@@ -7,6 +7,7 @@ import { extensionsForLanguage } from '../../languages';
 import { blockField } from '../blockField';
 import { setTableEdit, tableEditState } from '../tableEditState';
 import { tableModelAt } from '../tableModel';
+import { tableStructAt } from '../tableOps';
 import { destroyActive, getActiveCellEditor } from '../tableCellEditor';
 import { TableWidget } from './TableWidget';
 
@@ -301,6 +302,36 @@ describe('TableWidget 子编辑器跨 commit 复用（B1 修复：原地 updateD
     const cells = dom.querySelectorAll<HTMLTableCellElement>('th, td');
     expect(cells[2].querySelectorAll('.cm-content').length).toBe(1);
     dom.remove();
+  });
+});
+
+describe('TableWidget 空单元格占行高（B：插入的全空行不再偏矮）', () => {
+  it('空单元格渲染一个 <br> 占行盒（textContent 仍空）；非空格不补 <br>', () => {
+    const doc = ['| a | b |', '| - | - |', '|  | x |'].join('\n'); // 首数据格为空。
+    view = tableView(doc);
+    const wrap = widgetFor(view, null).toDOM(view);
+    const cells = wrap.querySelectorAll<HTMLTableCellElement>('th, td');
+    expect(cells[2].querySelector('br')).not.toBeNull(); // 空格补 <br>。
+    expect(cells[2].textContent).toBe(''); // <br> 不贡献文本。
+    expect(cells[3].querySelector('br')).toBeNull(); // "x" 非空，不补。
+  });
+});
+
+describe('TableWidget 对齐按钮高亮当前列（C）', () => {
+  it('活动格在居中列 → toolbar「居中」按钮带 active 类；左列活动则「左」active', () => {
+    const doc = ['| a | b |', '| --- | :---: |', '| 1 | 2 |'].join('\n'); // 列1 居中。
+    view = tableView(doc);
+    const model = tableModelAt(view.state, 0)!;
+    const aligns = tableStructAt(view.state, 0)!.aligns;
+    const text = view.state.doc.sliceString(model.tableFrom, model.tableTo);
+    const wrapCenter = new TableWidget(text, model.tableFrom, model.cells, 3, model.columns, aligns).toDOM(view);
+    const activeOf = (w: HTMLElement, a: string) =>
+      w.querySelector(`.cm-ink-table-toolbar [data-align="${a}"]`)!.classList.contains('cm-ink-table-toolbar-btn-active');
+    expect(activeOf(wrapCenter, 'center')).toBe(true); // 活动格 idx3 在列1（居中）。
+    expect(activeOf(wrapCenter, 'left')).toBe(false);
+    const wrapLeft = new TableWidget(text, model.tableFrom, model.cells, 2, model.columns, aligns).toDOM(view);
+    expect(activeOf(wrapLeft, 'left')).toBe(true); // 活动格 idx2 在列0（none→左）。
+    expect(activeOf(wrapLeft, 'center')).toBe(false);
   });
 });
 

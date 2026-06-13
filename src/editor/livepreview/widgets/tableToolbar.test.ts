@@ -4,7 +4,7 @@ import { destroyTestView, makeTestView } from '../../../test/composition';
 import { extensionsForLanguage } from '../../languages';
 import { blockExtensions } from '../blockField';
 import { tableModelAt } from '../tableModel';
-import { buildTableToolbar } from './tableToolbar';
+import { buildTableToolbar, markActiveAlign } from './tableToolbar';
 
 /**
  * 表格悬浮工具条回归门（TABLE-WYSIWYG-DESIGN §5 入口 a / Security V5 XSS）。
@@ -116,5 +116,20 @@ describe('buildTableToolbar 点击派发 op', () => {
     const ev = new MouseEvent('mousedown', { bubbles: true, cancelable: true });
     btn.dispatchEvent(ev);
     expect(ev.defaultPrevented).toBe(true);
+  });
+});
+
+describe('markActiveAlign 高亮当前列对齐（C）', () => {
+  const ACTIVE = 'cm-ink-table-toolbar-btn-active';
+  it('居中 → 仅「居中」按钮 active；GFM none 视同左、高亮「左」', () => {
+    view = ttView(DOC);
+    const bar = mountToolbar(view);
+    const has = (a: string) => bar.querySelector(`[data-align="${a}"]`)!.classList.contains(ACTIVE);
+    markActiveAlign(bar, 'center');
+    expect([has('left'), has('center'), has('right')]).toEqual([false, true, false]);
+    markActiveAlign(bar, 'right');
+    expect([has('left'), has('center'), has('right')]).toEqual([false, false, true]);
+    markActiveAlign(bar, 'none'); // 'none' 渲染视同左 → 高亮「左」。
+    expect([has('left'), has('center'), has('right')]).toEqual([true, false, false]);
   });
 });
