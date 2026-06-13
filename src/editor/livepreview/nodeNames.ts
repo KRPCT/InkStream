@@ -104,8 +104,9 @@ export const BLOCK_REPLACE: ReadonlySet<string> = new Set([
 export const FENCED_CODE_NODE = 'FencedCode';
 export const CODE_INFO_NODE = 'CodeInfo';
 export const CODE_TEXT_NODE = 'CodeText';
-/** 块级层就地渲染的 fenced info 串 → 引擎（随 wave 增补；W1 仅 math）。 */
+/** 块级层就地渲染的 fenced info 串 → 引擎（随 wave 增补；W1 math→KaTeX、W2 latex→MathJax）。 */
 export const MATH_INFO = 'math';
+export const LATEX_INFO = 'latex';
 
 /** 由 ATXHeadingN 节点名取标题级别（1-6）；非标题节点返回 0。 */
 export function headingLevel(nodeName: string): number {

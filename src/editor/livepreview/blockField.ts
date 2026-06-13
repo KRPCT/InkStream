@@ -6,10 +6,12 @@ import {
   CODE_INFO_NODE,
   CODE_TEXT_NODE,
   FENCED_CODE_NODE,
+  LATEX_INFO,
   MATH_INFO,
 } from './nodeNames';
 import { TableWidget } from './widgets/TableWidget';
 import { MathWidget } from './widgets/MathWidget';
+import { LatexWidget } from './widgets/LatexWidget';
 import { tableModelFromNode } from './tableModel';
 import { tableStructFromNode } from './tableOps';
 import { clearTableEdit, setTableEdit, tableEditState } from './tableEditState';
@@ -63,12 +65,12 @@ interface BlockState {
    * 全部 ```math 块 range（无论是否被替换）：供边界判定（光标进/出触发还原↔渲染切换）。
    * **不入 atomicRanges**——否则光标无法进块还原源码（math 走「光标进块显源码」而非表格的「恒渲染 + 嵌套编辑」）。
    */
-  readonly mathBlocks: readonly TableRange[];
+  readonly formulaBlocks: readonly TableRange[];
 }
 
 /** 块级原子 range 全集（表格 + math）：边界指纹覆盖两者，否则光标进 math 块不触发重建、源码不还原。 */
 function allBlockRanges(s: BlockState): readonly TableRange[] {
-  return s.mathBlocks.length === 0 ? s.tables : [...s.tables, ...s.mathBlocks];
+  return s.formulaBlocks.length === 0 ? s.tables : [...s.tables, ...s.formulaBlocks];
 }
 
 /**
@@ -86,7 +88,7 @@ function allBlockRanges(s: BlockState): readonly TableRange[] {
 function buildBlockState(state: EditorState): BlockState {
   const builder = new RangeSetBuilder<Decoration>();
   const tables: TableRange[] = [];
-  const mathBlocks: TableRange[] = [];
+  const formulaBlocks: TableRange[] = [];
   // 主选区行范围（math 块据此判「光标进块」→ 还原源码；表格恒渲染不用）。
   const sel = state.selection.main;
   const selFirstLine = state.doc.lineAt(sel.from).number;
@@ -99,29 +101,27 @@ function buildBlockState(state: EditorState): BlockState {
   const tree = ensureSyntaxTree(state, state.doc.length, FORCE_PARSE_BUDGET_MS) ?? syntaxTree(state);
   tree.iterate({
     enter: (node) => {
-      // ```math 块（FencedCode + CodeInfo 首词 === 'math'）：光标进块还原源码、否则渲染 MathWidget。
-      // 与表格「恒渲染」各走各判定，互不影响；math range 登记 mathBlocks 供边界判定（进/出触发还原↔渲染）。
+      // fenced 公式块（FencedCode + CodeInfo 首词）：math→KaTeX(MathWidget) / latex→MathJax(LatexWidget)。
+      // 光标进块还原源码、否则渲染 widget（与表格「恒渲染」各走各判定）；块 range 登记 formulaBlocks 供边界
+      // 判定（进/出触发还原↔渲染）。两引擎同范式（边界还原 + 占位重建），仅 widget 不同。
       if (node.name === FENCED_CODE_NODE) {
         const info = node.node.getChild(CODE_INFO_NODE);
         const infoText = info
           ? state.doc.sliceString(info.from, info.to).trim().split(/\s+/)[0]
           : '';
-        if (infoText === MATH_INFO) {
-          mathBlocks.push({ from: node.from, to: node.to });
+        if (infoText === MATH_INFO || infoText === LATEX_INFO) {
+          formulaBlocks.push({ from: node.from, to: node.to });
           const firstLine = state.doc.lineAt(node.from).number;
           const lastLine = state.doc.lineAt(node.to).number;
           const cursorInBlock = firstLine <= selLastLine && lastLine >= selFirstLine;
           if (!cursorInBlock) {
             const codeText = node.node.getChild(CODE_TEXT_NODE);
-            const latex = codeText ? state.doc.sliceString(codeText.from, codeText.to) : '';
-            builder.add(
-              node.from,
-              node.to,
-              Decoration.replace({ widget: new MathWidget(latex), block: true }),
-            );
+            const src = codeText ? state.doc.sliceString(codeText.from, codeText.to) : '';
+            const widget = infoText === MATH_INFO ? new MathWidget(src) : new LatexWidget(src);
+            builder.add(node.from, node.to, Decoration.replace({ widget, block: true }));
           }
         }
-        return false; // 不下钻 FencedCode 子树（math 已处理；非 math 代码块本期不渲染）
+        return false; // 不下钻 FencedCode 子树（公式块已处理；其它代码块本期不渲染）
       }
       if (!BLOCK_REPLACE.has(node.name)) return undefined;
       tables.push({ from: node.from, to: node.to });
@@ -156,7 +156,7 @@ function buildBlockState(state: EditorState): BlockState {
       return false; // 块级节点子树无需再迭代（cells 已在 tableModelFromNode 内取齐）。
     },
   });
-  return { deco: builder.finish(), tables, mathBlocks };
+  return { deco: builder.finish(), tables, formulaBlocks };
 }
 
 /**
@@ -224,7 +224,7 @@ export const blockField = StateField.define<BlockState>({
       return {
         deco: prev.deco.map(tr.changes),
         tables: prev.tables.map(mapRange),
-        mathBlocks: prev.mathBlocks.map(mapRange),
+        formulaBlocks: prev.formulaBlocks.map(mapRange),
       };
     }
     // 1. doc 变 / compositionend 强刷 / 就地编辑态切换：全文扫描重建。
@@ -418,7 +418,41 @@ const mathTheme = EditorView.theme({
 });
 
 /**
- * 块级层组合（挂入 livePreviewExtensions）：tableEditState（就地编辑态）+ blockField（decorations provide）
- * + atomicRanges + 表格/math 样式。tableEditState 须在 blockField 前——buildBlockState 经 state.field 读它。
+ * ```latex 块样式（Phase 5 W2，对标 mathTheme）：块公式居中、上下留白、长公式横向滚动。MathJax SVG 输出默认
+ * fill=currentColor → 容器设 color:var(--text-normal) 即自动适配亮/暗主题（零额外 JS）；收口 mjx-container 默认
+ * margin 防污染编辑器排版；占位/错误态同 mathTheme 纪律（永不硬编色）。
  */
-export const blockExtensions = [tableEditState, blockField, tableAtomicRanges, tableTheme, mathTheme];
+const latexTheme = EditorView.theme({
+  '.cm-ink-latex': {
+    display: 'block',
+    margin: '0.5em 0',
+    maxWidth: '100%',
+    overflowX: 'auto',
+    textAlign: 'center',
+    color: 'var(--text-normal)',
+  },
+  '.cm-ink-latex mjx-container': { margin: '0' },
+  '.cm-ink-latex mjx-container svg': { maxWidth: '100%' },
+  '.cm-ink-latex-loading, .cm-ink-latex-empty': {
+    minHeight: '1.6em',
+    color: 'var(--text-faint)',
+    fontFamily: 'var(--font-mono)',
+    fontSize: '0.9em',
+    textAlign: 'left',
+    whiteSpace: 'pre-wrap',
+  },
+  '.cm-ink-latex-error': { color: 'var(--color-error)', fontFamily: 'var(--font-mono)' },
+});
+
+/**
+ * 块级层组合（挂入 livePreviewExtensions）：tableEditState（就地编辑态）+ blockField（decorations provide）
+ * + atomicRanges + 表格/math/latex 样式。tableEditState 须在 blockField 前——buildBlockState 经 state.field 读它。
+ */
+export const blockExtensions = [
+  tableEditState,
+  blockField,
+  tableAtomicRanges,
+  tableTheme,
+  mathTheme,
+  latexTheme,
+];

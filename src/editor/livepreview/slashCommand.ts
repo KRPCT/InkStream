@@ -14,30 +14,29 @@ import type { EditorView } from '@codemirror/view';
  * 显源码，用户接着键 latex；移出块即渲染（与块还原逻辑自洽）。
  */
 
-const MATH_HEAD = '```math\n';
-const MATH_TAIL = '\n```';
-
 interface SlashCommand {
   label: string;
   detail: string;
   apply: (view: EditorView, completion: unknown, from: number, to: number) => void;
 }
 
+/** 插入一个 ```<lang> 围栏块，光标落块内空行（head 之后、tail 之前）。 */
+function insertFencedBlock(lang: string): SlashCommand['apply'] {
+  const head = '```' + lang + '\n';
+  const tail = '\n```';
+  return (view, _c, from, to) => {
+    view.dispatch({
+      changes: { from, to, insert: head + tail },
+      selection: EditorSelection.cursor(from + head.length),
+      scrollIntoView: true,
+      userEvent: 'input.complete',
+    });
+  };
+}
+
 const SLASH_COMMANDS: readonly SlashCommand[] = [
-  {
-    label: '/math',
-    detail: '数学公式块（KaTeX）',
-    apply: (view, _c, from, to) => {
-      const insert = MATH_HEAD + MATH_TAIL;
-      view.dispatch({
-        changes: { from, to, insert },
-        // 光标落 head 之后、tail 之前的空行。
-        selection: EditorSelection.cursor(from + MATH_HEAD.length),
-        scrollIntoView: true,
-        userEvent: 'input.complete',
-      });
-    },
-  },
+  { label: '/math', detail: '数学公式块（KaTeX）', apply: insertFencedBlock('math') },
+  { label: '/latex', detail: 'LaTeX 公式块（MathJax）', apply: insertFencedBlock('latex') },
 ];
 
 /** slash 命令补全源：匹配行首 / 空白后的 `/命令名`（避免 a/b 路径误触发）。 */
