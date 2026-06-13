@@ -38,3 +38,16 @@ trash = "=5.2.6"
 # 防抖文件监听（FILE-02 watcher）。内捆 notify 7.x；裸 notify 不显式 pin，
 # 经 notify_debouncer_full::notify 重导出访问类型（Pitfall 6，避免双 pin 冲突）。
 notify-debouncer-full = "=0.7.0"
+# Phase 4 W1 FTS5 索引（写侧）。sqlx 0.8.6 与 tauri-plugin-sql 2.4.0 的 ^0.8 经 Cargo.lock
+# 收敛到同一节点 → 同一 libsqlite3-sys 0.30.1 → 零 links="sqlite3" 冲突（不引 rusqlite）。
+sqlx = { version = "=0.8.6", default-features = false, features = ["runtime-tokio", "sqlite"] }
+# 必须直接引并显式 bundled：sqlx 的 sqlite feature 不带 bundled，缺则 Windows 走系统链接失败。
+# bundled build.rs 无条件带 -DSQLITE_ENABLE_FTS5（内捆 SQLite 3.46，FTS5/trigram 开箱）；钉死 0.30.1 防漂移。
+libsqlite3-sys = { version = "=0.30.1", features = ["bundled"] }
+# 写队列 mpsc：与 tauri 内捆 tokio 同版本节点，仅 union sync feature（不引新编译单元）。
+tokio = { version = "=1.52.3", default-features = false, features = ["sync"] }
+# 前端只读 SQL 查询通道（写全在 Rust，capability 仅授 sql:default 只读集）。
+tauri-plugin-sql = { version = "=2.4.0", features = ["sqlite"] }
+# 索引 path 键 NFC 规范化（跨平台一致：macOS 分解形与 Win/Linux 合成形统一）。
+# rebuild 在 Rust 侧枚举文件，故 NFC 收口于 Rust（单一真相，autosave/watcher 路径同样经此）。纯数据表 crate。
+unicode-normalization = "=0.1.24"
