@@ -3,21 +3,23 @@ import { RangeSetBuilder, StateField, type EditorState } from '@codemirror/state
 import { Decoration, type DecorationSet, EditorView } from '@codemirror/view';
 import { BLOCK_REPLACE } from './nodeNames';
 import { TableWidget } from './widgets/TableWidget';
+import { tableModelFromNode } from './tableModel';
+import { clearTableEdit, setTableEdit, tableEditState } from './tableEditState';
 import { isComposingTr, refreshLivePreview } from '../composition';
 
 /**
  * 块级层 StateField（EDIT-03 / RESEARCH Pattern 2 + 4 / Pitfall 3，三层范式块级支柱）。
  *
- * 职责：对 GFM 表格（BLOCK_REPLACE 节点）整块替换为 TableWidget——
- *   - 表格行范围与主选区不相交 → `Decoration.replace({ widget: new TableWidget(text), block: true })`（渲染真表格）；
- *   - 表格行范围与主选区相交（EDIT-06 Option 2，与行内层活动行契约对齐）→ 不替换（整块还原源码 Markdown，
- *     D-06 原子块级），故也不进 atomicRanges，活动行恒为可编辑纯源码。
+ * 职责（Typora 式就地编辑反转）：对 GFM 表格（BLOCK_REPLACE 节点）**恒**整块替换为 TableWidget
+ * （表格始终保持渲染态，不再「光标进表格 → 整块还原源码」）。就地编辑发生在 widget 内部的
+ * contenteditable 单元格——blockField 据 `tableEditState` 把活动单元格下标透传给 TableWidget，
+ * 由 widget 把对应 td/th 设 contenteditable 并聚焦；装饰不撤、表格不变源码（TABLE-WYSIWYG-DESIGN §2.2）。
  *
  * 块级 replace **必须**从 StateField 经 `provide(EditorView.decorations.from)` 提供——官方约束：
  * 改变文档块结构的 block-replacing 装饰不得从 ViewPlugin 给（RESEARCH Pitfall 3）。
  *
  * atomicRanges（Pattern 4）：`tableAtomicRanges` 喂同一替换 RangeSet，使键盘 moveByChar/Backspace
- * 把表格 widget 当原子跳过（光标不卡进 widget；进块经整块还原退回可编辑源码）。
+ * 把表格 widget 当原子跳过（光标不卡进 widget；单元格导航由 widget 内部 keydown 接管）。
  *
  * IME（重构设计 §4.4）：组合判据收口到统一冻结门——块级 StateField 无 view，据门的 isComposingTr(tr)
  * 识别组合事务，组合期 map 旧装饰而非重建（保住正在合成的文本节点 DOM）。UAT #8 的选区复用优化
@@ -42,42 +44,41 @@ interface BlockState {
 }
 
 /**
- * 全文扫描一次语法树，产出全部表格块 range + 据当前光标构建的替换装饰集。
+ * 全文扫描一次语法树，产出全部表格块 range + 替换装饰集（表格恒渲染，据 tableEditState 武装活动 cell）。
  *
- * 整文档迭代——块级原子块跨多行、非视口局部，须全文判定（D-06 整块还原依赖全表覆盖，
- * 且 atomicRanges 须覆盖所有表格含视口外）。每次扫描只发生于 doc 变 / refresh，**绝不在
- * 普通选区移动时触发**（那条路径走 selectionCrossesBoundary 的 O(blocks) 边界判定，见 update）。
+ * 整文档迭代——块级原子块跨多行、非视口局部，须全文判定（atomicRanges 须覆盖所有表格含视口外）。
+ * 每次扫描只发生于 doc 变 / refresh / 编辑态切换，**绝不在普通选区移动时触发**（那条路径走
+ * selectionCrossesBoundary 的 O(blocks) 边界判定，见 update）。
  *
- * 对每个 BLOCK_REPLACE 节点：登记其 range；光标在块内则跳过替换（整块还原 D-06），否则加
- * block replace 装饰。同源 TableWidget eq 复用 DOM（防闪烁）。RangeSetBuilder 按位置序 O(n) 构建。
+ * 对每个 BLOCK_REPLACE（Table）节点：登记其 range，迭代子树收集全部 TableCell 区间（cellRanges，
+ * 供 widget commit 单点 dispatch），并恒加 block replace 装饰（表格始终渲染，反转「光标进块还原源码」）；
+ * 若该表 from 命中 tableEditState.tableFrom，把活动 cellIndex 透传给 TableWidget（武装该 cell）。
+ * 同源 TableWidget eq 复用 DOM（防闪烁）。RangeSetBuilder 按位置序 O(n) 构建。
  */
 function buildBlockState(state: EditorState): BlockState {
   const builder = new RangeSetBuilder<Decoration>();
   const tables: TableRange[] = [];
-  // 活动行集（EDIT-06 Option 2）：与行内层同源，仅据**主选区**算 [firstLine,lastLine]。
-  // 表格只要其行范围与主选区相交即整块还原源码——与行内层「活动行纯源码」契约对齐：
-  // 触到活动行的表格不发 block-replace 装饰，故也不进 atomicRanges，活动行恒为可编辑纯源码。
-  const sel = state.selection.main;
-  const selFirstLine = state.doc.lineAt(sel.from).number;
-  const selLastLine = state.doc.lineAt(sel.to).number;
-  const tableTouchesActiveLine = (from: number, to: number): boolean => {
-    const tFirst = state.doc.lineAt(from).number;
-    const tLast = state.doc.lineAt(to).number;
-    return tFirst <= selLastLine && tLast >= selFirstLine;
-  };
+  // 当前就地编辑态（tableFrom + cellIndex），若有则透传给对应表的 widget 武装该 cell。
+  const edit = state.field(tableEditState, false) ?? null;
   syntaxTree(state).iterate({
     enter: (node) => {
       if (!BLOCK_REPLACE.has(node.name)) return undefined;
       tables.push({ from: node.from, to: node.to });
-      // 表格行范围与主选区相交 → 整块还原源码（不替换），并跳过子树。
-      if (tableTouchesActiveLine(node.from, node.to)) return false;
+      // 据行 delimiter 切分收集各列区间 + 列数（含空 cell；tableModelFromNode 共用纯逻辑）。
+      const model = tableModelFromNode(node.node);
+      const cells = model ? model.cells : [];
+      const columns = model ? model.columns : 0;
       const text = state.doc.sliceString(node.from, node.to);
+      const activeCellIndex = edit && edit.tableFrom === node.from ? edit.cellIndex : null;
       builder.add(
         node.from,
         node.to,
-        Decoration.replace({ widget: new TableWidget(text), block: true }),
+        Decoration.replace({
+          widget: new TableWidget(text, node.from, cells, activeCellIndex, columns),
+          block: true,
+        }),
       );
-      return false; // 块级节点子树无需再迭代。
+      return false; // 块级节点子树无需再迭代（cells 已在 tableModelFromNode 内取齐）。
     },
   });
   return { deco: builder.finish(), tables };
@@ -110,7 +111,10 @@ function touchedTablesFingerprint(tables: readonly TableRange[], state: EditorSt
  *
  * 表格 range 取自上一次全文扫描固化的 `prev.tables`（doc 未变故仍准确）；旧/新各 O(blocks) 行号比对。
  */
-function selectionCrossesBoundary(prev: BlockState, tr: { startState: EditorState; state: EditorState }): boolean {
+function selectionCrossesBoundary(
+  prev: BlockState,
+  tr: { startState: EditorState; state: EditorState },
+): boolean {
   const oldFp = touchedTablesFingerprint(prev.tables, tr.startState);
   const newFp = touchedTablesFingerprint(prev.tables, tr.state);
   return oldFp !== newFp;
@@ -122,8 +126,10 @@ function selectionCrossesBoundary(prev: BlockState, tr: { startState: EditorStat
  * update 重建判据（按代价升序短路）：
  *   1. docChanged：全文扫描重建（doc 结构可能变，表格 range 须刷新）——组合期 docChange 先被门
  *      isComposingTr(tr) 短路走 map（见 update 步骤 0），不进此重建路径。
- *   2. 选区变化：仅当主选区触及的表格块集合变化才重建（O(blocks) 行号判定）；普通移动原样复用——
- *      消除每次点击的 O(doc) 全树重算（UAT #8 卡顿根因，与 IME 正交的纯性能优化，照旧保留）。
+ *   2. 就地编辑态切换（setTableEdit/clearTableEdit effect）：全文扫描重建，使新的 activeCellIndex
+ *      透传给对应表的 widget（武装/撤销该 cell 的 contenteditable）。O(doc) 但仅发生于点击/导航/退出，非热路径。
+ *   3. 选区变化：表格恒渲染，选区移动不再触发整块还原；仅当触及的表格集合变化时重建（保持装饰新鲜，
+ *      与未来块级元素扩展兼容），普通移动原样复用——零语法树访问（UAT #8 性能优化保留）。
  */
 export const blockField = StateField.define<BlockState>({
   create: (state) => buildBlockState(state),
@@ -144,13 +150,15 @@ export const blockField = StateField.define<BlockState>({
       };
       return mapped;
     }
-    // 1. doc 变 / compositionend 强刷：全文扫描重建（refreshLivePreview 解冻后还原渲染态，CR-01）。
+    // 1. doc 变 / compositionend 强刷 / 就地编辑态切换：全文扫描重建。
+    //    refreshLivePreview 解冻后还原渲染态（CR-01）；editChanged 使新 activeCellIndex 透传武装单元格。
     const refreshed = tr.effects.some((e) => e.is(refreshLivePreview));
-    if (tr.docChanged || refreshed) {
+    const editChanged = tr.effects.some((e) => e.is(setTableEdit) || e.is(clearTableEdit));
+    if (tr.docChanged || refreshed || editChanged) {
       const rebuilt = buildBlockState(tr.state);
       return rebuilt;
     }
-    // 2. 选区变化：仅跨越表格块边界才重建（O(blocks)），否则复用——不做全树 O(doc) 重算（UAT #8）。
+    // 2. 选区变化：表格恒渲染，仅当触及的表格集合变化才重建（保装饰新鲜），普通移动原样复用（UAT #8）。
     if (tr.selection && selectionCrossesBoundary(prev, tr)) {
       return buildBlockState(tr.state);
     }
@@ -188,9 +196,16 @@ const tableTheme = EditorView.theme({
     backgroundColor: 'var(--cm-table-header-bg)',
     fontWeight: '600',
   },
+  // 就地编辑中的单元格：去原生 focus 轮廓、给一圈强调内描边（var(--cm-checkbox-checked) 已在册），
+  // 提示「此格可编辑」。textContent 直接可改，光标在格内。
+  '.cm-ink-cell-editing': {
+    outline: 'none',
+    boxShadow: 'inset 0 0 0 2px var(--cm-checkbox-checked)',
+  },
 });
 
 /**
- * 块级层组合（挂入 livePreviewExtensions）：blockField（decorations provide）+ atomicRanges + 样式。
+ * 块级层组合（挂入 livePreviewExtensions）：tableEditState（就地编辑态）+ blockField（decorations provide）
+ * + atomicRanges + 样式。tableEditState 须在 blockField 前——buildBlockState 经 state.field 读它。
  */
-export const blockExtensions = [blockField, tableAtomicRanges, tableTheme];
+export const blockExtensions = [tableEditState, blockField, tableAtomicRanges, tableTheme];

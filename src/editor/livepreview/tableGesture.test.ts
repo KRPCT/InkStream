@@ -5,21 +5,20 @@ import { EditorSelection } from '@codemirror/state';
 import { EditorView } from '@codemirror/view';
 import { destroyTestView, makeTestView } from '../../test/composition';
 import { extensionsForLanguage } from '../languages';
-import { blockField } from './blockField';
+import { blockExtensions, blockField } from './blockField';
+import { tableEditState } from './tableEditState';
 import { handleTableMousedown } from './tableGesture';
 import { TableWidget } from './widgets/TableWidget';
 
 /**
- * 表格点击穿透手势回归门（UAT #1 / D-06 整块还原 / Pattern 4 programmatic-selection）。
+ * 表格就地编辑手势回归门（Typora 式反转 / TABLE-WYSIWYG-DESIGN §2.3-2.4）。
  *
- * 断言：
- *   1. 点击落在表格块内 → preventDefault + 程序化 dispatch 光标进 [from+1, to] + return true，
- *      且随后该表不再被替换（buildBlockState 跳过 → 整块还原源码，立即可编辑）；
- *   2. 非表格点击 → 不改选区且 return false（交回 CM 默认）；
- *   3. posAtCoords 未命中（null）→ return false；
- *   4. 源纪律：程序化 EditorSelection.cursor dispatch + 经 blockField.tables 判定 + preventDefault。
- *
- * jsdom 无布局：posAtCoords 经 Object.defineProperty 钉死返回值（同 linkGesture.test.ts 套路）。
+ * 断言（反转旧「点表格→整块还原」）：
+ *   1. 点击单元格 td → setTableEdit 进就地编辑态（tableFrom + cellIndex）、表格仍渲染（不整块还原）、
+ *      不 preventDefault（return false，浏览器原生聚焦 contenteditable）；
+ *   2. 点击表格外 → 清就地编辑态（return false）；
+ *   3. posAtCoords 未命中且无 cell DOM → return false 不抛错；
+ *   4. 源纪律：setTableEdit/clearTableEdit dispatch + DOM 上溯 data-cell-index + 不 preventDefault。
  */
 
 let view: EditorView | null = null;
@@ -29,22 +28,12 @@ afterEach(() => {
   view = null;
 });
 
-const TABLE_DOC = [
-  '正文一',
-  '',
-  '| a | b |',
-  '| - | - |',
-  '| 1 | 2 |',
-  '',
-  '正文二',
-].join('\n');
-
+const TABLE_DOC = ['正文一', '', '| a | b |', '| - | - |', '| 1 | 2 |', '', '正文二'].join('\n');
 const TABLE_FROM = TABLE_DOC.indexOf('| a | b |');
-const TABLE_TO = TABLE_DOC.indexOf('| 1 | 2 |') + '| 1 | 2 |'.length;
 
-/** 用 markdown(GFM) + blockField 构建 view，光标默认在 doc 起点（表格外，表格被替换为 widget）。 */
+/** 用 markdown(GFM) + blockExtensions（含 tableEditState）构建 view。 */
 function tgView(doc: string): EditorView {
-  return makeTestView(doc, [extensionsForLanguage('markdown'), blockField]);
+  return makeTestView(doc, [extensionsForLanguage('markdown'), blockExtensions]);
 }
 
 /** 钉死 posAtCoords 返回值（jsdom 无布局）。 */
@@ -52,10 +41,9 @@ function pinPosAtCoords(v: EditorView, pos: number | null): void {
   Object.defineProperty(v, 'posAtCoords', { configurable: true, value: () => pos });
 }
 
-/** 当前 blockField 是否仍把表格替换为 TableWidget。 */
+/** 当前 blockField 是否仍把表格替换为 TableWidget（恒应为 true：表格不再整块还原）。 */
 function tableStillReplaced(v: EditorView): boolean {
-  const set = v.state.field(blockField).deco;
-  const iter = set.iter();
+  const iter = v.state.field(blockField).deco.iter();
   while (iter.value) {
     if ((iter.value.spec as { widget?: unknown }).widget instanceof TableWidget) return true;
     iter.next();
@@ -63,11 +51,25 @@ function tableStillReplaced(v: EditorView): boolean {
   return false;
 }
 
-function clickEvent(): { event: MouseEvent; prevented: () => boolean } {
+/** 构造一个 target 为 td（带 data 属性）的合成 mousedown 事件。 */
+function cellMousedown(tableFrom: number, cellIndex: number): MouseEvent {
+  const table = document.createElement('table');
+  table.className = 'cm-ink-table';
+  table.dataset.tableFrom = String(tableFrom);
+  const td = document.createElement('td');
+  td.dataset.cellIndex = String(cellIndex);
+  table.appendChild(td);
+  return { clientX: 0, clientY: 0, target: td, preventDefault: () => {} } as unknown as MouseEvent;
+}
+
+/** 构造一个 target 在表格外（非 td）的合成 mousedown。 */
+function outsideMousedown(): { event: MouseEvent; prevented: () => boolean } {
   let prevented = false;
+  const span = document.createElement('span');
   const event = {
     clientX: 0,
     clientY: 0,
+    target: span,
     preventDefault: () => {
       prevented = true;
     },
@@ -75,66 +77,53 @@ function clickEvent(): { event: MouseEvent; prevented: () => boolean } {
   return { event, prevented: () => prevented };
 }
 
-describe('handleTableMousedown 点击穿透（UAT #1）', () => {
-  it('点击表格块 → preventDefault + 光标进块 [from+1,to] + return true + 整块还原源码', () => {
+describe('handleTableMousedown 进就地编辑态（反转）', () => {
+  it('点击单元格 td → setTableEdit + 表格仍渲染 + return false（不 preventDefault）', () => {
     view = tgView(TABLE_DOC);
     view.dispatch({ selection: EditorSelection.cursor(0) });
-    // 前置：光标在表格外，表格被替换为 widget。
     expect(tableStillReplaced(view)).toBe(true);
 
-    // block-replace widget 的 posAtCoords 只会给 block.from——模拟点击命中表格上边界。
-    pinPosAtCoords(view, TABLE_FROM);
-    const { event, prevented } = clickEvent();
-
+    const event = cellMousedown(TABLE_FROM, 2); // 第 3 个 cell（首个数据格）。
     const handled = handleTableMousedown(event, view);
 
-    expect(handled).toBe(true);
-    expect(prevented()).toBe(true);
-
-    // 光标落进表格块内（≥ from+1，≤ to）。
-    const head = view.state.selection.main.head;
-    expect(head).toBeGreaterThanOrEqual(TABLE_FROM + 1);
-    expect(head).toBeLessThanOrEqual(TABLE_TO);
-
-    // 整块还原：表格不再被替换为 widget（buildBlockState 跳过 → 源码可编辑 D-06）。
-    expect(tableStillReplaced(view)).toBe(false);
-  });
-
-  it('点击表格内部位置（posAtCoords 给块内 pos）→ 光标落该位、整块还原', () => {
-    view = tgView(TABLE_DOC);
-    view.dispatch({ selection: EditorSelection.cursor(0) });
-
-    const inside = TABLE_FROM + 5;
-    pinPosAtCoords(view, inside);
-    const { event } = clickEvent();
-
-    expect(handleTableMousedown(event, view)).toBe(true);
-    expect(view.state.selection.main.head).toBe(inside);
-    expect(tableStillReplaced(view)).toBe(false);
-  });
-
-  it('非表格点击 → 不改选区且 return false（交回 CM 默认置光标）', () => {
-    view = tgView(TABLE_DOC);
-    view.dispatch({ selection: EditorSelection.cursor(0) });
-
-    // 命中表格外（doc 起点正文）。
-    pinPosAtCoords(view, 0);
-    const { event, prevented } = clickEvent();
-
-    expect(handleTableMousedown(event, view)).toBe(false);
-    expect(prevented()).toBe(false);
-    // 选区未被本手势改动（仍在 0）。
-    expect(view.state.selection.main.head).toBe(0);
-    // 表格仍被替换（未被劫持还原）。
+    // 不接管（让浏览器原生聚焦 contenteditable td）。
+    expect(handled).toBe(false);
+    // 就地编辑态落到该单元格。
+    expect(view.state.field(tableEditState)).toEqual({ tableFrom: TABLE_FROM, cellIndex: 2 });
+    // 表格仍渲染（不整块还原）。
     expect(tableStillReplaced(view)).toBe(true);
   });
 
-  it('posAtCoords 返回 null（坐标未命中文档）→ return false', () => {
+  it('点表格外 → 清就地编辑态 + return false', () => {
+    view = tgView(TABLE_DOC);
+    // 先进编辑态。
+    handleTableMousedown(cellMousedown(TABLE_FROM, 0), view);
+    expect(view.state.field(tableEditState)).not.toBeNull();
+
+    pinPosAtCoords(view, 0); // 落正文（表格外）。
+    const { event, prevented } = outsideMousedown();
+    const handled = handleTableMousedown(event, view);
+
+    expect(handled).toBe(false);
+    expect(prevented()).toBe(false);
+    expect(view.state.field(tableEditState)).toBeNull();
+    // 表格仍渲染。
+    expect(tableStillReplaced(view)).toBe(true);
+  });
+
+  it('posAtCoords 未命中（null）且无 cell DOM → return false 不抛错', () => {
     view = tgView(TABLE_DOC);
     pinPosAtCoords(view, null);
-    const { event } = clickEvent();
-
+    const { event } = outsideMousedown();
     expect(handleTableMousedown(event, view)).toBe(false);
+  });
+
+  it('posAtCoords 落表格块内（边界，无 cell DOM）→ 进编辑态首格', () => {
+    view = tgView(TABLE_DOC);
+    pinPosAtCoords(view, TABLE_FROM);
+    const { event } = outsideMousedown();
+    handleTableMousedown(event, view);
+    expect(view.state.field(tableEditState)).toEqual({ tableFrom: TABLE_FROM, cellIndex: 0 });
   });
 });
 
@@ -144,19 +133,19 @@ describe('tableGesture 源纪律', () => {
     'utf8',
   );
 
-  it('程序化 EditorSelection.cursor dispatch（不靠 CM 默认 select，Pattern 4 例外）', () => {
-    expect(src).toContain('EditorSelection.cursor');
-    expect(src).toContain('view.dispatch');
+  it('DOM 上溯取 cell（closest td/th + data-cell-index），不依赖 posAtCoords cell 精度', () => {
+    expect(src).toContain('closest');
+    expect(src).toContain('cellIndex');
   });
 
-  it('经 blockField.tables 判定命中 + preventDefault 接管置光标', () => {
-    expect(src).toContain('blockField');
-    expect(src).toContain('tables');
-    expect(src).toContain('preventDefault');
+  it('dispatch setTableEdit/clearTableEdit（不再整块还原源码）', () => {
+    expect(src).toContain('setTableEdit');
+    expect(src).toContain('clearTableEdit');
   });
 
-  it('导出 tableGesture（domEventHandlers 扩展）', () => {
-    expect(src).toMatch(/export const tableGesture/);
+  it('命中单元格不 preventDefault（return false，浏览器原生聚焦 IME 武装）', () => {
+    // 进编辑态路径 return false 让浏览器聚焦 contenteditable（注释明示 IME 武装铁律）。
+    expect(src).toMatch(/return false/);
     expect(src).toContain('domEventHandlers');
   });
 });
