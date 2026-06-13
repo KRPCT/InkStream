@@ -248,6 +248,10 @@ const tableTheme = EditorView.theme({
     whiteSpace: 'normal',
     overflowWrap: 'break-word',
     wordBreak: 'normal',
+    // 单元格最小宽（对照 Zettlr table-editor `td/th min-width:96px` 的成熟实现，根治「空/短内容塌成
+    // 小方块」——CDP 实测：无 min-width 时空 cell 仅 27px，整表挤成一簇小格子，十分难看）。空表格（工具栏
+    // 插入的全空模板）每格保 6em≈96px 起，渲染为正常表格盒；有内容时据内容在 6em–24em 间自适应。
+    minWidth: '6em',
     // 单元格内容宽上限：短内容据内容自适应（窄），长文本在此宽内换行（不横向撑破表格）。
     maxWidth: '24em',
   },
