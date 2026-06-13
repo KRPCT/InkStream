@@ -26,8 +26,9 @@ import { clearTableEdit, setTableEdit } from './tableEditState';
  * 不重建子编辑器 → 保 caret / 组合 / 不吞字，§3.4 R2）；目标变了才销毁旧、新建。`destroyActive` 与挂载
  * 严格配对（StrictMode 纪律）。
  *
- * 子→主同步（§3.4 撤销 / commit）：子编辑器**不装 history()**（Ctrl+Z 委派主编辑器，真相源与 history
- * 都在主 doc）；docChanged 即把子 doc 文本经 `escapePipes` 写回主 doc 的 TableCell 区间（每次从 live
+ * 子→主同步（§3.4 撤销 / commit）：子编辑器**装 history()**（承接子 doc 内部撤销栈），但 **Ctrl+Z/Y
+ * 快捷键委派主编辑器**（cellNavKeymap 的 delegateHistory）——真相源与权威 history 都在主 doc，子的 undo
+ * 快捷键落主 doc；docChanged 即把子 doc 文本经 `escapePipes` 写回主 doc 的 TableCell 区间（每次从 live
  * 语法树重解析区间，防陈旧）。组合期经 `queueAfterComposition` 排队、绝不在组合期 dispatch 主 doc
  * （防主 blockField 重建撕掉承载子编辑器的 widget DOM → 吞字）。
  *
@@ -373,6 +374,13 @@ const subTheme = EditorView.theme({
     // （URL/连续 ASCII）也不引入横滚条，单元格内永不水平滚动。
     overflowX: 'hidden',
   },
+  // scroller 横向 padding 归零（任务二：左边缘对齐，CDP 根因）：主编辑器 editorBaseTheme 给 `.cm-scroller`
+  // 设 `padding-inline: max(版心居中留白, 1.5rem)`——子 EditorView 的 scroller 物理嵌在主 .cm-content 子树内，
+  // 经 descendant 组合子 `.ͼN .cm-scroller`（0,2,0）吃到这条；窄单元格下 max() 落到 1.5rem=24px 下限，
+  // 把子内容整体右推 24px（叠在 content 的 13px 上 → 激活态文字左起 37px，比未激活 td 的 13px 多 24px、点击位移）。
+  // 本 theme 的 `.cm-scroller`（0,1,0）压不过，故用 `&.cm-editor .cm-scroller`（.cm-editor.cm-editor .cm-scroller
+  // = 0,3,0）无条件清零 padding-inline——激活态文字左起 = content 的 13px，与未激活 td 完全对齐、零位移。
+  '&.cm-editor .cm-scroller': { paddingInline: '0' },
   // 高特异度（.cm-scroller .cm-content = 0,3,0）压过外层 base theme 的 .cm-content（0,2,0）2rem 纵 padding：
   // 把内边距强制回 td 同款 7px 13px（激活前后盒几何一致，无跳变）；配合 lineWrapping 软换行与 td 视觉等价；
   // 不设 min-height（撑高链根因，CDP 实测移除后行高回落与未激活同量级）；text-align 左对齐（修复四）。
@@ -384,6 +392,10 @@ const subTheme = EditorView.theme({
     overflowWrap: 'break-word',
     textAlign: 'left',
   },
-  '.cm-line': { padding: '0', textAlign: 'left' },
+  // .cm-line 左 padding 归零（任务二：左边缘对齐）：CM6 baseTheme 给 `.cm-line` 默认 `padding:0 2px 0 6px`，
+  // 叠在 .cm-content 的 13px 左 padding 上 → 激活态文字左起 19px，比未激活 td（直接 13px）多 6px、点击前后位移。
+  // 单 class `.cm-line`（0,1,0）特异度不足以压过 baseTheme（lineWrapping 命中后更高/同序在后，实测残留 6px），
+  // 故用 `.cm-scroller .cm-line`（0,3,0）无条件归零——激活态文字左起 = .cm-content 的 13px，与未激活 td 完全对齐。
+  '.cm-scroller .cm-line': { padding: '0', textAlign: 'left' },
   '&.cm-focused': { outline: 'none' },
 });

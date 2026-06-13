@@ -30,6 +30,13 @@ import { isComposingTr, refreshLivePreview } from '../composition';
  * （行内 mark/line 装饰 + 块级 replace 装饰 range 不重叠，无冲突，Pattern 3）。
  */
 
+/**
+ * 相邻表格分隔空行装饰（任务一，行级 class，不改文本）：两张表之间 GFM 强制保留的单个空行——渲染层经
+ * `cm-ink-table-gap` 把其行高坍缩为 0（tableTheme 提供样式），两表块间距改由表格自身 margin 提供，
+ * 视觉上无突兀空白行。仅命中「恰好夹在两表间的单空行」，普通段落空行不受影响（buildBlockState 判定收口）。
+ */
+const TABLE_GAP_LINE = Decoration.line({ class: 'cm-ink-table-gap' });
+
 /** 块级表格 range（from,to 闭区间起止）。 */
 export interface TableRange {
   readonly from: number;
@@ -61,10 +68,23 @@ function buildBlockState(state: EditorState): BlockState {
   const tables: TableRange[] = [];
   // 当前就地编辑态（tableFrom + cellIndex），若有则透传给对应表的 widget 武装该 cell。
   const edit = state.field(tableEditState, false) ?? null;
+  // 上一张表末行行号（无则 -1）：用于判定本表与上表间是否「恰好一空行」（任务一分隔空行收口）。
+  let prevTableLastLine = -1;
   syntaxTree(state).iterate({
     enter: (node) => {
       if (!BLOCK_REPLACE.has(node.name)) return undefined;
       tables.push({ from: node.from, to: node.to });
+      // 相邻表格分隔空行收口（任务一，TABLE-POLISH-DIAG §任务一）：本表与上一张表之间**恰好一行**
+      // （本表首行 = 上表末行 + 2）且那一行内容为空时，给该空行 add 一条 gap line 装饰——渲染层把它
+      // 高度坍缩为 0，两表间距改由表格自身 margin 提供（doc 空行原样保留，守 GFM 真相源）。多空行 /
+      // 表段之间不命中。gap 行 from（上表末 +1 行起点）严格落在「上表 replace.to」与「本表 replace.from」
+      // 之间，故须在本表 replace.add 之前 add，保 RangeSetBuilder 升序。
+      const thisFirstLine = state.doc.lineAt(node.from).number;
+      if (prevTableLastLine >= 0 && thisFirstLine === prevTableLastLine + 2) {
+        const gapLine = state.doc.line(prevTableLastLine + 1);
+        if (gapLine.text.trim().length === 0) builder.add(gapLine.from, gapLine.from, TABLE_GAP_LINE);
+      }
+      prevTableLastLine = state.doc.lineAt(node.to).number;
       // 据行 delimiter 切分收集各列区间 + 列数（含空 cell；tableModelFromNode 共用纯逻辑）。
       const model = tableModelFromNode(node.node);
       const cells = model ? model.cells : [];
@@ -194,6 +214,17 @@ export const tableAtomicRanges = EditorView.atomicRanges.of(
  * `overflow-wrap:break-word` + `word-break:normal`，并给 `max-width` 让长文本在版心内换行不撑破。
  */
 const tableTheme = EditorView.theme({
+  // 相邻表格分隔空行（任务一）：两表间 GFM 强制保留的单空行——把行盒高度坍缩为 0（行高/字号/上下间距全清零），
+  // 不再占可见行高；两表之间的块间距改由表格自身 margin（下方 .cm-ink-table-wrap 的 0.25em 上下边距合成）提供，
+  // 视觉上两表干净分开、无突兀空白行。doc 空行原样保留（守 GFM 真相源）；仅命中两表间单空行，普通段落空行不受影响。
+  '.cm-ink-table-gap': {
+    height: '0',
+    lineHeight: '0',
+    fontSize: '0',
+    padding: '0',
+    margin: '0',
+    overflow: 'hidden',
+  },
   // wrap：承绝对定位的悬浮工具条（§5 入口 a）；relative + inline-block 贴合表格尺寸。
   '.cm-ink-table-wrap': {
     position: 'relative',

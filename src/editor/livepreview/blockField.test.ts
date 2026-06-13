@@ -107,6 +107,73 @@ describe('blockField 块级替换', () => {
   });
 });
 
+describe('blockField 相邻表格分隔空行收口（任务一，TABLE-POLISH-DIAG）', () => {
+  /** 收集 blockField deco 中所有 line 装饰（class）的起点（line 装饰 from===to，无 widget）。 */
+  function collectGapLines(v: EditorView): number[] {
+    const set = v.state.field(blockField).deco;
+    const out: number[] = [];
+    const iter = set.iter();
+    while (iter.value) {
+      const spec = iter.value.spec as { widget?: unknown; class?: string };
+      if (!spec.widget && spec.class === 'cm-ink-table-gap') out.push(iter.from);
+      iter.next();
+    }
+    return out;
+  }
+
+  it('两表之间恰好一空行 → 该空行得 gap line 装饰（高度坍缩，无可见空白行）', () => {
+    const doc = ['| a | b |', '| - | - |', '| 1 | 2 |', '', '| c | d |', '| - | - |', '| 3 | 4 |'].join(
+      '\n',
+    );
+    view = bfView(doc);
+    view.dispatch({ selection: EditorSelection.cursor(0) });
+
+    const gapFrom = doc.indexOf('| c | d |') - 1; // 分隔空行起点（表B首行前的 \n 后即空行 from）。
+    expect(collectGapLines(view)).toEqual([gapFrom]);
+    // 两表仍各被 replace 为 widget（gap 装饰不影响块级替换）。
+    expect(collectBlocks(view).filter((b) => b.widget instanceof TableWidget).length).toBe(2);
+  });
+
+  it('普通段落之间的空行不得 gap 装饰（仅命中两表之间）', () => {
+    const doc = ['段落一', '', '段落二', '', '| a | b |', '| - | - |', '| 1 | 2 |'].join('\n');
+    view = bfView(doc);
+    view.dispatch({ selection: EditorSelection.cursor(0) });
+    // 唯一一张表，前面是段落空行——无「两表夹一空行」上下文，零 gap 装饰。
+    expect(collectGapLines(view)).toEqual([]);
+  });
+
+  it('表格与段落之间的空行不得 gap 装饰', () => {
+    const doc = ['| a | b |', '| - | - |', '| 1 | 2 |', '', '正文段落'].join('\n');
+    view = bfView(doc);
+    view.dispatch({ selection: EditorSelection.cursor(0) });
+    expect(collectGapLines(view)).toEqual([]);
+  });
+
+  it('两表之间有多个空行（>1）不得 gap 装饰（用户显式留白照常显示）', () => {
+    const doc = [
+      '| a | b |',
+      '| - | - |',
+      '| 1 | 2 |',
+      '',
+      '',
+      '| c | d |',
+      '| - | - |',
+      '| 3 | 4 |',
+    ].join('\n');
+    view = bfView(doc);
+    view.dispatch({ selection: EditorSelection.cursor(0) });
+    expect(collectGapLines(view)).toEqual([]);
+  });
+
+  it('gap 装饰不改 doc（空行原样保留，守 GFM 真相源）', () => {
+    const doc = ['| a | b |', '| - | - |', '| 1 | 2 |', '', '| c | d |', '| - | - |', '| 3 | 4 |'].join(
+      '\n',
+    );
+    view = bfView(doc);
+    expect(view.state.doc.toString()).toBe(doc);
+  });
+});
+
 describe('blockField 选区移动复用（UAT #8 性能根因）', () => {
   it('普通选区移动（未跨表格边界）原样复用 BlockState，不重建（无 O(doc) 全树重算）', () => {
     view = bfView(TABLE_DOC);
