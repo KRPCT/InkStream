@@ -185,7 +185,13 @@ export const tableAtomicRanges = EditorView.atomicRanges.of(
  * 块级层样式（UI-SPEC GFM 表格）：真 <table> 边框 / 表头底色 / 单元格内边距。
  *
  * 取色复用 theme.css 的 --cm-table-border / --cm-table-header-bg（亮暗双套，在册），
- * 内边距 sm(8px) 上下 / sm2(12px) 左右；**永不硬编码色值**（highlightTheme.ts 纪律）。
+ * 内边距纵 7px / 横 13px（对标 Typora/Obsidian）；**永不硬编码色值**（highlightTheme.ts 纪律）。
+ *
+ * 换行收口（TABLE-RENDER-DIAG 根因二）：td/th 物理嵌在主 `.cm-content` 子树内，会经 descendant
+ * 组合子继承 lineWrapping 注入的 `white-space:break-spaces` + `overflow-wrap:anywhere` ——
+ * 与 `table-layout:auto` 的最小宽算法冲突，把空/短单元格坍缩成「最宽单字符」宽（CDP 实测 ~25px
+ * 小格子 root cause）。此处显式把单元格换行属性重置为表格语义：`white-space:normal` +
+ * `overflow-wrap:break-word` + `word-break:normal`，并给 `max-width` 让长文本在版心内换行不撑破。
  */
 const tableTheme = EditorView.theme({
   // wrap：承绝对定位的悬浮工具条（§5 入口 a）；relative + inline-block 贴合表格尺寸。
@@ -193,23 +199,36 @@ const tableTheme = EditorView.theme({
     position: 'relative',
     display: 'inline-block',
     maxWidth: '100%',
+    margin: '0.25em 0',
   },
   '.cm-ink-table': {
     borderCollapse: 'collapse',
     border: '1px solid var(--cm-table-border)',
+    // 整表不超版心：宽度据内容自适应，封顶 100% 容器宽（长文本经单元格 max-width 换行收口）。
+    maxWidth: '100%',
   },
   '.cm-ink-table th, .cm-ink-table td': {
     border: '1px solid var(--cm-table-border)',
-    padding: '8px 12px',
+    padding: '7px 13px',
+    // 纵向顶对齐：换行多行时单元格内容从上沿起，行间不被 middle 拉散（对标 Typora）。
+    verticalAlign: 'top',
+    textAlign: 'left',
+    // 换行收口（修小格子 + 自动换行，覆盖继承自 lineWrapping 的 break-spaces/anywhere）：
+    whiteSpace: 'normal',
+    overflowWrap: 'break-word',
+    wordBreak: 'normal',
+    // 单元格内容宽上限：短内容据内容自适应（窄），长文本在此宽内换行（不横向撑破表格）。
+    maxWidth: '24em',
   },
   '.cm-ink-table th': {
     backgroundColor: 'var(--cm-table-header-bg)',
     fontWeight: '600',
   },
   // 就地编辑中的单元格（方案 B）：清零 td 自身 padding 让嵌套子 EditorView 撑满整格（点单元格任意处都落在
-  // 子 contentDOM → 稳获焦点 / 拖拽框选，CDP 实测；padding 由子 .cm-content 补回）。去原生 focus 轮廓、给
-  // 一圈强调内描边（var(--cm-checkbox-checked) 已在册）提示「此格编辑中」。
-  // 选择器须比 `.cm-ink-table td`（特异度 0,1,1）更高，否则 padding 被 td 默认 8px12px 覆盖（CDP 实测 bug）：
+  // 子 contentDOM → 稳获焦点 / 拖拽框选，CDP 实测；padding 由子 .cm-content 补回 —— 与上方 td 同款 7px 13px，
+  // 故激活前后单元格盒几何一致、无放大跳变，TABLE-RENDER-DIAG 根因一）。去原生 focus 轮廓、给一圈强调内描边
+  // （var(--cm-checkbox-checked) 已在册）提示「此格编辑中」。
+  // 选择器须比 `.cm-ink-table td`（特异度 0,1,1）更高，否则 padding 被 td 默认覆盖（CDP 实测 bug）：
   // 用 `.cm-ink-table td.cm-ink-cell-editing`（0,2,1）压过。
   '.cm-ink-table td.cm-ink-cell-editing, .cm-ink-table th.cm-ink-cell-editing': {
     padding: '0',

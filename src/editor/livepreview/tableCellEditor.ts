@@ -340,22 +340,38 @@ function moveToCell(main: EditorView, active: ActiveCellEditor, dir: NavDir): vo
 }
 
 /**
- * 子编辑器外观：**填满整个单元格**（透明背景、无外框）。
+ * 子编辑器外观：**填满整个单元格**且与未激活 td 盒几何**完全一致**（透明背景、无外框、无放大跳变）。
  *
- * 关键（CDP 实测）：子 .cm-editor 必须撑满 td 才能让「点单元格任意处（含文本两侧留白）」都落在子 contentDOM
- * 上 → 子原生定位 caret / 拖拽框选稳获焦点；否则子只占文本宽度，点留白落在 td/scroller 边缘 → 焦点不进子、
- * 拖拽丢焦。承接 td 内边距（cm-ink-cell-editing 已置 td padding:0），由 .cm-content 补回单元格 padding。
+ * 撑满（CDP 实测）：子 .cm-editor 须撑满 td 宽，「点单元格任意处（含文本两侧留白）」才落在子 contentDOM 上
+ * → 子原生定位 caret / 拖拽框选稳获焦点；否则点留白落在 td 边缘 → 焦点不进子、拖拽丢焦。
+ *
+ * 几何一致（TABLE-RENDER-DIAG 根因一，修激活放大跳变）：子 `.cm-content` 物理嵌在外层主编辑器
+ * `.cm-content` 子树内，会经 descendant 组合子吃到外层 base theme 的 `.cm-content { padding-block:2rem }`
+ * （CDP 实测：子 content padding 被污染成 32px → td 撑到 92px、点击瞬间放大）。外层规则形如 `.ͼN .cm-content`
+ * （特异度 0,2,0），与本 theme 同 0,2,0 时**源序后者赢但外层胜出（实测）**，故此处用更高特异度选择器
+ * `.cm-scroller .cm-content`（0,3,0）**无条件压过**外层，把 padding 强制回 td 同款 7px 13px、清掉撑高链
+ * （不设 height:100% / scroller min-height:100% —— 它们把 32px 反灌成行高）。激活前后单元格盒几何一致。
+ *
+ * 换行（与 td 一致）：子 content `white-space:pre-wrap` —— 行内编辑允许软换行（与未激活 td 的 normal 视觉
+ * 等价），长文本不横向撑破单元格（TABLE-RENDER-DIAG 修复二）。
  */
 const subTheme = EditorView.theme({
-  '&': { backgroundColor: 'transparent', width: '100%', height: '100%' },
+  '&': { backgroundColor: 'transparent', width: '100%' },
   '.cm-scroller': {
     fontFamily: 'inherit',
     fontSize: 'inherit',
     lineHeight: 'inherit',
-    minHeight: '100%',
   },
-  // 补回单元格内边距到 content（td 本身 padding 在编辑态被清零，见 blockField tableTheme）。
-  '.cm-content': { padding: '8px 12px', caretColor: 'var(--text-normal)', minHeight: 'auto' },
+  // 高特异度（.cm-scroller .cm-content = 0,3,0）压过外层 base theme 的 .cm-content（0,2,0）2rem 纵 padding：
+  // 把内边距强制回 td 同款 7px 13px（激活前后盒几何一致，无跳变）；软换行与 td 视觉等价；不设 min-height
+  // （撑高链根因，CDP 实测移除后行高回落与未激活同量级）。
+  '.cm-scroller .cm-content': {
+    padding: '7px 13px',
+    caretColor: 'var(--text-normal)',
+    minHeight: 'auto',
+    whiteSpace: 'pre-wrap',
+    overflowWrap: 'break-word',
+  },
   '.cm-line': { padding: '0' },
   '&.cm-focused': { outline: 'none' },
 });

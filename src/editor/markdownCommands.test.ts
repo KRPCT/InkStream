@@ -164,11 +164,14 @@ describe('块级插入', () => {
     expect(view.state.selection.main.head).toBe(3);
   });
 
-  it('表格插入 GFM 管线表模板', () => {
+  it('表格插入 GFM 管线表模板（空表头，无预设文本）', () => {
     mount('', 0);
     table(view);
-    expect(view.state.doc.toString()).toContain('| 列 1 | 列 2 |');
+    // 表头单元格为空（去「列 1/列 2」占位），但仍是合法 GFM：对齐分隔行界定 2 列。
+    expect(view.state.doc.toString()).toBe('|  |  |\n| --- | --- |\n|  |  |\n');
     expect(view.state.doc.toString()).toContain('| --- | --- |');
+    // 表头无预设占位文本。
+    expect(view.state.doc.toString()).not.toContain('列 1');
   });
 });
 
@@ -201,8 +204,8 @@ describe('插入表格另起新块（前后补空行隔断，GFM 不与相邻内
     mountMd(existing, existing.length);
     table(view);
     const doc = view.state.doc.toString();
-    // 两表之间必有空行隔断。
-    expect(doc).toContain('| 1 | 2 |\n\n| 列 1 | 列 2 |');
+    // 两表之间必有空行隔断（新表为空表头模板）。
+    expect(doc).toContain('| 1 | 2 |\n\n|  |  |\n| --- | --- |');
     expect(tableCount(view)).toBe(2);
   });
 
@@ -211,7 +214,7 @@ describe('插入表格另起新块（前后补空行隔断，GFM 不与相邻内
     mountMd(para, para.length);
     table(view);
     const doc = view.state.doc.toString();
-    expect(doc).toContain('上文段落。\n\n| 列 1 | 列 2 |');
+    expect(doc).toContain('上文段落。\n\n|  |  |\n| --- | --- |');
     // 段落 + 表格各自成块（Table 恰一张，证明未与段落混解析）。
     expect(tableCount(view)).toBe(1);
     expect(syntaxTree(view.state).topNode.getChild('Table')).not.toBeNull();
@@ -223,7 +226,7 @@ describe('插入表格另起新块（前后补空行隔断，GFM 不与相邻内
     table(view);
     const doc = view.state.doc.toString();
     // 表格前后都有空行：与前段、后段均隔断。
-    expect(doc).toContain('前段。\n\n| 列 1 | 列 2 |');
+    expect(doc).toContain('前段。\n\n|  |  |\n| --- | --- |');
     expect(doc).toContain('|  |  |\n\n后段。');
     expect(tableCount(view)).toBe(1);
   });
@@ -231,7 +234,7 @@ describe('插入表格另起新块（前后补空行隔断，GFM 不与相邻内
   it('空文档插入：无多余前后空行（光标落首表头格）', () => {
     mount('', 0);
     table(view);
-    expect(view.state.doc.toString()).toBe('| 列 1 | 列 2 |\n| --- | --- |\n|  |  |\n');
+    expect(view.state.doc.toString()).toBe('|  |  |\n| --- | --- |\n|  |  |\n');
     expect(view.state.selection.main.head).toBe(2);
   });
 });

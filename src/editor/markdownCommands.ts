@@ -143,7 +143,9 @@ export const mathBlock: Command = (view) => {
  * 另一张表合并成一张。据插入点上下文按需补 `\n`——已在空行/文档边界则不重复加——保证新表恒独立成块。
  */
 export const table: Command = (view) => {
-  const tpl = '| 列 1 | 列 2 |\n| --- | --- |\n|  |  |\n';
+  // 空表头（合法 GFM：表头单元格可空，对齐分隔行仍界定 2 列）。去掉「列 1/列 2」预设文本——
+  // 用户插表后直接填真实表头，无需先删占位（TABLE-RENDER-DIAG 修复四）。
+  const tpl = '|  |  |\n| --- | --- |\n|  |  |\n';
   view.dispatch(
     view.state.changeByRange((range) => {
       const doc = view.state.doc;
