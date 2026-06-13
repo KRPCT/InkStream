@@ -1,6 +1,5 @@
 import { EditorSelection } from '@codemirror/state';
 import type { EditorView } from '@codemirror/view';
-import { focusEditor } from '../relay/relayFocus';
 
 /**
  * richtext 文本变换命令（EDIT-05 / RESEARCH Pattern 7 / D-15 / D-16）。
@@ -30,7 +29,7 @@ export function wrapSelection(view: EditorView, before: string, after: string): 
       };
     }),
   );
-  focusEditor(view);
+  view.focus();
   return true;
 }
 
@@ -75,7 +74,7 @@ export function insertLink(view: EditorView): boolean {
       };
     }),
   );
-  focusEditor(view);
+  view.focus();
   return true;
 }
 
@@ -95,8 +94,8 @@ export function isUrl(text: string): boolean {
  * 智能链接粘贴纯逻辑（D-16）：文本为 http(s) URL 且当前有选区 → 把选区包成 `[选区](URL)` 并
  * 返回 `true`；其余情形（无选区 / 非 URL）返回 `false`，不动文档。
  *
- * 抽出为不依赖 ClipboardEvent 的纯函数，使 contentDOM paste 事件（richtextPasteHandler）与
- * 中继 textarea paste / 菜单 navigator.clipboard 路径（relayPasteText）复用同一受信白名单逻辑。
+ * 抽出为不依赖 ClipboardEvent 的纯函数，使 contentDOM paste 事件（richtextPasteHandler，挂在
+ * richtext 文档的 langCompartment）复用同一受信白名单逻辑——CM6 原生 contenteditable 的 paste。
  */
 export function smartLinkPaste(view: EditorView, text: string): boolean {
   if (!isUrl(text)) return false;

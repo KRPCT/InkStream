@@ -19,6 +19,7 @@ graphify-out/
 # Local and editor files
 *.local
 .vscode/
+.cdp-probe.mjs
 
 # OS
 .DS_Store

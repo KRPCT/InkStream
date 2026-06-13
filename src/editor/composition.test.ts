@@ -9,7 +9,6 @@ import {
   onCompositionEnd,
   queueAfterComposition,
   refreshLivePreview,
-  setRelayComposing,
 } from './composition';
 
 /**
@@ -311,17 +310,17 @@ describe('composition（统一组合冻结门）', () => {
     it('组合期内：以冻结起始 state 为 startState 的事务判组合中（对照基线）', () => {
       view = makeTestView('正文', [compositionGate]);
       const start = view.state;
-      setRelayComposing(view, true);
+      dispatchComposition(view, { phase: 'compositionstart', data: '你' });
       expect(isComposingTr(start.update({}))).toBe(true);
-      setRelayComposing(view, false);
+      dispatchComposition(view, { phase: 'compositionend', data: '你' });
     });
 
     it('组合中途选区事务推进 state 后解冻：起始 state 仍被精确移除', () => {
       view = makeTestView('正文', [compositionGate]);
       const start = view.state;
-      setRelayComposing(view, true);
+      dispatchComposition(view, { phase: 'compositionstart', data: '你' });
       view.dispatch({ selection: { anchor: 1 } }); // 组合中途点击：view.state 推进，start 滞留风险。
-      setRelayComposing(view, false);
+      dispatchComposition(view, { phase: 'compositionend', data: '你' });
       // 起始 state 若滞留在册，它经 swapState 缓存恢复再成为 startState 时会被误判组合中。
       expect(isComposingTr(start.update({}))).toBe(false);
       expect(isComposing(view)).toBe(false);

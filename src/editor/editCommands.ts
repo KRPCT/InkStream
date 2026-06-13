@@ -1,9 +1,6 @@
 import { selectAll, undo, redo } from '@codemirror/commands';
 import { openSearchPanel } from '@codemirror/search';
 import type { EditorView } from '@codemirror/view';
-import { RELAY_ENABLED } from './relay';
-import { relayPasteFromClipboard } from './relay/relayClipboard';
-import { focusEditor, getRelayInput } from './relay/relayFocus';
 import { getView } from './viewHandle';
 
 /**
@@ -13,7 +10,7 @@ import { getView } from './viewHandle';
  * 撤销/重做/全选/查找直接调 @codemirror/commands / @codemirror/search（不需 DOM 焦点即生效）。
  *
  * 剪贴板（剪切/复制/粘贴）：菜单点击是真实用户手势——回焦编辑器（铁律 1 豁免：真实手势后合法回焦）
- * 后走浏览器原生 execCommand，复用 CM6 已挂的剪贴板处理（不程序化抢焦点武装 IME）。
+ * 后走浏览器原生 execCommand，复用 CM6 原生 contenteditable 的内建剪贴板处理。
  */
 
 function withView(fn: (view: EditorView) => void): void {
@@ -47,14 +44,13 @@ export function doReplace(): void {
 }
 
 /**
- * 复制/剪切（菜单手势，PROD-RELAY-DESIGN §2.8）：focusEditor 回焦输入面后走浏览器原生
- * execCommand——在聚焦的 textarea（中继）或 contentDOM（旧路径）上触发同名事件，分别由
- * relayClipboard 的 copy/cut handler 或 CM6 内建处理接管。菜单点击是合法用户手势，
- * execCommand('copy'/'cut') 在 WebView2/Chromium 此语境下可靠。
+ * 复制/剪切（菜单手势）：view.focus() 回焦 contentDOM 后走浏览器原生 execCommand——在聚焦的
+ * .cm-content 上触发同名事件，由 CM6 原生 contenteditable 的内建剪贴板处理接管。菜单点击是
+ * 合法用户手势，execCommand('copy'/'cut') 在 WebView2/Chromium 此语境下可靠。
  */
 function copyCut(action: 'cut' | 'copy'): void {
   withView((view) => {
-    focusEditor(view);
+    view.focus();
     document.execCommand(action);
   });
 }
@@ -68,19 +64,13 @@ export function doCopy(): void {
 }
 
 /**
- * 粘贴（菜单手势，§2.8）：中继下 WebView2 常禁脚本触发的 execCommand('paste')，故接线在册时
- * 走 relayPasteFromClipboard（navigator.clipboard.readText + 智能粘贴/relayInsert）；旧路径
- * （flag 关 / 未接线）回焦 contentDOM 后 execCommand 触发 CM6 内建 paste（含 richtext 白名单）。
+ * 粘贴（菜单手势）：回焦 contentDOM 后 execCommand('paste') 触发 CM6 原生内建 paste（含
+ * richtext 智能链接白名单——挂在 langCompartment 的 paste domEventHandler，T-02-17）。
  * 键盘 Ctrl+V 始终走浏览器原生 paste 事件，不依赖本命令。
  */
 export function doPaste(): void {
   withView((view) => {
-    if (RELAY_ENABLED && getRelayInput(view)) {
-      focusEditor(view);
-      void relayPasteFromClipboard(view);
-      return;
-    }
-    focusEditor(view);
+    view.focus();
     document.execCommand('paste');
   });
 }

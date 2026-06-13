@@ -3,7 +3,6 @@ import { EditorState } from '@codemirror/state';
 import { EditorView } from '@codemirror/view';
 import { __clearCacheForTest, openFile } from './editorState';
 import { baseExtensions } from './extensions';
-import { installRelayController } from './relay/relayController';
 import { useEditorStore } from '../stores/useEditorStore';
 import { scheduleAutosave } from '../stores/autosave';
 
@@ -28,7 +27,6 @@ function mountView(): EditorView {
 }
 
 let view: EditorView | null = null;
-let teardownRelay: (() => void) | null = null;
 
 beforeEach(() => {
   __clearCacheForTest();
@@ -37,8 +35,6 @@ beforeEach(() => {
 });
 
 afterEach(() => {
-  teardownRelay?.();
-  teardownRelay = null;
   view?.destroy();
   view = null;
 });
@@ -82,16 +78,12 @@ describe('mirrorListener（baseExtensions 内的 store 单向镜像）', () => {
     expect(useEditorStore.getState().cursor).toBe(3);
   });
 
-  it('中继输入：换装后经 textarea input 落子仍 markDirty/scheduleAutosave（relay 链存活）', () => {
+  it('原生输入：换装后 contenteditable 落子（input.type 事务）仍 markDirty/scheduleAutosave', () => {
     view = mountView();
-    const host = view.dom.parentElement as HTMLElement;
-    teardownRelay = installRelayController(view, host);
     openFile(view, 'r.md', '', baseExtensions('markdown'));
     useEditorStore.setState({ activePath: 'r.md' });
-    const textarea = host.querySelector('[data-relay-input]') as HTMLTextAreaElement;
-    // 中继落子（非组合直输）：onInput → relayInsert → docChanged → 换装后仍在册的 mirrorListener。
-    textarea.value = '中';
-    textarea.dispatchEvent(new Event('input'));
+    // CM6 原生 contenteditable 落子等价于带 input.type userEvent 的事务（DOM observer → dispatch）。
+    view.dispatch({ changes: { from: 0, insert: '中' }, userEvent: 'input.type' });
     expect(useEditorStore.getState().dirty['r.md']).toBe(true);
     expect(scheduleAutosave).toHaveBeenCalledWith('r.md');
     expect(view.state.doc.toString()).toBe('中');

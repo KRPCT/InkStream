@@ -52,7 +52,7 @@ const frozenStartStates = new WeakSet<EditorState>();
  */
 const recordedStartStates = new WeakMap<EditorView, EditorState>();
 
-/** 冻结置位（contentDOM 门 compositionstart 与 setRelayComposing(true) 共用同一原子序）。 */
+/** 冻结置位（contentDOM 门 compositionstart 的原子序）。 */
 function freeze(view: EditorView): void {
   frozenFlags.set(view, true);
   frozenStartStates.add(view.state);
@@ -61,7 +61,7 @@ function freeze(view: EditorView): void {
   refreshGen.set(view, (refreshGen.get(view) ?? 0) + 1);
 }
 
-/** 解冻 + 推迟一个微任务 drain（contentDOM 门 compositionend 与 setRelayComposing(false) 共用）。 */
+/** 解冻 + 推迟一个微任务 drain（contentDOM 门 compositionend 的原子序）。 */
 function unfreeze(view: EditorView): void {
   frozenFlags.set(view, false);
   // 精确移除冻结时记入的起始 state（组合中途有事务时 view.state 已推进，删当前 state 是 no-op）；
@@ -151,23 +151,6 @@ const compositionTrExtender = EditorState.transactionExtender.of((tr) => {
 
 /** 统一组合冻结门（挂 baseExtensions 顶层）。 */
 export const compositionGate: Extension = [compositionDomHandlers, compositionTrExtender];
-
-/**
- * 中继组合喂源（PROD-RELAY-DESIGN §2.5，API 不动、喂源切换）。
- *
- * 中继架构下组合发生在隐藏 textarea：view.composing 恒 false、contentDOM 门事件恒不触发，
- * 但冻结语义仍然需要——组合期 setState 换装/外部 reload 会让 compositionend 的一次性落子
- * 插进错误的 doc/selection（数据损坏）。本入口写同一 frozenFlags/frozenStartStates/refreshGen：
- * isComposing/isComposingTr/queueAfterComposition 全部既有消费方语义不变、零改动。
- *
- * 调用序（textareaRelay.onCompositionEnd）：setRelayComposing(false)（解冻，同步）→
- * relayInsert 落子（组合已结束的常规提交）→ 本处排的微任务 drain（落子事务必先于排队任务）。
- * contentDOM 门 domEventHandlers 保留在册（flag 关回退路径 + 既有测试继续绿）。
- */
-export function setRelayComposing(view: EditorView, on: boolean): void {
-  if (on) freeze(view);
-  else unfreeze(view);
-}
 
 /**
  * compositionend 微任务体：三守卫 + 固定顺序 drain。
