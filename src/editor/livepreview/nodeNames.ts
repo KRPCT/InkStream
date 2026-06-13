@@ -74,6 +74,17 @@ export const URL_NODE = 'URL';
 export const TASK_MARKER_NODE = 'TaskMarker';
 
 /**
+ * wiki-link 节点（Phase 4 W2 / LINK-01，自研 MarkdownConfig 见 wikiLink.ts）：`[[target#h^b|alias]]`。
+ * inlinePlugin 在 WIKI_LINK_NODE 整节点处理（return false 不下钻）：隐 WikiLinkMark（`[[`/`]]`/`|`）；
+ * 有 WikiLinkAlias 则隐 WikiLinkTarget 显 alias，否则显 target——皆加 .cm-ink-wikilink 链接样式。
+ * 活动行经 active 分支跳过 → 显 `[[...]]` 源码（Typora 范式）。子节点名供 getChild/getChildren 取用。
+ */
+export const WIKI_LINK_NODE = 'WikiLink';
+export const WIKI_LINK_MARK = 'WikiLinkMark';
+export const WIKI_LINK_TARGET = 'WikiLinkTarget';
+export const WIKI_LINK_ALIAS = 'WikiLinkAlias';
+
+/**
  * 块级原子节点：blockField 用 Decoration.replace({ block: true }) 整块替换，光标进块整还原（D-06）。
  * 这些是「半渲染会错乱」的多行原子块（RESEARCH「元素识别」表 / UI-SPEC GFM 表格）。
  *

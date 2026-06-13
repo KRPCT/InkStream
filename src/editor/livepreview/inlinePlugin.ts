@@ -16,6 +16,10 @@ import {
   LINE_REVEAL_MARK,
   TASK_MARKER_NODE,
   URL_NODE,
+  WIKI_LINK_ALIAS,
+  WIKI_LINK_MARK,
+  WIKI_LINK_NODE,
+  WIKI_LINK_TARGET,
   headingLevel,
   isOrderedListMark,
 } from './nodeNames';
@@ -81,6 +85,8 @@ const LIST_LINE = Decoration.line({ class: 'cm-ink-list-line' });
 const QUOTE_MARK = Decoration.mark({ class: 'cm-ink-quote-mark' });
 /** 引用块行级装饰（左竖条 + 缩进，逐行 D-06）。 */
 const QUOTE_LINE = Decoration.line({ class: 'cm-ink-quote' });
+/** wiki-link 展示文本装饰（alias 或 target 加链接样式；结构字符另由 HIDDEN_MARK 隐藏）。 */
+const WIKI_LINK_DECO = Decoration.mark({ class: 'cm-ink-wikilink' });
 
 /**
  * 图片 vault 上下文 Facet（WR-07：装饰构建不读全局 store，保 per-view 纯净）。
@@ -175,6 +181,25 @@ export function buildInlineDecorations(view: EditorView): DecorationSet {
             }
           }
           return undefined;
+        }
+
+        // wiki-link `[[target#h^b|alias]]`（Phase 4 W2）：整节点在此处理并 return false（不下钻子节点）。
+        // 隐 WikiLinkMark（`[[`/`]]`/`|`）；有 alias 则隐 target 显 alias，否则显 target——皆加链接样式。
+        // 活动行已在上方 active 分支跳过 → 显 `[[...]]` 源码（Typora 范式，相等闸门不破）。
+        if (node.name === WIKI_LINK_NODE) {
+          const n = node.node;
+          for (const mk of n.getChildren(WIKI_LINK_MARK)) {
+            if (mk.to > mk.from) ranges.push(HIDDEN_MARK.range(mk.from, mk.to));
+          }
+          const alias = n.getChild(WIKI_LINK_ALIAS);
+          const target = n.getChild(WIKI_LINK_TARGET);
+          if (alias) {
+            if (target) ranges.push(HIDDEN_MARK.range(target.from, target.to));
+            ranges.push(WIKI_LINK_DECO.range(alias.from, alias.to));
+          } else if (target) {
+            ranges.push(WIKI_LINK_DECO.range(target.from, target.to));
+          }
+          return false;
         }
 
         // 水平线：整节点 replace 为 <hr>（活动行由上方 active 分支跳过，此处必非活动行）。
@@ -355,6 +380,14 @@ const inlineTheme = EditorView.theme({
   // 链接：色 var(--cm-link)（隐 url 后仅 text 呈现），默认 cursor:text（手势层切 pointer）。
   // R5 §3.4：加下划线 + 2px 偏移（Obsidian 风，提辨识）。
   '.cm-link': {
+    color: 'var(--cm-link)',
+    cursor: 'text',
+    textDecoration: 'underline',
+    textUnderlineOffset: '2px',
+  },
+  // wiki-link 展示文本（Phase 4 W2）：复用 var(--cm-link) 链接色 + 下划线（独立 class 供 W3 Ctrl+点击跳转
+  // 与未来 vault 内/断链差异着色；永不硬编色）。结构字符 [[ ]] | 由 HIDDEN_MARK 收窄隐藏。
+  '.cm-ink-wikilink': {
     color: 'var(--cm-link)',
     cursor: 'text',
     textDecoration: 'underline',

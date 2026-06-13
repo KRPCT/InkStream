@@ -3,6 +3,7 @@ import { EditorView } from '@codemirror/view';
 import { StreamLanguage } from '@codemirror/language';
 import { markdown } from '@codemirror/lang-markdown';
 import { GFM } from '@lezer/markdown';
+import { wikiLink } from './livepreview/wikiLink';
 import { javascript } from '@codemirror/lang-javascript';
 import { python } from '@codemirror/lang-python';
 import { rust } from '@codemirror/lang-rust';
@@ -92,7 +93,7 @@ const EXT_TO_LANG: Record<string, LanguageId> = {
 
 /** 同步语言扩展工厂（typst 走懒加载、richtext 复用 markdown，均不在此表）。 */
 const SYNC_FACTORY: Record<Exclude<LanguageId, 'typst' | 'richtext'>, () => Extension> = {
-  markdown: () => markdown({ extensions: [GFM /* wiki-link/citation MarkdownConfig 注入点（Phase 4）*/] }),
+  markdown: () => markdown({ extensions: [GFM, wikiLink /* citation MarkdownConfig 注入点（Phase 8）*/] }),
   javascript: () => javascript({ jsx: true, typescript: true }),
   python: () => python(),
   rust: () => rust(),
