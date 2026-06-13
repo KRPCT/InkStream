@@ -17,6 +17,19 @@ function toSlash(path: string): string {
   return path.split('\\').join('/');
 }
 
+/**
+ * vault 根 → 索引库 sqlite: 连接串。Windows `std::fs::canonicalize`（Tauri 文件夹选择/规范化）会产出扩展
+ * 长度前缀 `\\?\`（UNC 形 `\\?\UNC\`），必须剥除：留着会让 `sqlite://?/...` 的 `//?/` 被 URI 解析成
+ * 空 authority + query 串，连到错误/空库 —— 这是反链/未链接提及恒空的真因（真机 vault 才暴露，干净路径漏检）。
+ * 剥前缀后把 '\' 归一为 '/' 再拼库相对路径。
+ */
+export function indexDbUrl(root: string): string {
+  let p = root;
+  if (p.startsWith('\\\\?\\UNC\\')) p = '\\\\' + p.slice(8);
+  else if (p.startsWith('\\\\?\\')) p = p.slice(4);
+  return `sqlite:${toSlash(p)}/.inkstream/index.db`;
+}
+
 /** 仅 .md 进全文索引（与 Rust rebuild 仅扫 .md 一致）。 */
 export function isIndexable(path: string): boolean {
   return path.endsWith('.md');
@@ -60,7 +73,7 @@ function indexDb(): Promise<Database> | null {
     dbRoot = root;
   }
   if (dbConn === null) {
-    dbConn = Database.load(`sqlite:${toSlash(root)}/.inkstream/index.db`);
+    dbConn = Database.load(indexDbUrl(root));
   }
   return dbConn;
 }
