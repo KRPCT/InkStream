@@ -185,8 +185,9 @@ function blankRow(columns: number): string {
 /**
  * 插入行（§5）：在 cellIndex 所在行的上方（above=true）或下方插入空行。
  *
- * 边界：表头行（row=0）上方插入时——GFM 表头恒第一行，改插到对齐行之后（成为首个数据行），
- * 仍保表格合法。返回单段 change。
+ * 边界（GFM 契约「表头紧邻对齐行」）：表头行（row=0）无论上方还是下方插入，新数据行都必须落到
+ * 对齐分隔行之后（首个数据行位）——表头恒第一行、对齐行恒紧随其后，中间不容插入任何数据行。
+ * 其余行按 target.from（上）/ target.to（下）插入。返回单段 change。
  */
 export function insertRowChange(
   struct: TableStruct,
@@ -197,8 +198,9 @@ export function insertRowChange(
   const rows = allRows(struct);
   const target = rows[row] ?? struct.header;
   const blank = blankRow(struct.columns);
-  if (above && row === 0) {
-    // 表头上方不可插数据行：落到对齐行之后（首个数据行位）。
+  if (row === 0) {
+    // 表头行上方/下方插入一律落到对齐行之后（首个数据行位）：保「表头紧邻对齐行」契约，
+    // 绝不把数据行插进表头与对齐行之间（否则破坏 GFM、lezer 不再识别为 Table）。
     return { from: struct.delimiter.to, to: struct.delimiter.to, insert: `\n${blank}` };
   }
   if (above) {

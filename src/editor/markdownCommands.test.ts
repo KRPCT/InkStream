@@ -1,6 +1,8 @@
+import { syntaxTree } from '@codemirror/language';
 import { EditorSelection, EditorState } from '@codemirror/state';
 import { EditorView } from '@codemirror/view';
 import { afterEach, describe, expect, it } from 'vitest';
+import { extensionsForLanguage } from './languages';
 import { useEditorStore } from '../stores/useEditorStore';
 import {
   bold,
@@ -167,6 +169,70 @@ describe('块级插入', () => {
     table(view);
     expect(view.state.doc.toString()).toContain('| 列 1 | 列 2 |');
     expect(view.state.doc.toString()).toContain('| --- | --- |');
+  });
+});
+
+describe('插入表格另起新块（前后补空行隔断，GFM 不与相邻内容合并）', () => {
+  /** 用 GFM 语言挂载 view，便于按语法树数 Table 节点。 */
+  function mountMd(doc: string, anchor: number): EditorView {
+    view = new EditorView({
+      state: EditorState.create({
+        doc,
+        selection: EditorSelection.single(anchor),
+        extensions: [extensionsForLanguage('markdown')],
+      }),
+    });
+    return view;
+  }
+
+  /** 语法树中 Table 节点数。 */
+  function tableCount(v: EditorView): number {
+    let n = 0;
+    syntaxTree(v.state).iterate({
+      enter: (node) => {
+        if (node.name === 'Table') n += 1;
+      },
+    });
+    return n;
+  }
+
+  it('紧接已有表格后插入：解析为两张独立表（中间有空行）', () => {
+    const existing = '| x | y |\n| --- | --- |\n| 1 | 2 |\n';
+    mountMd(existing, existing.length);
+    table(view);
+    const doc = view.state.doc.toString();
+    // 两表之间必有空行隔断。
+    expect(doc).toContain('| 1 | 2 |\n\n| 列 1 | 列 2 |');
+    expect(tableCount(view)).toBe(2);
+  });
+
+  it('紧接段落后插入：表格独立成块，不被并入上文段落', () => {
+    const para = '上文段落。';
+    mountMd(para, para.length);
+    table(view);
+    const doc = view.state.doc.toString();
+    expect(doc).toContain('上文段落。\n\n| 列 1 | 列 2 |');
+    // 段落 + 表格各自成块（Table 恰一张，证明未与段落混解析）。
+    expect(tableCount(view)).toBe(1);
+    expect(syntaxTree(view.state).topNode.getChild('Table')).not.toBeNull();
+  });
+
+  it('插入到两段之间：前后各补空行，上下文均不被吞并', () => {
+    const doc0 = '前段。\n\n后段。';
+    mountMd(doc0, 4); // 落在两段之间的空行处。
+    table(view);
+    const doc = view.state.doc.toString();
+    // 表格前后都有空行：与前段、后段均隔断。
+    expect(doc).toContain('前段。\n\n| 列 1 | 列 2 |');
+    expect(doc).toContain('|  |  |\n\n后段。');
+    expect(tableCount(view)).toBe(1);
+  });
+
+  it('空文档插入：无多余前后空行（光标落首表头格）', () => {
+    mount('', 0);
+    table(view);
+    expect(view.state.doc.toString()).toBe('| 列 1 | 列 2 |\n| --- | --- |\n|  |  |\n');
+    expect(view.state.selection.main.head).toBe(2);
   });
 });
 

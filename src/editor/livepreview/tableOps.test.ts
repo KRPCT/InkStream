@@ -106,6 +106,24 @@ describe('insertRowChange 插入行（§5）', () => {
     expect(lines[1]).toContain('---');
     expect(tableModelAt(mdState(next), 0)!.columns).toBe(2);
   });
+
+  it('表头行下方插入：空行落对齐行之后（不挤进表头与对齐行之间），仍合法 GFM', () => {
+    const s = structOf(TWO_BY_TWO);
+    const ch = insertRowChange(s, 0, false); // cellIndex 0 = 表头首格，下方插入。
+    const next = applyChanges(TWO_BY_TWO, [ch]);
+    const lines = next.split('\n');
+    // 表头第一行、对齐行紧邻其后（第二行）——契约不破。
+    expect(lines[0]).toContain('| a | bb |');
+    expect(lines[1]).toContain('---');
+    // 新空行是首个数据行（第三行），原数据行被推到第四行。
+    expect(lines[3]).toContain('222');
+    expect(lines.length).toBe(4);
+    // lezer 仍识别为 Table（结构 + 列数完好），并新增一空数据行。
+    const m = tableModelAt(mdState(next), 0)!;
+    expect(m.columns).toBe(2);
+    expect(m.cells.length).toBe(6); // 表头 2 + 两数据行各 2。
+    expect(tableStructAt(mdState(next), 0)!.rows.length).toBe(2);
+  });
 });
 
 describe('deleteRowChange 删除行（§5 边界）', () => {

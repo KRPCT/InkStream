@@ -136,14 +136,36 @@ export const mathBlock: Command = (view) => {
   return true;
 };
 
-/** 插入 2×2 占位表格（GFM 管线表）。 */
+/**
+ * 插入 2×2 占位表格（GFM 管线表）。
+ *
+ * 前后补空行隔断：GFM 要求块级表格与相邻段落/表格之间有空行，否则会被并入上文段落、或与紧邻的
+ * 另一张表合并成一张。据插入点上下文按需补 `\n`——已在空行/文档边界则不重复加——保证新表恒独立成块。
+ */
 export const table: Command = (view) => {
   const tpl = '| 列 1 | 列 2 |\n| --- | --- |\n|  |  |\n';
   view.dispatch(
-    view.state.changeByRange((range) => ({
-      changes: { from: range.from, to: range.to, insert: tpl },
-      range: EditorSelection.cursor(range.from + 2),
-    })),
+    view.state.changeByRange((range) => {
+      const doc = view.state.doc;
+      // 前缀：表格上方须留一空行才与上文隔断。据插入点前已有的换行数补足到「空行」：
+      //   非文档起点且前一行非空 → `\n\n`（content 后直接成块）；行首但上一行非空 → 再补一个 `\n`；
+      //   已在空行/文档起点 → 不补。
+      const before = doc.sliceString(0, range.from);
+      const prefix = before.length === 0 || /\n[ \t]*\n[ \t]*$/.test(before)
+        ? '' // 文档起点 或 已是空行 → 无需补。
+        : /\n[ \t]*$/.test(before)
+          ? '\n' // 已在行首、但上一行有内容 → 补一个 `\n` 成空行。
+          : '\n\n'; // 紧跟内容 → 补两个 `\n`（换行 + 空行）。
+      // 后缀：模板自带一个尾 `\n`（表格末行换行）。其后若仍紧跟内容，再补一个 `\n` 成空行隔断。
+      const after = doc.sliceString(range.to);
+      const suffix = after.length === 0 || /^[ \t]*\n/.test(after) ? '' : '\n';
+      const insert = `${prefix}${tpl}${suffix}`;
+      return {
+        changes: { from: range.from, to: range.to, insert },
+        // 光标落首个表头单元格内（模板内偏移 2 = `| ` 之后），叠加前缀长度。
+        range: EditorSelection.cursor(range.from + prefix.length + 2),
+      };
+    }),
   );
   view.focus();
   return true;
