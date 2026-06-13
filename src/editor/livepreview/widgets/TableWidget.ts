@@ -149,9 +149,17 @@ export class TableWidget extends WidgetType {
   private armCells(root: HTMLElement, view: EditorView): void {
     registerWrapOwner(root, view); // 供 destroy(dom) 反查持有主 view（销毁配对）。
     const cells = root.querySelectorAll<HTMLTableCellElement>('th, td');
+    // 文档序扁平的各 cell 当前源文本（与 DOM/cellIndex 同序）：用于回填非活动格的静态 textContent。
+    const texts = flatCellTexts(this.sourceText);
     const active = this.activeCellIndex;
     if (active == null) {
-      // 本表无活动格：若当前活动子编辑器属本表，卸载（点别表 / 退出态）。
+      // 本表无活动格（退出态 / 点别表）：恢复所有格的静态文本 + 卸载属本表的子编辑器。
+      // 退出态必须回填——某格曾激活时被清空（textContent=''）、子编辑器销毁后其 DOM 被移除，
+      // 若不回填则该格永久空白（CDP 实测：编辑后退出表格 → 格空）。
+      cells.forEach((cell, index) => {
+        cell.classList.remove('cm-ink-cell-editing');
+        cell.textContent = unescapePipes(texts[index] ?? '');
+      });
       const cur = getActiveCellEditor(view);
       if (cur && cur.tableFrom === this.tableFrom) destroyActive(view);
       return;
@@ -159,6 +167,10 @@ export class TableWidget extends WidgetType {
     cells.forEach((cell, index) => {
       if (index !== active) {
         cell.classList.remove('cm-ink-cell-editing');
+        // 关键修复（「不渲染内容」根因）：原地更新路径（renderSig 不含 cell 文本，为保活动格 caret/IME
+        // 不重建整表）下，非活动格必须从当前源回填 textContent——否则曾激活被清空、子编辑器销毁后 DOM
+        // 被移除的格会永久空白（CDP 实测：编辑 a 格 → Tab 离开 → a 显示为空，尽管 doc 已含其文本）。
+        cell.textContent = unescapePipes(texts[index] ?? '');
         return;
       }
       cell.classList.add('cm-ink-cell-editing');
@@ -220,6 +232,19 @@ function buildTableBody(table: HTMLElement, widget: TableWidget): void {
     }
     table.appendChild(tbody);
   }
+}
+
+/**
+ * 据 sourceText 计算文档序扁平的各 cell 源文本（与 buildTableBody / DOM / cellIndex 同序：表头行各列 +
+ * 各数据行各列，跳过对齐分隔行）。armCells 用它回填非活动格静态 textContent（修「不渲染内容」根因）。
+ */
+function flatCellTexts(sourceText: string): string[] {
+  const rows = sourceText.split('\n').filter((line) => line.trim().length > 0);
+  const [headerLine, , ...bodyLines] = rows;
+  const out: string[] = [];
+  if (headerLine !== undefined) out.push(...splitCells(headerLine));
+  for (const line of bodyLines) out.push(...splitCells(line));
+  return out;
 }
 
 /** 拆一行 GFM 表格的单元格文本（按未转义 `|` 分列，去首尾空格；`\|` 不分列）。 */
