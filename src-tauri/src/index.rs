@@ -208,15 +208,50 @@ async fn upsert_doc(
     .execute(&mut **tx)
     .await
     .map_err(|e| e.to_string())?;
+    rewrite_links(tx, path, content).await?;
     Ok(())
 }
 
-/// 删除一篇文档（files_ad 触发器自动删 FTS 倒排）。
+/// 重写本文档的 wiki-link 关系（W2'，反链 W4 数据源）：先删旧 source_path 的链，再插当前正文抽出的链。
+/// target 解析到具体文件留 W4 查询时做（target_resolved 暂 NULL，避重建顺序/重命名陈旧问题）。
+async fn rewrite_links(
+    tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
+    path: &str,
+    content: &str,
+) -> Result<(), String> {
+    sqlx::query("DELETE FROM links WHERE source_path = ?")
+        .bind(path)
+        .execute(&mut **tx)
+        .await
+        .map_err(|e| e.to_string())?;
+    for r in extract_wiki_links(content) {
+        sqlx::query(
+            "INSERT INTO links (source_path, target_raw, target_resolved, alias, heading, block_id, kind) \
+             VALUES (?, ?, NULL, ?, ?, ?, 'wikilink')",
+        )
+        .bind(path)
+        .bind(&r.target)
+        .bind(r.alias.as_deref())
+        .bind(r.heading.as_deref())
+        .bind(r.block.as_deref())
+        .execute(&mut **tx)
+        .await
+        .map_err(|e| e.to_string())?;
+    }
+    Ok(())
+}
+
+/// 删除一篇文档（files_ad 触发器自动删 FTS 倒排）+ 其出链。
 async fn remove_doc(
     tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
     path: &str,
 ) -> Result<(), String> {
     sqlx::query("DELETE FROM files WHERE path = ?")
+        .bind(path)
+        .execute(&mut **tx)
+        .await
+        .map_err(|e| e.to_string())?;
+    sqlx::query("DELETE FROM links WHERE source_path = ?")
         .bind(path)
         .execute(&mut **tx)
         .await
@@ -316,6 +351,75 @@ fn mtime_of(abs: &Path) -> i64 {
         .and_then(|t| t.duration_since(UNIX_EPOCH).ok())
         .map(|d| d.as_secs() as i64)
         .unwrap_or(0)
+}
+
+/// 正文里抽出的一条 wiki-link 引用（W2'）。target = 路径部分（NFC），#heading / ^block / |alias 分离。
+struct WikiRef {
+    target: String,
+    heading: Option<String>,
+    block: Option<String>,
+    alias: Option<String>,
+}
+
+/// 扫描正文里的 `[[...]]`（单行；未闭合 / 空 / 跨行不计）。
+///
+/// `[` `]` `|` `#` `^` `\n` 皆 ASCII（<0x80），UTF-8 多字节续字节 >=0x80 不会撞这些字节，故字节扫描对中文
+/// 安全；切片边界恒落在 ASCII 标记处，子串仍是合法 UTF-8。与前端 wikiLink.ts 的 lezer 解析同构（已单测）。
+fn extract_wiki_links(content: &str) -> Vec<WikiRef> {
+    let b = content.as_bytes();
+    let n = b.len();
+    let mut out = Vec::new();
+    let mut i = 0usize;
+    while i + 1 < n {
+        if b[i] == b'[' && b[i + 1] == b'[' {
+            let inner_start = i + 2;
+            let mut j = inner_start;
+            let mut closed = false;
+            while j < n {
+                if b[j] == b'\n' {
+                    break;
+                }
+                if j + 1 < n && b[j] == b']' && b[j + 1] == b']' {
+                    closed = true;
+                    break;
+                }
+                j += 1;
+            }
+            if closed && j > inner_start {
+                if let Some(r) = parse_wiki_ref(&content[inner_start..j]) {
+                    out.push(r);
+                }
+                i = j + 2;
+                continue;
+            }
+        }
+        i += 1;
+    }
+    out
+}
+
+/// 解析 `[[...]]` 内核 `target#heading^block|alias` → WikiRef；target 空则 None（不成链）。
+fn parse_wiki_ref(inner: &str) -> Option<WikiRef> {
+    let (spec, alias) = match inner.find('|') {
+        Some(p) => (&inner[..p], Some(inner[p + 1..].trim().to_string())),
+        None => (inner, None),
+    };
+    let hash = spec.find('#');
+    let caret = spec.find('^');
+    let target_end = [hash, caret].iter().filter_map(|x| *x).min().unwrap_or(spec.len());
+    let target = nfc(spec[..target_end].trim());
+    if target.is_empty() {
+        return None;
+    }
+    let heading = hash.map(|h| {
+        let end = match caret {
+            Some(c) if c > h => c,
+            _ => spec.len(),
+        };
+        spec[h + 1..end].trim().to_string()
+    });
+    let block = caret.map(|c| spec[c + 1..].trim().to_string());
+    Some(WikiRef { target, heading, block, alias })
 }
 
 // 注：index DB 行为（FTS5 trigram 中文往返 / case_sensitive 0 / external-content 触发器同步 / 更新去重 /
