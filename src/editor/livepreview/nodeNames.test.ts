@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { HIDE_MARK, LINE_REVEAL_MARK } from './nodeNames';
+import { HIDE_MARK, LINE_REVEAL_MARK, isOrderedListMark } from './nodeNames';
 
 /**
  * lezer 节点名集中表回归门（前向兼容扩展点 1 / RESEARCH「元素识别 via tree」）。
@@ -23,5 +23,14 @@ describe('nodeNames 集中表', () => {
   it('LINE_REVEAL_MARK 含列表项与引用前缀（逐行还原）', () => {
     expect(LINE_REVEAL_MARK.has('ListMark')).toBe(true);
     expect(LINE_REVEAL_MARK.has('QuoteMark')).toBe(true);
+  });
+
+  it('isOrderedListMark 区分有序 `1.`/`2)` 与无序 `-`/`*`/`+`', () => {
+    expect(isOrderedListMark('1.')).toBe(true);
+    expect(isOrderedListMark('2)')).toBe(true);
+    expect(isOrderedListMark('42.')).toBe(true);
+    expect(isOrderedListMark('-')).toBe(false);
+    expect(isOrderedListMark('*')).toBe(false);
+    expect(isOrderedListMark('+')).toBe(false);
   });
 });

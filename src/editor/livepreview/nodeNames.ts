@@ -89,3 +89,14 @@ export function headingLevel(nodeName: string): number {
   const m = /^ATXHeading([1-6])$/.exec(nodeName);
   return m ? Number(m[1]) : 0;
 }
+
+/**
+ * ListMark 文本是否有序列表标记（lezerNodes dump 固化两形态）：
+ *   - 无序：单字符 `-` / `*` / `+`（长 1）；
+ *   - 有序：数字 + 定界符 `1.` / `2)` 等（末字符 `.` 或 `)`）。
+ *
+ * 有序标记的数字是有语义可见文本，渲染态保留不替换；无序标记换 `•` 项目符号 widget。
+ */
+export function isOrderedListMark(markText: string): boolean {
+  return /^\d+[.)]$/.test(markText);
+}

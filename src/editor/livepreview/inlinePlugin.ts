@@ -17,9 +17,11 @@ import {
   TASK_MARKER_NODE,
   URL_NODE,
   headingLevel,
+  isOrderedListMark,
 } from './nodeNames';
 import { HrWidget } from './widgets/HrWidget';
 import { type ImageVaultContext, ImageWidget } from './widgets/ImageWidget';
+import { ListBulletWidget } from './widgets/ListBulletWidget';
 import { TaskCheckboxWidget } from './widgets/TaskCheckboxWidget';
 import { isComposing, refreshLivePreview } from '../composition';
 
@@ -71,8 +73,10 @@ const HEADING_LINE: Record<number, Decoration> = {
   6: Decoration.line({ class: 'cm-ink-h6' }),
 };
 
-/** 列表项标记的项目符号底纹（隐藏原 `-`/`1.` 后由 ::before 呈现符号）。 */
-const LIST_MARK = Decoration.mark({ class: 'cm-ink-list-mark' });
+/** 无序列表标记 `-`/`*`/`+` → 真项目符号 `•` widget（replace，非活动行渲染）。 */
+const BULLET_REPLACE = Decoration.replace({ widget: new ListBulletWidget() });
+/** 列表项行级装饰（悬挂缩进保排版，逐行 D-06；活动行同样保留——只加 class 不改文本）。 */
+const LIST_LINE = Decoration.line({ class: 'cm-ink-list-line' });
 /** 引用块标记装饰（隐藏 `>` 字符；左竖条由行级 cm-ink-quote 提供）。 */
 const QUOTE_MARK = Decoration.mark({ class: 'cm-ink-quote-mark' });
 /** 引用块行级装饰（左竖条 + 缩进，逐行 D-06）。 */
@@ -106,9 +110,10 @@ export function buildInlineDecorations(view: EditorView): DecorationSet {
   // 图片 vault 上下文一次取（构建期常量）：经 per-view facet 注入（WR-07），不读全局 store。
   // 本地图相对路径据此解析并断言 vault 内（T-03-19）。
   const imageVault = state.facet(imageVaultFacet);
-  // 已 add 行级装饰的行号去重（同一标题/引用行只 add 一次 line 装饰）。
+  // 已 add 行级装饰的行号去重（同一标题/引用/列表行只 add 一次 line 装饰）。
   const headedLines = new Set<number>();
   const quotedLines = new Set<number>();
+  const listedLines = new Set<number>();
   // `<u>` 开标签栈：遇闭标签时弹出配对，给中间文本加 underline（A2 自配对）。
   let openUTag: { from: number; to: number } | null = null;
 
@@ -146,6 +151,17 @@ export function buildInlineDecorations(view: EditorView): DecorationSet {
             ranges.push(HEADING_LINE[level].range(line.from, line.from));
           }
           return undefined;
+        }
+
+        // 列表项行级装饰（悬挂缩进）：ListMark 所在行得 cm-ink-list-line（行级，只加 class、不改文本，
+        // 行高稳定）。活动行同样保留——与标题/引用行级装饰同纪律，光标进列表项时缩进排版不抖动。
+        if (node.name === 'ListMark') {
+          const line = state.doc.lineAt(node.from);
+          if (!listedLines.has(line.number)) {
+            listedLines.add(line.number);
+            ranges.push(LIST_LINE.range(line.from, line.from));
+          }
+          // 非活动行继续往下走 LINE_REVEAL_MARK 分支渲染标记本体；活动行由下方 active 分支跳过。
         }
 
         // 以下分支均为隐藏 mark / replace / widget：活动行一律跳过（保纯源码 + 相等闸门）。
@@ -230,9 +246,13 @@ export function buildInlineDecorations(view: EditorView): DecorationSet {
               ranges.push(QUOTE_LINE.range(line.from, line.from));
             }
             if (node.to > node.from) ranges.push(QUOTE_MARK.range(node.from, node.to));
-          } else {
-            // ListMark：隐藏原标记并呈现项目符号/序号（::before）。
-            if (node.to > node.from) ranges.push(LIST_MARK.range(node.from, node.to));
+          } else if (node.to > node.from) {
+            // ListMark：有序 `1.`/`2.` 保留数字（有语义可见文本，不替换）；无序 `-`/`*`/`+`
+            // replace 为真项目符号 `•` widget（旧 cm-ink-list-mark 隐藏底纹缺 ::before 致符号丢失）。
+            const markText = state.doc.sliceString(node.from, node.to);
+            if (!isOrderedListMark(markText)) {
+              ranges.push(BULLET_REPLACE.range(node.from, node.to));
+            }
           }
           return undefined;
         }
@@ -340,8 +360,10 @@ const inlineTheme = EditorView.theme({
     textDecoration: 'underline',
     textUnderlineOffset: '2px',
   },
-  // 列表项符号：隐原标记后由 ::before 呈现 •（项目符号缩进保排版）。
-  '.cm-ink-list-mark': { fontSize: '0.1px', letterSpacing: '-1ch', color: 'transparent' },
+  // 无序列表项目符号 widget：渲染可见 •（继承正文色，与正文等宽对齐），右侧留窄间距贴近文字。
+  '.cm-ink-bullet': { color: 'var(--text-normal)', marginRight: '0.4em' },
+  // 列表项行级：悬挂缩进（首行标记凸出、续行对齐文本起点），消费正文行高，不改文本不抖排版。
+  '.cm-ink-list-line': { paddingLeft: '1.4em', textIndent: '-1.4em' },
   // 引用块：行级左竖条 var(--cm-blockquote-border) 4px（对齐 Typora）+ 缩进 + 文字弱化为灰（逐行 D-06，R5 §3.4）。
   '.cm-ink-quote': {
     borderLeft: '4px solid var(--cm-blockquote-border)',
