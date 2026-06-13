@@ -1,6 +1,7 @@
 import { autocompletion, type CompletionContext, type CompletionResult } from '@codemirror/autocomplete';
 import { matchCommands } from '../../commands/match';
 import { useVaultStore } from '../../stores/useVaultStore';
+import { slashCommandSource } from './slashCommand';
 
 /**
  * `[[` wiki-link 文件名 fuzzy 补全（Phase 4 W3 / LINK-02）。
@@ -34,5 +35,5 @@ export function wikiLinkSource(ctx: CompletionContext): CompletionResult | null 
   return { from: m.from, options, filter: false };
 }
 
-/** wiki-link 补全扩展（挂入 livePreviewExtensions；override 为唯一源——当前无其它补全源）。 */
-export const wikiLinkCompletion = autocompletion({ override: [wikiLinkSource] });
+/** Live Preview 补全扩展：wiki-link `[[` 源 + slash `/` 命令源（Phase 5 W1 起并列）。 */
+export const wikiLinkCompletion = autocompletion({ override: [wikiLinkSource, slashCommandSource] });

@@ -1,8 +1,15 @@
 import { ensureSyntaxTree, syntaxTree } from '@codemirror/language';
 import { RangeSetBuilder, StateField, type EditorState } from '@codemirror/state';
 import { Decoration, type DecorationSet, EditorView } from '@codemirror/view';
-import { BLOCK_REPLACE } from './nodeNames';
+import {
+  BLOCK_REPLACE,
+  CODE_INFO_NODE,
+  CODE_TEXT_NODE,
+  FENCED_CODE_NODE,
+  MATH_INFO,
+} from './nodeNames';
 import { TableWidget } from './widgets/TableWidget';
+import { MathWidget } from './widgets/MathWidget';
 import { tableModelFromNode } from './tableModel';
 import { tableStructFromNode } from './tableOps';
 import { clearTableEdit, setTableEdit, tableEditState } from './tableEditState';
@@ -46,12 +53,22 @@ export interface TableRange {
   readonly to: number;
 }
 
-/** blockField 持有的内部态：替换装饰集 + 全部表格块 range（含光标当前还原的块）。 */
+/** blockField 持有的内部态：替换装饰集 + 表格块 range + math 块 range。 */
 interface BlockState {
-  /** 块级替换 DecorationSet（光标在块内的表格不在此集——整块还原源码 D-06）。 */
+  /** 块级替换 DecorationSet（表格恒渲染；math 块仅在光标不在块内时入集）。 */
   readonly deco: DecorationSet;
-  /** 全部表格块 range（无论是否被替换）：供选区移动时 O(blocks) 判定边界跨越。 */
+  /** 全部表格块 range（恒渲染 + atomic）：供选区移动时 O(blocks) 判定边界跨越。 */
   readonly tables: readonly TableRange[];
+  /**
+   * 全部 ```math 块 range（无论是否被替换）：供边界判定（光标进/出触发还原↔渲染切换）。
+   * **不入 atomicRanges**——否则光标无法进块还原源码（math 走「光标进块显源码」而非表格的「恒渲染 + 嵌套编辑」）。
+   */
+  readonly mathBlocks: readonly TableRange[];
+}
+
+/** 块级原子 range 全集（表格 + math）：边界指纹覆盖两者，否则光标进 math 块不触发重建、源码不还原。 */
+function allBlockRanges(s: BlockState): readonly TableRange[] {
+  return s.mathBlocks.length === 0 ? s.tables : [...s.tables, ...s.mathBlocks];
 }
 
 /**
@@ -69,6 +86,11 @@ interface BlockState {
 function buildBlockState(state: EditorState): BlockState {
   const builder = new RangeSetBuilder<Decoration>();
   const tables: TableRange[] = [];
+  const mathBlocks: TableRange[] = [];
+  // 主选区行范围（math 块据此判「光标进块」→ 还原源码；表格恒渲染不用）。
+  const sel = state.selection.main;
+  const selFirstLine = state.doc.lineAt(sel.from).number;
+  const selLastLine = state.doc.lineAt(sel.to).number;
   // 当前就地编辑态（tableFrom + cellIndex），若有则透传给对应表的 widget 武装该 cell。
   const edit = state.field(tableEditState, false) ?? null;
   // 上一张表末行行号（无则 -1）：用于判定本表与上表间是否「恰好一空行」（任务一分隔空行收口）。
@@ -77,6 +99,30 @@ function buildBlockState(state: EditorState): BlockState {
   const tree = ensureSyntaxTree(state, state.doc.length, FORCE_PARSE_BUDGET_MS) ?? syntaxTree(state);
   tree.iterate({
     enter: (node) => {
+      // ```math 块（FencedCode + CodeInfo 首词 === 'math'）：光标进块还原源码、否则渲染 MathWidget。
+      // 与表格「恒渲染」各走各判定，互不影响；math range 登记 mathBlocks 供边界判定（进/出触发还原↔渲染）。
+      if (node.name === FENCED_CODE_NODE) {
+        const info = node.node.getChild(CODE_INFO_NODE);
+        const infoText = info
+          ? state.doc.sliceString(info.from, info.to).trim().split(/\s+/)[0]
+          : '';
+        if (infoText === MATH_INFO) {
+          mathBlocks.push({ from: node.from, to: node.to });
+          const firstLine = state.doc.lineAt(node.from).number;
+          const lastLine = state.doc.lineAt(node.to).number;
+          const cursorInBlock = firstLine <= selLastLine && lastLine >= selFirstLine;
+          if (!cursorInBlock) {
+            const codeText = node.node.getChild(CODE_TEXT_NODE);
+            const latex = codeText ? state.doc.sliceString(codeText.from, codeText.to) : '';
+            builder.add(
+              node.from,
+              node.to,
+              Decoration.replace({ widget: new MathWidget(latex), block: true }),
+            );
+          }
+        }
+        return false; // 不下钻 FencedCode 子树（math 已处理；非 math 代码块本期不渲染）
+      }
       if (!BLOCK_REPLACE.has(node.name)) return undefined;
       tables.push({ from: node.from, to: node.to });
       // 相邻表格分隔空行收口（任务一，TABLE-POLISH-DIAG §任务一）：本表与上一张表之间**恰好一行**
@@ -110,7 +156,7 @@ function buildBlockState(state: EditorState): BlockState {
       return false; // 块级节点子树无需再迭代（cells 已在 tableModelFromNode 内取齐）。
     },
   });
-  return { deco: builder.finish(), tables };
+  return { deco: builder.finish(), tables, mathBlocks };
 }
 
 /**
@@ -144,8 +190,9 @@ function selectionCrossesBoundary(
   prev: BlockState,
   tr: { startState: EditorState; state: EditorState },
 ): boolean {
-  const oldFp = touchedTablesFingerprint(prev.tables, tr.startState);
-  const newFp = touchedTablesFingerprint(prev.tables, tr.state);
+  const ranges = allBlockRanges(prev);
+  const oldFp = touchedTablesFingerprint(ranges, tr.startState);
+  const newFp = touchedTablesFingerprint(ranges, tr.state);
   return oldFp !== newFp;
 }
 
@@ -170,14 +217,15 @@ export const blockField = StateField.define<BlockState>({
     //    合成中的 DOM（同样吞字）。映射为 O(blocks) 位移，不扫语法树。
     if (isComposingTr(tr)) {
       if (!tr.docChanged) return prev; // 纯组合 selection 无文档变：保旧态不动。
-      const mapped = {
+      const mapRange = (t: TableRange) => ({
+        from: tr.changes.mapPos(t.from),
+        to: tr.changes.mapPos(t.to),
+      });
+      return {
         deco: prev.deco.map(tr.changes),
-        tables: prev.tables.map((t) => ({
-          from: tr.changes.mapPos(t.from),
-          to: tr.changes.mapPos(t.to),
-        })),
+        tables: prev.tables.map(mapRange),
+        mathBlocks: prev.mathBlocks.map(mapRange),
       };
-      return mapped;
     }
     // 1. doc 变 / compositionend 强刷 / 就地编辑态切换：全文扫描重建。
     //    refreshLivePreview 解冻后还原渲染态（CR-01）；editChanged 使新 activeCellIndex 透传武装单元格。
@@ -205,15 +253,22 @@ export const blockField = StateField.define<BlockState>({
   provide: (field) => EditorView.decorations.from(field, (s) => s.deco),
 });
 
+/** atomicRanges 用的占位替换装饰（仅取 range 边界，值本身不参与渲染）。 */
+const ATOMIC_MARK = Decoration.replace({});
+
 /**
- * 表格 atomicRanges（Pattern 4）：喂 blockField 的替换 RangeSet。
+ * 表格 atomicRanges（Pattern 4）：键盘光标移动（moveByChar/moveVertically/Backspace）把表格 widget 当原子跳过；
+ * programmatic selection（view.dispatch({selection})）不受约束。
  *
- * 键盘光标移动（moveByChar/moveVertically/Backspace）把表格 widget range 当原子跳过；
- * programmatic selection（view.dispatch({selection})）不受约束（RESEARCH Pattern 4 注意）。
+ * **仅喂表格 range（不含 math 块）**：表格恒渲染、原子跳过 + 嵌套编辑；math 块走「光标进块还原源码」，
+ * 若也设为原子则光标无法进块（键盘跳过、点击落边界）→ 永远无法编辑源码。故 math 块**不入** atomicRanges，
+ * 光标可自由进块触发还原（blockField 据选区相交 skip 装饰）。
  */
-export const tableAtomicRanges = EditorView.atomicRanges.of(
-  (view) => view.state.field(blockField).deco,
-);
+export const tableAtomicRanges = EditorView.atomicRanges.of((view) => {
+  const builder = new RangeSetBuilder<Decoration>();
+  for (const t of view.state.field(blockField).tables) builder.add(t.from, t.to, ATOMIC_MARK);
+  return builder.finish();
+});
 
 /**
  * 块级层样式（UI-SPEC GFM 表格）：真 <table> 边框 / 表头底色 / 单元格内边距。
@@ -338,7 +393,32 @@ const tableTheme = EditorView.theme({
 });
 
 /**
- * 块级层组合（挂入 livePreviewExtensions）：tableEditState（就地编辑态）+ blockField（decorations provide）
- * + atomicRanges + 样式。tableEditState 须在 blockField 前——buildBlockState 经 state.field 读它。
+ * ```math 块样式（Phase 5 W1）：块公式居中、上下留白、长公式横向滚动不撑破版心；KaTeX 全局 CSS 的
+ * .katex-display margin 收口（防污染编辑器排版）；加载中/空块占位给 min-height 防块高跳动；错误态用
+ * var(--color-error)（永不硬编色）。覆盖一律写本主题、加 .cm-ink-math 前缀，绝不改 KaTeX 源 CSS（守升级路径）。
  */
-export const blockExtensions = [tableEditState, blockField, tableAtomicRanges, tableTheme];
+const mathTheme = EditorView.theme({
+  '.cm-ink-math': {
+    display: 'block',
+    margin: '0.5em 0',
+    maxWidth: '100%',
+    overflowX: 'auto',
+    textAlign: 'center',
+  },
+  '.cm-ink-math .katex-display': { margin: '0' },
+  '.cm-ink-math-loading, .cm-ink-math-empty': {
+    minHeight: '1.6em',
+    color: 'var(--text-faint)',
+    fontFamily: 'var(--font-mono)',
+    fontSize: '0.9em',
+    textAlign: 'left',
+    whiteSpace: 'pre-wrap',
+  },
+  '.cm-ink-math-error': { color: 'var(--color-error)', fontFamily: 'var(--font-mono)' },
+});
+
+/**
+ * 块级层组合（挂入 livePreviewExtensions）：tableEditState（就地编辑态）+ blockField（decorations provide）
+ * + atomicRanges + 表格/math 样式。tableEditState 须在 blockField 前——buildBlockState 经 state.field 读它。
+ */
+export const blockExtensions = [tableEditState, blockField, tableAtomicRanges, tableTheme, mathTheme];

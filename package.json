@@ -42,6 +42,7 @@
     "@tauri-apps/plugin-store": "2.4.3",
     "@tauri-apps/plugin-window-state": "2.4.1",
     "codemirror-lang-typst": "0.4.0",
+    "katex": "0.17.0",
     "lucide-react": "1.17.0",
     "react": "19.2.7",
     "react-arborist": "3.10.1",

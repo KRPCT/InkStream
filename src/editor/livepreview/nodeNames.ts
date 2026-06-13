@@ -95,6 +95,18 @@ export const BLOCK_REPLACE: ReadonlySet<string> = new Set([
   'Table', // GFM 表格（TableHeader/TableRow/TableCell/TableDelimiter 为其子节点）
 ]);
 
+/**
+ * Fenced 块识别（Phase 5 / BLOCK-01..03）：lezer 把 ```lang 解析为 `FencedCode` >
+ * `CodeMark` + `CodeInfo`(=lang) + `CodeText`(=正文) + `CodeMark`（已 vitest 实测固化）。
+ * 块级层据 CodeInfo 首词判定渲染引擎：math→KaTeX（W1）、latex→MathJax（W2）、typst→typst.ts（W3）。
+ * 没有专门的 math/typst 节点——靠 info 串判定；正文取 CodeText 子节点（绝不裸正则切围栏）。
+ */
+export const FENCED_CODE_NODE = 'FencedCode';
+export const CODE_INFO_NODE = 'CodeInfo';
+export const CODE_TEXT_NODE = 'CodeText';
+/** 块级层就地渲染的 fenced info 串 → 引擎（随 wave 增补；W1 仅 math）。 */
+export const MATH_INFO = 'math';
+
 /** 由 ATXHeadingN 节点名取标题级别（1-6）；非标题节点返回 0。 */
 export function headingLevel(nodeName: string): number {
   const m = /^ATXHeading([1-6])$/.exec(nodeName);
