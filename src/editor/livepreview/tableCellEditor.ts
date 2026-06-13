@@ -213,9 +213,15 @@ function commitSub(main: EditorView, active: ActiveCellEditor): void {
   active.syncing = false;
 }
 
-/** 子编辑器扩展集：单行外观 + history 委派 + 子→主同步监听 + 导航/删除 keymap + 事件隔离。 */
+/** 子编辑器扩展集：软换行 + 单行源约束 + history 委派 + 子→主同步监听 + 导航/删除 keymap + 事件隔离。 */
 function subEditorExtensions(main: EditorView, get: () => ActiveCellEditor | null): Extension {
   return [
+    // 软换行（TABLE-ACTIVE-RENDER-DIAG 根因，与主编辑器 extensions.ts 同款）：CM6 的软换行是「扩展」不是
+    // 「CSS」——只在 theme 写 white-space:pre-wrap 不够，内核仍按单行测量、scroller 默认 overflow-x:auto
+    // 产生横滚。装 lineWrapping 才使内核逐视觉行测量、把行宽约束到 scroller 宽（受 td max-width 约束），
+    // 长内容在单元格内折行成多行、不再单行截断 + 横滚（与未激活 td white-space:normal 折行视觉等价）。
+    // 注：lineWrapping 软换行不插入 `\n`，与下方 singleLineFilter（拦真实换行入源）正交共存。
+    EditorView.lineWrapping,
     history(),
     singleLineFilter,
     drawSelection(),
@@ -352,8 +358,10 @@ function moveToCell(main: EditorView, active: ActiveCellEditor, dir: NavDir): vo
  * `.cm-scroller .cm-content`（0,3,0）**无条件压过**外层，把 padding 强制回 td 同款 7px 13px、清掉撑高链
  * （不设 height:100% / scroller min-height:100% —— 它们把 32px 反灌成行高）。激活前后单元格盒几何一致。
  *
- * 换行（与 td 一致）：子 content `white-space:pre-wrap` —— 行内编辑允许软换行（与未激活 td 的 normal 视觉
- * 等价），长文本不横向撑破单元格（TABLE-RENDER-DIAG 修复二）。
+ * 换行（与 td 一致，TABLE-ACTIVE-RENDER-DIAG 修复）：软换行靠 `EditorView.lineWrapping` 扩展（见
+ * subEditorExtensions），本 theme 仅配套——content `white-space:pre-wrap`（保行内空格 + 配合软换行）、
+ * scroller `overflow-x:hidden`（兜底去横滚，即便有不可折断长串也不出滚动条，与表格语义一致）、
+ * content/line `text-align:left`（钉死左对齐，杜绝继承漂移与单行溢出的伪居中错觉）。激活前后版式一致。
  */
 const subTheme = EditorView.theme({
   '&': { backgroundColor: 'transparent', width: '100%' },
@@ -361,17 +369,21 @@ const subTheme = EditorView.theme({
     fontFamily: 'inherit',
     fontSize: 'inherit',
     lineHeight: 'inherit',
+    // 去横向滚动条（修复三）：lineWrapping 后内容不横向溢出，此处 hidden 兜底 —— 未来出现不可折断长串
+    // （URL/连续 ASCII）也不引入横滚条，单元格内永不水平滚动。
+    overflowX: 'hidden',
   },
   // 高特异度（.cm-scroller .cm-content = 0,3,0）压过外层 base theme 的 .cm-content（0,2,0）2rem 纵 padding：
-  // 把内边距强制回 td 同款 7px 13px（激活前后盒几何一致，无跳变）；软换行与 td 视觉等价；不设 min-height
-  // （撑高链根因，CDP 实测移除后行高回落与未激活同量级）。
+  // 把内边距强制回 td 同款 7px 13px（激活前后盒几何一致，无跳变）；配合 lineWrapping 软换行与 td 视觉等价；
+  // 不设 min-height（撑高链根因，CDP 实测移除后行高回落与未激活同量级）；text-align 左对齐（修复四）。
   '.cm-scroller .cm-content': {
     padding: '7px 13px',
     caretColor: 'var(--text-normal)',
     minHeight: 'auto',
     whiteSpace: 'pre-wrap',
     overflowWrap: 'break-word',
+    textAlign: 'left',
   },
-  '.cm-line': { padding: '0' },
+  '.cm-line': { padding: '0', textAlign: 'left' },
   '&.cm-focused': { outline: 'none' },
 });
