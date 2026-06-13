@@ -6,6 +6,8 @@ import EditorContextMenu, { type MenuPosition } from './EditorContextMenu';
 import ExternalChangeBar from './ExternalChangeBar';
 import Toolbar from '../../editor/richtext/Toolbar';
 import { isComposing } from '../../editor/composition';
+import { tableContextFromTarget } from '../../editor/livepreview/tableCommands';
+import type { TableMenuContext } from './editorMenuConfig';
 import { newDraftDocument } from '../../editor/draftFlow';
 import { useCodeMirror } from '../../editor/useCodeMirror';
 import { requestOpenFolder } from '../../editor/vaultFlow';
@@ -39,17 +41,21 @@ export default function EditorArea() {
   const activePath = useEditorStore((s) => s.activePath);
   const hasTabs = useEditorStore((s) => s.tabs.length > 0);
   const [menuPos, setMenuPos] = useState<MenuPosition | null>(null);
+  const [tableCtx, setTableCtx] = useState<TableMenuContext | null>(null);
 
   /**
    * 编辑器右键：组合期（isComposing）一律不开菜单——铁律「组合期不 dispatch 破坏性操作」，
    * 菜单项都会 dispatch 文本变换/剪贴板，组合中开菜单可能诱发组合期 dispatch，故组合中放行
    * 浏览器默认（不 preventDefault、不 setMenuPos）。非组合期 + 有活动文件才弹自绘菜单。
+   *
+   * 表格上下文（§5）：从 event.target 上溯解析命中的表格 + 单元格（命中则尾部追加表格操作子菜单）。
    */
   const onContextMenu = (e: MouseEvent<HTMLDivElement>): void => {
     if (!activePath) return;
     const view = getView();
     if (view && isComposing(view)) return;
     e.preventDefault();
+    setTableCtx(tableContextFromTarget(e.target));
     setMenuPos({ x: e.clientX, y: e.clientY });
   };
 
@@ -72,7 +78,11 @@ export default function EditorArea() {
           onContextMenu={onContextMenu}
         />
         {menuPos ? (
-          <EditorContextMenu position={menuPos} onClose={() => setMenuPos(null)} />
+          <EditorContextMenu
+            position={menuPos}
+            tableContext={tableCtx}
+            onClose={() => setMenuPos(null)}
+          />
         ) : null}
         {/* 空态只看 activePath：有活动文档（含无 vault 的草稿）绝不覆盖编辑器。 */}
         {!activePath ? (

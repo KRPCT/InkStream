@@ -12,7 +12,8 @@ import { tableGesture } from './tableGesture';
  *
  * CM6 自动合并多个 EditorView.decorations facet 输入（行内 ViewPlugin + 后续块级 StateField 共存，
  * 无需手动 merge，Pattern 3）。组合根设计为可扩展（前向兼容扩展点 2）：
- *   - Plan 05（已落地）：块级 StateField（GFM 表格整块还原）+ atomicRanges 经 blockExtensions 追加；
+ *   - Plan 05（已落地，表格 Wave 1/2 反转后）：块级 StateField（GFM 表格**恒渲染** TableWidget，
+ *     就地编辑发生在 widget 内 contenteditable 单元格，非整块还原源码）+ atomicRanges 经 blockExtensions 追加；
  *   - Plan 06：删除线 / 行内代码 / 列表 / 引用 / 链接 / `<u>` / 水平线（inlinePlugin 扩 nodeNames）
  *     + 链接 Ctrl/Cmd+点击手势 linkGesture（D-10，经 Plan 02 openExternal 窄权限通道）。
  */
@@ -21,9 +22,14 @@ import { tableGesture } from './tableGesture';
  * 装饰扩展集组合根：返回 [inlinePlugin（行内层）, blockExtensions（块级层）, linkGesture, tableGesture]。
  *
  * 行内 ViewPlugin 与块级 StateField 共存（CM6 自动合并 decorations facet，Pattern 3）；
- * blockExtensions = [blockField（块级 replace provide）, tableAtomicRanges（光标跳过）, tableTheme]。
+ * blockExtensions = [tableEditState（就地编辑态）, blockField（块级 replace provide）,
+ * tableAtomicRanges（光标跳过）, tableTheme]。
  * linkGesture 是 mousedown domEventHandler：Ctrl/Cmd+点击外链经 openExternal 跳转 / 普通点击置光标（D-10）。
- * tableGesture 紧随其后：截获落在表格 widget 上的点击，程序化派发光标进块 → 整块还原源码可编辑（UAT #1）。
+ * tableGesture 紧随其后（Typora 式就地编辑，反转旧「点表格→整块还原源码」）：截获落在表格单元格上的
+ *   mousedown，DOM 上溯取 cell → dispatch setTableEdit 进就地编辑态（不 preventDefault，让浏览器原生
+ *   聚焦 contenteditable td，IME 武装最稳）。表格**恒保持 widget 渲染态**，编辑发生在 widget 内的
+ *   contenteditable 单元格，装饰不撤；Wave 2 起经悬浮工具条 / 右键菜单做行列操作 + 列对齐（皆 dispatch 改
+ *   doc 表格源，保合法 GFM）。
  *   顺序关键——linkGesture 在前：Ctrl/Cmd+外链点击它返回 true 短路，tableGesture 不劫持导航；
  *   普通点击命中表格时 linkGesture 无链接返回 false，轮到 tableGesture（CM6 按注册序短路 domEventHandlers）。
  * IME（重构设计 §3.4）：组合冻结门已上移到 baseExtensions 顶层（compositionGate，不在本组合根）——

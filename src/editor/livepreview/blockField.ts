@@ -4,6 +4,7 @@ import { Decoration, type DecorationSet, EditorView } from '@codemirror/view';
 import { BLOCK_REPLACE } from './nodeNames';
 import { TableWidget } from './widgets/TableWidget';
 import { tableModelFromNode } from './tableModel';
+import { tableStructFromNode } from './tableOps';
 import { clearTableEdit, setTableEdit, tableEditState } from './tableEditState';
 import { isComposingTr, refreshLivePreview } from '../composition';
 
@@ -68,13 +69,16 @@ function buildBlockState(state: EditorState): BlockState {
       const model = tableModelFromNode(node.node);
       const cells = model ? model.cells : [];
       const columns = model ? model.columns : 0;
+      // 列对齐由对齐分隔行解析（tableStructFromNode 共用，喂 td/th 的 text-align）。
+      const struct = tableStructFromNode(node.node, (from, to) => state.doc.sliceString(from, to));
+      const aligns = struct ? struct.aligns : [];
       const text = state.doc.sliceString(node.from, node.to);
       const activeCellIndex = edit && edit.tableFrom === node.from ? edit.cellIndex : null;
       builder.add(
         node.from,
         node.to,
         Decoration.replace({
-          widget: new TableWidget(text, node.from, cells, activeCellIndex, columns),
+          widget: new TableWidget(text, node.from, cells, activeCellIndex, columns, aligns),
           block: true,
         }),
       );
@@ -184,6 +188,12 @@ export const tableAtomicRanges = EditorView.atomicRanges.of(
  * 内边距 sm(8px) 上下 / sm2(12px) 左右；**永不硬编码色值**（highlightTheme.ts 纪律）。
  */
 const tableTheme = EditorView.theme({
+  // wrap：承绝对定位的悬浮工具条（§5 入口 a）；relative + inline-block 贴合表格尺寸。
+  '.cm-ink-table-wrap': {
+    position: 'relative',
+    display: 'inline-block',
+    maxWidth: '100%',
+  },
   '.cm-ink-table': {
     borderCollapse: 'collapse',
     border: '1px solid var(--cm-table-border)',
@@ -201,6 +211,52 @@ const tableTheme = EditorView.theme({
   '.cm-ink-cell-editing': {
     outline: 'none',
     boxShadow: 'inset 0 0 0 2px var(--cm-checkbox-checked)',
+  },
+  // 悬浮工具条（§5）：默认隐藏，hover 表格 / 编辑中显现；浮于表格右上方，弹层底色 + 阴影。
+  '.cm-ink-table-toolbar': {
+    position: 'absolute',
+    top: '-34px',
+    right: '0',
+    display: 'flex',
+    alignItems: 'center',
+    gap: '1px',
+    padding: '3px',
+    borderRadius: '6px',
+    border: '1px solid var(--background-modifier-border)',
+    backgroundColor: 'var(--background-secondary)',
+    boxShadow: 'var(--shadow-popup)',
+    opacity: '0',
+    visibility: 'hidden',
+    transition: 'opacity var(--duration-fast, 120ms) ease',
+    zIndex: '5',
+  },
+  '.cm-ink-table-wrap:hover .cm-ink-table-toolbar, .cm-ink-table-wrap:focus-within .cm-ink-table-toolbar':
+    {
+      opacity: '1',
+      visibility: 'visible',
+    },
+  '.cm-ink-table-toolbar-btn': {
+    display: 'inline-flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    width: '24px',
+    height: '24px',
+    padding: '0',
+    border: 'none',
+    borderRadius: '4px',
+    background: 'transparent',
+    color: 'var(--text-muted)',
+    cursor: 'pointer',
+  },
+  '.cm-ink-table-toolbar-btn:hover': {
+    backgroundColor: 'var(--background-modifier-hover)',
+    color: 'var(--text-normal)',
+  },
+  '.cm-ink-table-toolbar-sep': {
+    width: '1px',
+    height: '16px',
+    margin: '0 2px',
+    backgroundColor: 'var(--background-modifier-border)',
   },
 });
 

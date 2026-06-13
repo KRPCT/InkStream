@@ -1,5 +1,7 @@
 import { execute } from '../../commands/registry';
 import type { Command } from '../../types/commands';
+import { applyTableOp, type TableOp } from '../../editor/livepreview/tableCommands';
+import { getView } from '../../editor/viewHandle';
 import Kbd from '../common/Kbd';
 import type { MenuEntry } from '../common/Menu';
 
@@ -80,4 +82,59 @@ export function buildEditorMenu(
     sep('ctx-sep-2'),
     e({ commandId: 'edit.find', label: '查找' }),
   ];
+}
+
+/** 右键命中的表格上下文（表格身份键 + 单元格下标）；非表格内右键则 null。 */
+export interface TableMenuContext {
+  readonly tableFrom: number;
+  readonly cellIndex: number;
+}
+
+/** 表格 op 菜单项规格（标签 + op）。 */
+interface TableItem {
+  readonly id: string;
+  readonly label: string;
+  readonly op: TableOp;
+}
+
+/** 表格操作菜单项（右键命中表格时追加；§5 同一命令层 applyTableOp，与工具条同源）。 */
+const TABLE_ITEMS: readonly (TableItem | 'sep')[] = [
+  { id: 'tbl-row-above', label: '在上方插入行', op: { kind: 'insertRowAbove' } },
+  { id: 'tbl-row-below', label: '在下方插入行', op: { kind: 'insertRowBelow' } },
+  { id: 'tbl-row-del', label: '删除当前行', op: { kind: 'deleteRow' } },
+  'sep',
+  { id: 'tbl-col-left', label: '在左侧插入列', op: { kind: 'insertColLeft' } },
+  { id: 'tbl-col-right', label: '在右侧插入列', op: { kind: 'insertColRight' } },
+  { id: 'tbl-col-del', label: '删除当前列', op: { kind: 'deleteCol' } },
+  'sep',
+  { id: 'tbl-align-left', label: '左对齐', op: { kind: 'align', align: 'left' } },
+  { id: 'tbl-align-center', label: '居中对齐', op: { kind: 'align', align: 'center' } },
+  { id: 'tbl-align-right', label: '右对齐', op: { kind: 'align', align: 'right' } },
+];
+
+/**
+ * 表格操作子菜单（右键菜单追加）：仅当右键命中表格内（ctx 非空）才生成。
+ *
+ * 每项经 applyTableOp 走与工具条同一命令层（双入口同源，§5）；目标 = 右键命中的 tableFrom + cellIndex。
+ * 返回 [分隔, 「表格」子菜单] 追加到主菜单尾；ctx 为 null 返回空数组（普通右键不显表格项）。
+ */
+export function buildTableMenuEntries(
+  ctx: TableMenuContext | null,
+  onRun: () => void,
+): MenuEntry[] {
+  if (!ctx) return [];
+  const items: MenuEntry[] = TABLE_ITEMS.map((it, i) =>
+    it === 'sep'
+      ? { id: `tbl-sep-${i}`, label: '', separator: true }
+      : {
+          id: it.id,
+          label: it.label,
+          onSelect: () => {
+            const view = getView();
+            if (view) applyTableOp(view, ctx.tableFrom, ctx.cellIndex, it.op);
+            onRun();
+          },
+        },
+  );
+  return [sep('ctx-sep-table'), { id: 'ctx-table', label: '表格', submenu: items }];
 }

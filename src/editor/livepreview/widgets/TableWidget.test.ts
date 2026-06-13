@@ -35,6 +35,7 @@ afterEach(() => {
 });
 
 const TWO_BY_TWO_DOC = ['| a | b |', '| - | - |', '| 1 | 2 |', '| 3 | 4 |'].join('\n');
+const THREE_COL_DOC = ['| a | b | c |', '| --- | --- | --- |', '| 1 | 2 | 3 |'].join('\n');
 
 /** 用真实 view（markdown + blockField + tableEditState）构建一个 widget 对应 doc 的表格。 */
 function tableView(doc: string): EditorView {
@@ -49,14 +50,17 @@ function widgetFor(v: EditorView, active: number | null): TableWidget {
 }
 
 describe('TableWidget 结构 + XSS 防护（T-03-12）', () => {
-  it('2 列表格构建出正确 th/td 数 + 表头进 thead/数据进 tbody', () => {
+  it('2 列表格：wrap 容器内含 table，正确 th/td 数 + 表头进 thead/数据进 tbody', () => {
     view = tableView(TWO_BY_TWO_DOC);
-    const table = widgetFor(view, null).toDOM(view);
-    expect(table.tagName.toLowerCase()).toBe('table');
-    expect(table.querySelectorAll('th').length).toBe(2);
-    expect(table.querySelectorAll('td').length).toBe(4);
-    expect(table.querySelector('thead th')).not.toBeNull();
-    expect(table.querySelectorAll('tbody tr').length).toBe(2);
+    // Wave 2：toDOM 返回 wrap 容器（承悬浮工具条），内含真 <table>。
+    const wrap = widgetFor(view, null).toDOM(view);
+    expect(wrap.tagName.toLowerCase()).toBe('div');
+    expect(wrap.classList.contains('cm-ink-table-wrap')).toBe(true);
+    expect(wrap.querySelector('table.cm-ink-table')).not.toBeNull();
+    expect(wrap.querySelectorAll('th').length).toBe(2);
+    expect(wrap.querySelectorAll('td').length).toBe(4);
+    expect(wrap.querySelector('thead th')).not.toBeNull();
+    expect(wrap.querySelectorAll('tbody tr').length).toBe(2);
   });
 
   it('单元格含 <img onerror> 时不生成 img、内容作纯文本', () => {
@@ -67,6 +71,34 @@ describe('TableWidget 结构 + XSS 防护（T-03-12）', () => {
     const cell = table.querySelector('tbody td')!;
     expect(cell.textContent).toContain('<img');
     expect(cell.textContent).toContain('onerror');
+  });
+});
+
+describe('TableWidget 列对齐渲染（td text-align 跟随 GFM 对齐，Wave 2）', () => {
+  it('aligns=[left,center,right] → 各列 td text-align 跟随（中/右设值，左/none 不设）', () => {
+    view = tableView(THREE_COL_DOC);
+    const model = tableModelAt(view.state, 0)!;
+    const text = view.state.doc.sliceString(model.tableFrom, model.tableTo);
+    const widget = new TableWidget(text, model.tableFrom, model.cells, null, model.columns, [
+      'left',
+      'center',
+      'right',
+    ]);
+    const wrap = widget.toDOM(view);
+    const headerCells = wrap.querySelectorAll<HTMLTableCellElement>('thead th');
+    expect(headerCells[1].style.textAlign).toBe('center');
+    expect(headerCells[2].style.textAlign).toBe('right');
+    // 数据行同列同对齐。
+    const bodyCells = wrap.querySelectorAll<HTMLTableCellElement>('tbody td');
+    expect(bodyCells[2].style.textAlign).toBe('right');
+  });
+
+  it('aligns 默认空 → 无 td 设 text-align（继承默认左对齐）', () => {
+    view = tableView(TWO_BY_TWO_DOC);
+    const wrap = widgetFor(view, null).toDOM(view);
+    wrap.querySelectorAll<HTMLTableCellElement>('th, td').forEach((c) => {
+      expect(c.style.textAlign).toBe('');
+    });
   });
 });
 
@@ -102,6 +134,41 @@ describe('TableWidget 单元格武装（contenteditable）', () => {
     const table = widgetFor(view, null).toDOM(view);
     const editable = table.querySelectorAll('[contenteditable="true"]');
     expect(editable.length).toBe(0);
+  });
+});
+
+describe('TableWidget updateDOM（原地复用 vs 重建，Wave 2 对齐回归）', () => {
+  it('仅 activeCellIndex 变（列结构 + 对齐同）→ updateDOM 原地复用（保 caret/组合，Wave 1）', () => {
+    view = tableView(THREE_COL_DOC);
+    const model = tableModelAt(view.state, 0)!;
+    const text = view.state.doc.sliceString(model.tableFrom, model.tableTo);
+    const a = new TableWidget(text, 0, model.cells, null, model.columns, ['none', 'none', 'none']);
+    const dom = a.toDOM(view);
+    // 同结构同对齐、仅编辑态变：原地复用（返回 true）。
+    const b = new TableWidget(text, 0, model.cells, 1, model.columns, ['none', 'none', 'none']);
+    expect(b.updateDOM(dom, view)).toBe(true);
+  });
+
+  it('列对齐变（cell 数同）→ updateDOM 返回 false 强制重建（修 td text-align 陈旧 bug）', () => {
+    view = tableView(THREE_COL_DOC);
+    const model = tableModelAt(view.state, 0)!;
+    const text = view.state.doc.sliceString(model.tableFrom, model.tableTo);
+    const a = new TableWidget(text, 0, model.cells, null, model.columns, ['none', 'none', 'none']);
+    const dom = a.toDOM(view);
+    // 仅第 3 列改右对齐（cell 数不变）：必须重建，否则 td text-align 不更新（CDP 实测 root cause）。
+    const b = new TableWidget(text, 0, model.cells, null, model.columns, ['none', 'none', 'right']);
+    expect(b.updateDOM(dom, view)).toBe(false);
+  });
+
+  it('列数变（插删列）→ updateDOM 返回 false 强制重建', () => {
+    view = tableView(THREE_COL_DOC);
+    const model = tableModelAt(view.state, 0)!;
+    const text = view.state.doc.sliceString(model.tableFrom, model.tableTo);
+    const a = new TableWidget(text, 0, model.cells, null, model.columns, []);
+    const dom = a.toDOM(view);
+    // cell 数减少（删列）：签名变 → 重建。
+    const b = new TableWidget(text, 0, model.cells.slice(0, model.cells.length - 1), null, 2, []);
+    expect(b.updateDOM(dom, view)).toBe(false);
   });
 });
 

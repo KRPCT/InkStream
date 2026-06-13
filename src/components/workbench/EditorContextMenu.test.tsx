@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import * as registry from '../../commands/registry';
 import type { Command } from '../../types/commands';
 import EditorContextMenu from './EditorContextMenu';
-import { buildEditorMenu } from './editorMenuConfig';
+import { buildEditorMenu, buildTableMenuEntries } from './editorMenuConfig';
 
 /** 最小命令表（仅覆盖右键菜单引用的 id；title/shortcut 取自 registry）。 */
 function makeCommands(ids: string[]): Map<string, Command> {
@@ -73,6 +73,22 @@ describe('editorMenuConfig.buildEditorMenu', () => {
     expect(exec).toHaveBeenCalledWith('edit.copy');
     expect(onRun).toHaveBeenCalledTimes(1);
     exec.mockRestore();
+  });
+});
+
+describe('editorMenuConfig.buildTableMenuEntries（表格右键，Wave 2 §5）', () => {
+  it('ctx 为 null（非表格右键）→ 空数组（不显表格项）', () => {
+    expect(buildTableMenuEntries(null, vi.fn())).toEqual([]);
+  });
+
+  it('ctx 非空 → 追加分隔 + 「表格」子菜单（行列操作 + 对齐）', () => {
+    const entries = buildTableMenuEntries({ tableFrom: 0, cellIndex: 2 }, vi.fn());
+    const table = entries.find((e) => e.id === 'ctx-table');
+    expect(table).toBeDefined();
+    const subIds = (table!.submenu ?? []).filter((s) => !s.separator).map((s) => s.label);
+    expect(subIds).toContain('在上方插入行');
+    expect(subIds).toContain('删除当前列');
+    expect(subIds).toContain('右对齐');
   });
 });
 

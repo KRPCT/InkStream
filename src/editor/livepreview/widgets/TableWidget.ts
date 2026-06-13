@@ -10,7 +10,9 @@ import {
   tableModelAt,
   unescapePipes,
 } from '../tableModel';
+import type { ColumnAlign } from '../tableOps';
 import { clearTableEdit, setTableEdit, tableEditState } from '../tableEditState';
+import { buildTableToolbar } from './tableToolbar';
 
 /**
  * GFM 表格 widget（块级层 / Typora 式就地编辑 Wave 1 / Security V5 XSS 防护）。
@@ -46,20 +48,24 @@ export class TableWidget extends WidgetType {
     readonly activeCellIndex: number | null,
     /** 列数（据表头行列数），导航与 DOM 行切分共用。 */
     readonly columns: number,
+    /** 各列 GFM 对齐（td/th 的 text-align 跟随；长度 = columns，缺省全 'none'）。 */
+    readonly aligns: readonly ColumnAlign[] = [],
   ) {
     super();
   }
 
   /**
-   * 相等判据：sourceText + tableFrom + activeCellIndex 同则视为同一 widget。
+   * 相等判据：sourceText + tableFrom + activeCellIndex + aligns 同则视为同一 widget。
    * cellRanges 由 sourceText + tableFrom 唯一决定（同一语法树切片），故不必逐项比对。
    * activeCellIndex 入判据使「编辑态切换」触发 widget 更新（经 updateDOM 原地处理，不重建）。
+   * aligns 入判据使「仅改对齐」（对齐行变 → sourceText 必变，实际已覆盖；显式入判保稳健）触发重渲染。
    */
   eq(other: TableWidget): boolean {
     return (
       other.sourceText === this.sourceText &&
       other.tableFrom === this.tableFrom &&
-      other.activeCellIndex === this.activeCellIndex
+      other.activeCellIndex === this.activeCellIndex &&
+      sameAligns(other.aligns, this.aligns)
     );
   }
 
@@ -71,32 +77,58 @@ export class TableWidget extends WidgetType {
     return !PASSTHROUGH_EVENTS.has(event.type);
   }
 
-  /** 构建真 `<table>`（createElement + textContent，不走 inner-HTML 赋值），据编辑态武装单元格。 */
+  /**
+   * 构建 widget DOM（createElement + textContent，不走 inner-HTML 赋值）：外层 wrap 容器（position
+   * relative，承绝对定位的悬浮工具条）内含真 `<table>` + 悬浮工具条（§5 入口 a）。据编辑态武装单元格、
+   * 据 aligns 设各列 text-align。
+   */
   toDOM(view: EditorView): HTMLElement {
+    const wrap = document.createElement('div');
+    wrap.className = 'cm-ink-table-wrap';
+    wrap.dataset.tableFrom = String(this.tableFrom);
+    // 渲染体签名（sourceText + aligns）：updateDOM 据此判定「仅编辑态变（原地武装）」vs「体变（须重建）」。
+    wrap.dataset.renderSig = this.renderSig();
     const table = document.createElement('table');
     table.className = 'cm-ink-table';
     table.dataset.tableFrom = String(this.tableFrom);
     buildTableBody(table, this);
-    this.armCells(table, view);
-    return table;
+    wrap.appendChild(table);
+    // 悬浮工具条：操作目标 cellIndex = 当前就地编辑态（无则首格 0）。hover 显隐由 CSS 控制。
+    buildTableToolbar(wrap, this.tableFrom, view, () => activeCellIndexFor(view, this.tableFrom));
+    this.armCells(wrap, view);
+    return wrap;
   }
 
   /**
-   * 原地更新（§7 R2）：仅当 sourceText 结构不变（同一 widget 类、cellRanges 等量）才原地改编辑态——
-   * 重武装 contenteditable 标志/焦点而不重建整表 DOM（保 caret/组合存活）。sourceText 变则返回 false
-   * 让 CM6 重建（doc 改写后表格结构可能变，必须重渲染）。
+   * 原地更新签名：列结构（cell 数 + 列数）+ 各列对齐（aligns）。
+   *
+   * 故意**不含 cell 文本**：就地编辑（英文连打 / 中文上屏）每次 commit 改 sourceText 但不改此签名——
+   * 此时走原地武装路径（保活动 contenteditable 的 caret/组合，不重建整表，Wave 1 不退化）。而列对齐 /
+   * 插删行列改变 aligns / cell 数 / 列数 → 签名变 → 重建（td text-align 与新结构正确反映，CDP 实测修复）。
+   */
+  private renderSig(): string {
+    return `${this.cellRanges.length}/${this.columns}/${this.aligns.join(',')}`;
+  }
+
+  /**
+   * 原地更新（§7 R2）：仅当**列结构 + 对齐不变**（renderSig 相同——典型为「仅 cell 文本 / 编辑态变」）才
+   * 原地改编辑态——重武装 contenteditable 标志/焦点而不重建整表 DOM（保 caret/组合存活，Wave 1 关键）。
+   * 列对齐变 / 插删行列（aligns 或 cell 数 / 列数变）则返回 false 让 CM6 重建——否则旧 DOM 的 text-align /
+   * 行列结构会陈旧（CDP 实测：仅改对齐时 cell 数不变，只比 tableFrom + cell 数会误判可原地复用致 td
+   * text-align 不更新）。
    */
   updateDOM(dom: HTMLElement, view: EditorView): boolean {
-    if (!(dom instanceof HTMLTableElement)) return false;
+    if (!(dom instanceof HTMLElement) || !dom.classList.contains('cm-ink-table-wrap')) return false;
     if (dom.dataset.tableFrom !== String(this.tableFrom)) return false;
-    if (dom.querySelectorAll('th, td').length !== this.cellRanges.length) return false;
+    // 列结构 / 对齐签名不同（列对齐 / 行列结构变）：必须重建，原地复用会留陈旧 DOM。
+    if (dom.dataset.renderSig !== this.renderSig()) return false;
     this.armCells(dom, view);
     return true;
   }
 
   /** 按 activeCellIndex 给每个 td/th 设/撤 contenteditable，并聚焦活动单元格。 */
-  private armCells(table: HTMLElement, view: EditorView): void {
-    const cells = table.querySelectorAll<HTMLTableCellElement>('th, td');
+  private armCells(root: HTMLElement, view: EditorView): void {
+    const cells = root.querySelectorAll<HTMLTableCellElement>('th, td');
     cells.forEach((cell, index) => {
       const editing = index === this.activeCellIndex;
       if (editing) {
@@ -109,6 +141,31 @@ export class TableWidget extends WidgetType {
         cell.classList.remove('cm-ink-cell-editing');
       }
     });
+  }
+}
+
+/** 两 aligns 数组逐项相等（eq 判据用，避免 JSON.stringify 开销）。 */
+function sameAligns(a: readonly ColumnAlign[], b: readonly ColumnAlign[]): boolean {
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return false;
+  return true;
+}
+
+/** 取 view 当前就地编辑态在 tableFrom 表内的 cellIndex（无/异表则回落首格 0，供工具条操作有据）。 */
+function activeCellIndexFor(view: EditorView, tableFrom: number): number {
+  const edit = view.state.field(tableEditState, false) ?? null;
+  return edit && edit.tableFrom === tableFrom ? edit.cellIndex : 0;
+}
+
+/** ColumnAlign → CSS text-align（'none' = 不设，继承默认左对齐）。 */
+function cssTextAlign(align: ColumnAlign | undefined): string {
+  switch (align) {
+    case 'center':
+      return 'center';
+    case 'right':
+      return 'right';
+    default:
+      return '';
   }
 }
 
@@ -134,10 +191,11 @@ function buildTableBody(table: HTMLElement, widget: TableWidget): void {
   const rows = widget.sourceText.split('\n').filter((line) => line.trim().length > 0);
   const [headerLine, , ...bodyLines] = rows;
   let cellIndex = 0;
+  const aligns = widget.aligns;
 
   if (headerLine !== undefined) {
     const thead = document.createElement('thead');
-    const { tr, next } = buildRow(splitCells(headerLine), 'th', cellIndex, widget.cellRanges);
+    const { tr, next } = buildRow(splitCells(headerLine), 'th', cellIndex, widget.cellRanges, aligns);
     cellIndex = next;
     thead.appendChild(tr);
     table.appendChild(thead);
@@ -146,7 +204,7 @@ function buildTableBody(table: HTMLElement, widget: TableWidget): void {
   if (bodyLines.length > 0) {
     const tbody = document.createElement('tbody');
     for (const line of bodyLines) {
-      const { tr, next } = buildRow(splitCells(line), 'td', cellIndex, widget.cellRanges);
+      const { tr, next } = buildRow(splitCells(line), 'td', cellIndex, widget.cellRanges, aligns);
       cellIndex = next;
       tbody.appendChild(tr);
     }
@@ -197,15 +255,20 @@ function splitCells(line: string): string[] {
   return cells;
 }
 
-/** 构建一行 `<tr>`：每 cell createElement + textContent（反转义显示），打 data 索引/区间属性。 */
+/**
+ * 构建一行 `<tr>`：每 cell createElement + textContent（反转义显示），打 data 索引/区间属性，
+ * 并据该列 GFM 对齐（aligns[col]）设 text-align（真相源是对齐分隔行，此处仅渲染跟随，不引 HTML style 入 doc）。
+ */
 function buildRow(
   cellSources: string[],
   tag: 'th' | 'td',
   startIndex: number,
   ranges: readonly CellRange[],
+  aligns: readonly ColumnAlign[],
 ): { tr: HTMLTableRowElement; next: number } {
   const tr = document.createElement('tr');
   let idx = startIndex;
+  let col = 0;
   for (const source of cellSources) {
     const cell = document.createElement(tag);
     cell.textContent = unescapePipes(source);
@@ -215,8 +278,11 @@ function buildRow(
       cell.dataset.cellFrom = String(range.from);
       cell.dataset.cellTo = String(range.to);
     }
+    const ta = cssTextAlign(aligns[col]);
+    if (ta) cell.style.textAlign = ta;
     tr.appendChild(cell);
     idx += 1;
+    col += 1;
   }
   return { tr, next: idx };
 }
@@ -233,13 +299,14 @@ function buildRow(
  */
 function commitCell(cell: HTMLTableCellElement, view: EditorView): void {
   if (isComposing(view)) {
-    const index = cell.dataset.cellIndex ?? '0';
-    queueAfterComposition(view, `table-cell-commit-${index}`, () => commitCell(cell, view));
+    queueAfterComposition(view, `table-cell-commit-${cellIndexOf(cell)}`, () =>
+      commitCell(cell, view),
+    );
     return;
   }
   const tableFrom = Number(cell.closest<HTMLElement>('table')?.dataset.tableFrom);
-  const cellIndex = Number(cell.dataset.cellIndex);
-  if (!Number.isFinite(tableFrom) || !Number.isFinite(cellIndex)) return;
+  const cellIndex = cellIndexOf(cell);
+  if (!Number.isFinite(tableFrom)) return;
   // 从 live 语法树重解析该表当前 cell 区间（防陈旧 data 属性写错位 / 双提交叠加）。
   const model = tableModelAt(view.state, tableFrom);
   const range = model?.cells[cellIndex];
