@@ -2,6 +2,7 @@ import { MODE_PRESETS, TAB_ICONS, TAB_LABELS } from '../../modes/presets';
 import { useWorkbenchStore } from '../../stores/useWorkbenchStore';
 import type { TabId } from '../../types/workbench';
 import BacklinksPanel from './BacklinksPanel';
+import OutlinePanel from './OutlinePanel';
 import EmptyState from '../common/EmptyState';
 import PanelTabs from './PanelTabs';
 
@@ -46,6 +47,8 @@ export default function RightPanel() {
           >
             {id === 'backlinks' ? (
               <BacklinksPanel />
+            ) : id === 'outline' ? (
+              <OutlinePanel />
             ) : (
               <EmptyState icon={TAB_ICONS[id]} heading={TAB_EMPTY[id].heading} body={TAB_EMPTY[id].body} />
             )}

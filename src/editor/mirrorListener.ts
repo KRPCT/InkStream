@@ -4,6 +4,7 @@ import { useEditorStore } from '../stores/useEditorStore';
 import { isComposing } from './composition';
 import { syncRichtext } from './editorState';
 import { reconfigureLanguageFromDoc } from './languages';
+import { syncOutline } from './outline';
 
 /**
  * store 单向镜像 listener（P0 修复，PROD-RELAY-DESIGN §0）。
@@ -35,6 +36,8 @@ export const mirrorListener = EditorView.updateListener.of((u) => {
     reconfigureLanguageFromDoc(u.view, activePath);
     // richtext 工具条显隐镜像（D-14）：单向自 CM 写入 store，与 dirty/cursor 同纪律。
     syncRichtext(u.view);
+    // 大纲镜像（RightPanel 大纲 tab）：标题随编辑增删，同纪律单向写入 store（变化才更新）。
+    syncOutline(u.view);
   }
   if (u.selectionSet || u.docChanged) {
     useEditorStore.getState().setCursor(u.state.selection.main.head);
