@@ -1,5 +1,7 @@
 import { zoteroCayw } from '../ipc/zotero';
+import { useEditorStore } from '../stores/useEditorStore';
 import { showToast } from '../stores/useToastStore';
+import { languageFromDoc } from './languages';
 import { getView } from './viewHandle';
 
 /**
@@ -8,6 +10,22 @@ import { getView } from './viewHandle';
 
 function errText(e: unknown): string {
   return typeof e === 'string' ? e : e instanceof Error ? e.message : String(e);
+}
+
+/** 从 pandoc CAYW 结果（`[@k1; @k2]`）抽 citekey。 */
+const CITEKEY_RE = /@([\p{L}\p{N}_][\p{L}\p{N}_:.-]*)/gu;
+
+/**
+ * 按文档语言重排引用（ZOT-05 引用↔Typst/LaTeX 联动）：
+ * markdown/richtext/其它 → pandoc 原样 `[@k]`；typst → `#cite(<k>)`；latex → `\cite{k1,k2}`。
+ */
+export function formatCitationFor(cayw: string, lang: string): string {
+  if (lang !== 'typst' && lang !== 'latex') return cayw;
+  const keys = [...cayw.matchAll(CITEKEY_RE)].map((m) => m[1]);
+  if (keys.length === 0) return cayw;
+  return lang === 'typst'
+    ? keys.map((k) => `#cite(<${k}>)`).join(' ')
+    : `\\cite{${keys.join(',')}}`;
 }
 
 /**
@@ -39,10 +57,13 @@ export async function insertCitation(): Promise<void> {
     citing = false;
   }
   if (!cite.trim()) return; // 用户取消
+  // ZOT-05：按当前文档语言重排（typst #cite(<k>) / latex \cite{k} / 其余 pandoc [@k]）。
+  const path = useEditorStore.getState().activePath ?? '';
+  const text = formatCitationFor(cite, languageFromDoc(view.state.doc.toString(), path));
   const { from, to } = view.state.selection.main;
   view.dispatch({
-    changes: { from, to, insert: cite },
-    selection: { anchor: from + cite.length },
+    changes: { from, to, insert: text },
+    selection: { anchor: from + text.length },
     scrollIntoView: true,
   });
   view.focus();
