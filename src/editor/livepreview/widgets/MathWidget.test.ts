@@ -32,27 +32,27 @@ afterEach(() => {
 
 describe('MathWidget', () => {
   it('eq 按 latex 源比较', () => {
-    expect(new MathWidget('a^2').eq(new MathWidget('a^2'))).toBe(true);
-    expect(new MathWidget('a^2').eq(new MathWidget('b^2'))).toBe(false);
+    expect(new MathWidget('a^2', 0, 10).eq(new MathWidget('a^2', 0, 10))).toBe(true);
+    expect(new MathWidget('a^2', 0, 10).eq(new MathWidget('b^2', 0, 10))).toBe(false);
   });
 
   it('空块 → 占位（不调 KaTeX）', () => {
     ready = true;
-    const dom = new MathWidget('   ').toDOM(fakeView);
+    const dom = new MathWidget('   ', 0, 10).toDOM(fakeView);
     expect(dom.classList.contains('cm-ink-math-empty')).toBe(true);
     expect(dom.textContent).toContain('空白公式');
   });
 
   it('就绪 → KaTeX 渲染进 mount', () => {
     ready = true;
-    const dom = new MathWidget('E=mc^2').toDOM(fakeView);
+    const dom = new MathWidget('E=mc^2', 0, 10).toDOM(fakeView);
     expect(dom.querySelector('.cm-ink-math-render')?.textContent).toBe('K:E=mc^2');
     expect(ensureKatex).not.toHaveBeenCalled();
   });
 
   it('未就绪 → 加载中占位显源码 + 触发懒加载', () => {
     ready = false;
-    const dom = new MathWidget('x^2').toDOM(fakeView);
+    const dom = new MathWidget('x^2', 0, 10).toDOM(fakeView);
     expect(dom.classList.contains('cm-ink-math-loading')).toBe(true);
     expect(dom.querySelector('.cm-ink-math-render')?.textContent).toBe('x^2');
     expect(ensureKatex).toHaveBeenCalledOnce();

@@ -16,6 +16,9 @@ import { TableWidget } from './widgets/TableWidget';
 import { MathWidget } from './widgets/MathWidget';
 import { LatexWidget } from './widgets/LatexWidget';
 import { TypstWidget } from './widgets/TypstWidget';
+import { FormulaEditWidget } from './widgets/FormulaEditWidget';
+import type { FormulaEngine } from './formulaPreview';
+import { clearFormulaEdit, formulaEditState, setFormulaEdit } from './formulaEditState';
 import { tableModelFromNode } from './tableModel';
 import { tableStructFromNode } from './tableOps';
 import { clearTableEdit, setTableEdit, tableEditState } from './tableEditState';
@@ -99,6 +102,8 @@ function buildBlockState(state: EditorState): BlockState {
   const selLastLine = state.doc.lineAt(sel.to).number;
   // 当前就地编辑态（tableFrom + cellIndex），若有则透传给对应表的 widget 武装该 cell。
   const edit = state.field(tableEditState, false) ?? null;
+  // 公式块双栏编辑态（W3）：该块在 formulaEditState 中 → 渲 FormulaEditWidget（编辑态 > 光标进块 > 就地渲染）。
+  const fEdit = state.field(formulaEditState, false) ?? null;
   // 上一张表末行行号（无则 -1）：用于判定本表与上表间是否「恰好一空行」（任务一分隔空行收口）。
   let prevTableLastLine = -1;
   // 强制解析整篇（长文档关键）：CM6 默认只解析到视口附近，远处 Table 节点未产出致表格显示源码。
@@ -115,18 +120,30 @@ function buildBlockState(state: EditorState): BlockState {
           : '';
         if (infoText === MATH_INFO || infoText === LATEX_INFO || infoText === TYPST_INFO) {
           formulaBlocks.push({ from: node.from, to: node.to });
+          const codeText = node.node.getChild(CODE_TEXT_NODE);
+          const src = codeText ? state.doc.sliceString(codeText.from, codeText.to) : '';
+          // 三态判定（W3）：① 双栏编辑态优先 → FormulaEditWidget；② 光标进块 → 显源码；③ 否则就地渲染。
+          if (fEdit && fEdit.blockFrom === node.from) {
+            builder.add(
+              node.from,
+              node.to,
+              Decoration.replace({
+                widget: new FormulaEditWidget(infoText as FormulaEngine, src, node.from),
+                block: true,
+              }),
+            );
+            return false;
+          }
           const firstLine = state.doc.lineAt(node.from).number;
           const lastLine = state.doc.lineAt(node.to).number;
           const cursorInBlock = firstLine <= selLastLine && lastLine >= selFirstLine;
           if (!cursorInBlock) {
-            const codeText = node.node.getChild(CODE_TEXT_NODE);
-            const src = codeText ? state.doc.sliceString(codeText.from, codeText.to) : '';
             const widget =
               infoText === MATH_INFO
-                ? new MathWidget(src)
+                ? new MathWidget(src, node.from, node.to)
                 : infoText === LATEX_INFO
-                  ? new LatexWidget(src)
-                  : new TypstWidget(src, node.from);
+                  ? new LatexWidget(src, node.from, node.to)
+                  : new TypstWidget(src, node.from, node.to);
             builder.add(node.from, node.to, Decoration.replace({ widget, block: true }));
           }
         }
@@ -136,13 +153,25 @@ function buildBlockState(state: EditorState): BlockState {
       // 同 formulaBlocks 边界（光标进块显源码/出块渲染），共享 KaTeX；不入 atomicRanges（保光标能进块还原源码）。
       if (node.name === BLOCK_MATH_NODE) {
         formulaBlocks.push({ from: node.from, to: node.to });
+        const content = node.node.getChild(BLOCK_MATH_CONTENT);
+        const src = content ? state.doc.sliceString(content.from, content.to) : '';
+        if (fEdit && fEdit.blockFrom === node.from) {
+          builder.add(
+            node.from,
+            node.to,
+            Decoration.replace({ widget: new FormulaEditWidget('math', src, node.from), block: true }),
+          );
+          return false;
+        }
         const firstLine = state.doc.lineAt(node.from).number;
         const lastLine = state.doc.lineAt(node.to).number;
         const cursorInBlock = firstLine <= selLastLine && lastLine >= selFirstLine;
         if (!cursorInBlock) {
-          const content = node.node.getChild(BLOCK_MATH_CONTENT);
-          const src = content ? state.doc.sliceString(content.from, content.to) : '';
-          builder.add(node.from, node.to, Decoration.replace({ widget: new MathWidget(src), block: true }));
+          builder.add(
+            node.from,
+            node.to,
+            Decoration.replace({ widget: new MathWidget(src, node.from, node.to), block: true }),
+          );
         }
         return false; // 整块处理，不下钻子节点
       }
@@ -253,7 +282,13 @@ export const blockField = StateField.define<BlockState>({
     // 1. doc 变 / compositionend 强刷 / 就地编辑态切换：全文扫描重建。
     //    refreshLivePreview 解冻后还原渲染态（CR-01）；editChanged 使新 activeCellIndex 透传武装单元格。
     const refreshed = tr.effects.some((e) => e.is(refreshLivePreview));
-    const editChanged = tr.effects.some((e) => e.is(setTableEdit) || e.is(clearTableEdit));
+    const editChanged = tr.effects.some(
+      (e) =>
+        e.is(setTableEdit) ||
+        e.is(clearTableEdit) ||
+        e.is(setFormulaEdit) ||
+        e.is(clearFormulaEdit),
+    );
     if (tr.docChanged || refreshed || editChanged) {
       const rebuilt = buildBlockState(tr.state);
       return rebuilt;
@@ -290,6 +325,21 @@ const ATOMIC_MARK = Decoration.replace({});
 export const tableAtomicRanges = EditorView.atomicRanges.of((view) => {
   const builder = new RangeSetBuilder<Decoration>();
   for (const t of view.state.field(blockField).tables) builder.add(t.from, t.to, ATOMIC_MARK);
+  return builder.finish();
+});
+
+/**
+ * 公式块双栏编辑期 atomicRanges（W3）：仅**正在双栏编辑的那一个块**整块入原子（键盘光标不游离进围栏行，
+ * 编辑只在 textarea 里）。非编辑态公式块**不入**（保留 Phase 5「光标可进块显源码」轻量内联编辑）。
+ */
+export const formulaAtomicRanges = EditorView.atomicRanges.of((view) => {
+  const builder = new RangeSetBuilder<Decoration>();
+  const fEdit = view.state.field(formulaEditState, false);
+  if (fEdit) {
+    for (const b of view.state.field(blockField).formulaBlocks) {
+      if (b.from === fEdit.blockFrom) builder.add(b.from, b.to, ATOMIC_MARK);
+    }
+  }
   return builder.finish();
 });
 
@@ -501,15 +551,119 @@ const typstTheme = EditorView.theme({
 });
 
 /**
- * 块级层组合（挂入 livePreviewExtensions）：tableEditState（就地编辑态）+ blockField（decorations provide）
- * + atomicRanges + 表格/math/latex/typst 样式。tableEditState 须在 blockField 前——buildBlockState 经 state.field 读它。
+ * 公式块悬浮工具栏 + 双栏编辑面板样式（W3，永不硬编色）。工具条隐显复用 tableTheme 同款；双栏面板 grid 2 列
+ * （源码 textarea 左 / 实时预览右）。typst 预览黑字白纸兜底（同 typstTheme）。
+ */
+const formulaEditTheme = EditorView.theme({
+  // 就地渲染容器相对定位（承绝对定位工具条）。
+  '.cm-ink-math, .cm-ink-latex, .cm-ink-typst': { position: 'relative' },
+  '.cm-ink-formula-toolbar': {
+    position: 'absolute',
+    top: '-32px',
+    right: '0',
+    display: 'flex',
+    gap: '1px',
+    padding: '3px',
+    borderRadius: '6px',
+    border: '1px solid var(--background-modifier-border)',
+    backgroundColor: 'var(--background-secondary)',
+    boxShadow: 'var(--shadow-popup)',
+    opacity: '0',
+    visibility: 'hidden',
+    transition: 'opacity var(--duration-fast, 120ms) ease',
+    zIndex: '5',
+  },
+  '.cm-ink-math:hover .cm-ink-formula-toolbar, .cm-ink-latex:hover .cm-ink-formula-toolbar, .cm-ink-typst:hover .cm-ink-formula-toolbar':
+    { opacity: '1', visibility: 'visible' },
+  '.cm-ink-formula-toolbar-btn': {
+    display: 'inline-flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    width: '24px',
+    height: '24px',
+    padding: '0',
+    border: 'none',
+    borderRadius: '4px',
+    background: 'transparent',
+    color: 'var(--text-muted)',
+    cursor: 'pointer',
+  },
+  '.cm-ink-formula-toolbar-btn:hover': {
+    backgroundColor: 'var(--background-modifier-hover)',
+    color: 'var(--text-normal)',
+  },
+  // ── 双栏编辑面板 ──
+  '.cm-ink-formula-edit': {
+    display: 'block',
+    margin: '0.5em 0',
+    border: '1px solid var(--background-modifier-border)',
+    borderRadius: '6px',
+    overflow: 'hidden',
+    backgroundColor: 'var(--background-secondary)',
+  },
+  '.cm-ink-formula-edit-header': {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: '3px 10px',
+    fontSize: '0.8em',
+    color: 'var(--text-muted)',
+    borderBottom: '1px solid var(--background-modifier-border)',
+  },
+  '.cm-ink-formula-edit-done': {
+    border: '1px solid var(--background-modifier-border)',
+    borderRadius: '4px',
+    padding: '1px 10px',
+    background: 'var(--background-primary)',
+    color: 'var(--text-normal)',
+    cursor: 'pointer',
+    fontSize: '0.95em',
+  },
+  '.cm-ink-formula-edit-body': {
+    display: 'grid',
+    gridTemplateColumns: '1fr 1fr',
+    minHeight: '3.5em',
+  },
+  '.cm-ink-formula-edit-src': {
+    border: 'none',
+    outline: 'none',
+    resize: 'none',
+    padding: '8px 10px',
+    minHeight: '3.5em',
+    fontFamily: 'var(--font-mono)',
+    fontSize: '0.92em',
+    lineHeight: '1.5',
+    color: 'var(--text-normal)',
+    background: 'var(--background-primary)',
+    borderRight: '1px solid var(--background-modifier-border)',
+  },
+  '.cm-ink-formula-edit-preview': {
+    padding: '8px',
+    overflow: 'auto',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  '.cm-ink-formula-ph': { color: 'var(--text-faint)', fontFamily: 'var(--font-mono)', fontSize: '0.85em' },
+  '.cm-ink-formula-err': { color: 'var(--color-error)', fontFamily: 'var(--font-mono)', fontSize: '0.85em' },
+  '.cm-ink-formula-typst-paper': { backgroundColor: '#ffffff', borderRadius: '4px', padding: '0.4em' },
+  '.cm-ink-formula-edit-preview .katex-display': { margin: '0' },
+  '.cm-ink-formula-edit-preview svg': { maxWidth: '100%' },
+});
+
+/**
+ * 块级层组合（挂入 livePreviewExtensions）：编辑态（table/formula）+ blockField（decorations provide）+ atomicRanges
+ * + 各样式。tableEditState/formulaEditState 须在 blockField 前——buildBlockState 经 state.field 读它们。
  */
 export const blockExtensions = [
   tableEditState,
+  formulaEditState,
   blockField,
   tableAtomicRanges,
+  formulaAtomicRanges,
   tableTheme,
   mathTheme,
   latexTheme,
   typstTheme,
+  formulaEditTheme,
 ];

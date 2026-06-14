@@ -1,5 +1,6 @@
 import { type EditorView, WidgetType } from '@codemirror/view';
 import { ensureKatex, getKatex, katexReady } from '../mathLoader';
+import { buildFormulaToolbar } from '../formulaToolbar';
 
 /**
  * ```math 块渲染 widget（Phase 5 W1 / BLOCK-01，块级层 Decoration.replace({block:true})）。
@@ -22,14 +23,21 @@ export class MathWidget extends WidgetType {
    */
   constructor(
     readonly latex: string,
+    readonly from: number, // FencedCode 节点起止（悬浮工具栏编辑/删除定位 + $$ 块同款）
+    readonly to: number,
     readonly ready: boolean = katexReady(),
   ) {
     super();
   }
 
-  /** 同 latex 且同就绪态视为同一 widget：CM6 复用旧 DOM 不重建（防公式闪烁）；就绪态变化必重建。 */
+  /** 同 latex / 起止 / 就绪态视为同一 widget：CM6 复用旧 DOM 不重建（防公式闪烁）；任一变化必重建。 */
   eq(other: MathWidget): boolean {
-    return other.latex === this.latex && other.ready === this.ready;
+    return (
+      other.latex === this.latex &&
+      other.from === this.from &&
+      other.to === this.to &&
+      other.ready === this.ready
+    );
   }
 
   toDOM(view: EditorView): HTMLElement {
@@ -40,6 +48,7 @@ export class MathWidget extends WidgetType {
     const mount = document.createElement('div');
     mount.className = 'cm-ink-math-render';
     wrap.appendChild(mount);
+    buildFormulaToolbar(wrap, view, this.from, this.to, this.latex); // 悬浮工具栏（hover 显，编辑/复制/删除）
 
     const src = this.latex.trim();
     if (src === '') {

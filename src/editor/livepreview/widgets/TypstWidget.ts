@@ -6,6 +6,7 @@ import {
   requestCompile,
   typstReady,
 } from '../typst/typstClient';
+import { buildFormulaToolbar } from '../formulaToolbar';
 
 /**
  * ```typst 块渲染 widget（Phase 5 W3 / BLOCK-02，块级层 Decoration.replace({block:true})）。
@@ -20,7 +21,8 @@ import {
 export class TypstWidget extends WidgetType {
   constructor(
     readonly source: string,
-    readonly from: number, // blockKey（防抖键，块起点；同块编辑期稳定）
+    readonly from: number, // blockKey（防抖键，块起点）+ 悬浮工具栏编辑/删除定位
+    readonly to: number, // FencedCode 节点终点（工具栏删除区间）
     readonly svg: string | null = getCachedSvg(source),
     readonly ready: boolean = typstReady(),
   ) {
@@ -28,7 +30,13 @@ export class TypstWidget extends WidgetType {
   }
 
   eq(other: TypstWidget): boolean {
-    return other.source === this.source && other.svg === this.svg && other.ready === this.ready;
+    return (
+      other.source === this.source &&
+      other.from === this.from &&
+      other.to === this.to &&
+      other.svg === this.svg &&
+      other.ready === this.ready
+    );
   }
 
   toDOM(view: EditorView): HTMLElement {
@@ -38,6 +46,7 @@ export class TypstWidget extends WidgetType {
     const mount = document.createElement('div');
     mount.className = 'cm-ink-typst-render';
     wrap.appendChild(mount);
+    buildFormulaToolbar(wrap, view, this.from, this.to, this.source);
 
     if (this.source.trim() === '') {
       wrap.classList.add('cm-ink-typst-empty');

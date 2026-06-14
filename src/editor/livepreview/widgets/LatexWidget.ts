@@ -1,5 +1,6 @@
 import { type EditorView, WidgetType } from '@codemirror/view';
 import { ensureMathjax, getMathjaxConvert, mathjaxReady } from '../mathjaxLoader';
+import { buildFormulaToolbar } from '../formulaToolbar';
 
 /**
  * ```latex 块渲染 widget（Phase 5 W2 / BLOCK-03，对标 W1 MathWidget，块级层 Decoration.replace({block:true})）。
@@ -11,13 +12,20 @@ import { ensureMathjax, getMathjaxConvert, mathjaxReady } from '../mathjaxLoader
 export class LatexWidget extends WidgetType {
   constructor(
     readonly latex: string,
+    readonly from: number,
+    readonly to: number,
     readonly ready: boolean = mathjaxReady(),
   ) {
     super();
   }
 
   eq(other: LatexWidget): boolean {
-    return other.latex === this.latex && other.ready === this.ready;
+    return (
+      other.latex === this.latex &&
+      other.from === this.from &&
+      other.to === this.to &&
+      other.ready === this.ready
+    );
   }
 
   toDOM(view: EditorView): HTMLElement {
@@ -27,6 +35,7 @@ export class LatexWidget extends WidgetType {
     const mount = document.createElement('div');
     mount.className = 'cm-ink-latex-render';
     wrap.appendChild(mount);
+    buildFormulaToolbar(wrap, view, this.from, this.to, this.latex);
 
     const src = this.latex.trim();
     if (src === '') {

@@ -2,6 +2,7 @@ import { Compartment, type Extension } from '@codemirror/state';
 import { inlinePlugin } from './inlinePlugin';
 import { blockExtensions } from './blockField';
 import { codeBlockDeco, codeBlockTheme } from './codeBlockDeco';
+import { formulaGesture } from './formulaGesture';
 import { linkGesture } from './linkGesture';
 import { tableGesture } from './tableGesture';
 import { wikiLinkCompletion } from './wikiLinkComplete';
@@ -48,6 +49,7 @@ export function livePreviewExtensions(): Extension[] {
     codeBlockTheme,
     linkGesture,
     tableGesture,
+    formulaGesture, // 点双栏块外 → 退出公式编辑态（在 tableGesture 后，各判各编辑态互斥）
     wikiLinkCompletion,
   ];
 }

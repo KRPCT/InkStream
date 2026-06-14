@@ -28,13 +28,13 @@ beforeEach(() => {
 
 describe('TypstWidget', () => {
   it('eq 含 source + svg + ready 三态', () => {
-    expect(new TypstWidget('a', 0).eq(new TypstWidget('a', 0))).toBe(true);
-    expect(new TypstWidget('a', 0).eq(new TypstWidget('b', 0))).toBe(false);
+    expect(new TypstWidget('a', 0, 50).eq(new TypstWidget('a', 0, 50))).toBe(true);
+    expect(new TypstWidget('a', 0, 50).eq(new TypstWidget('b', 0, 50))).toBe(false);
   });
 
   it('未编译 + Worker 未就绪 → 加载占位 + 懒建 Worker', () => {
     ready = false;
-    const dom = new TypstWidget('= 标题', 5).toDOM(fakeView);
+    const dom = new TypstWidget('= 标题', 5, 50).toDOM(fakeView);
     expect(dom.classList.contains('cm-ink-typst-loading')).toBe(true);
     expect(ensureTypst).toHaveBeenCalledOnce();
     expect(requestCompile).not.toHaveBeenCalled();
@@ -42,26 +42,26 @@ describe('TypstWidget', () => {
 
   it('未编译 + Worker 就绪 → 编译中占位 + requestCompile(blockKey)', () => {
     ready = true;
-    const dom = new TypstWidget('= 标题', 5).toDOM(fakeView);
+    const dom = new TypstWidget('= 标题', 5, 50).toDOM(fakeView);
     expect(dom.classList.contains('cm-ink-typst-loading')).toBe(true);
     expect(requestCompile).toHaveBeenCalledWith(fakeView, '5', '= 标题');
   });
 
   it('缓存命中 SVG → DOMParser 安全注入 <svg>', () => {
     cache.set('= 标题', '<svg xmlns="http://www.w3.org/2000/svg"><rect/></svg>');
-    const dom = new TypstWidget('= 标题', 0).toDOM(fakeView);
+    const dom = new TypstWidget('= 标题', 0, 50).toDOM(fakeView);
     expect(dom.querySelector('.cm-ink-typst-render svg')).not.toBeNull();
   });
 
   it('编译失败哨兵 → 错误占位（不再请求）', () => {
     cache.set('bad', ERROR_SENTINEL);
-    const dom = new TypstWidget('bad', 0).toDOM(fakeView);
+    const dom = new TypstWidget('bad', 0, 50).toDOM(fakeView);
     expect(dom.classList.contains('cm-ink-typst-error')).toBe(true);
     expect(requestCompile).not.toHaveBeenCalled();
   });
 
   it('空块 → 占位（不编译）', () => {
-    const dom = new TypstWidget('   ', 0).toDOM(fakeView);
+    const dom = new TypstWidget('   ', 0, 50).toDOM(fakeView);
     expect(dom.classList.contains('cm-ink-typst-empty')).toBe(true);
     expect(ensureTypst).not.toHaveBeenCalled();
   });
