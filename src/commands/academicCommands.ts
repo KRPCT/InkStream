@@ -1,4 +1,4 @@
-import { insertCitation } from '../editor/academicActions';
+import { insertBibliography, insertCitation, insertFootnote } from '../editor/academicActions';
 import type { Command } from '../types/commands';
 
 /**
@@ -15,4 +15,6 @@ export const ACADEMIC_COMMANDS: Command[] = [
     shortcut: 'Ctrl+Shift+Z',
     run: () => void insertCitation(),
   },
+  { id: 'academic.footnote', title: '学术：插入脚注', run: () => insertFootnote() },
+  { id: 'academic.bibliography', title: '学术：插入参考文献', run: () => insertBibliography() },
 ];

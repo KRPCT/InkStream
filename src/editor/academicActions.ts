@@ -68,3 +68,53 @@ export async function insertCitation(): Promise<void> {
   });
   view.focus();
 }
+
+/**
+ * 插入脚注（ACAD-02）：光标处插 `[^N]` 引用标记，文末追加 `[^N]: ` 定义并把光标移到定义处。
+ * N 取文档内未用的最小正整数。
+ */
+export function insertFootnote(): void {
+  const view = getView();
+  if (!view) return;
+  const doc = view.state.doc.toString();
+  const used = new Set([...doc.matchAll(/\[\^(\d+)\]/g)].map((m) => Number(m[1])));
+  let n = 1;
+  while (used.has(n)) n += 1;
+  const ref = `[^${n}]`;
+  const def = `${doc.endsWith('\n') ? '' : '\n'}[^${n}]: `;
+  const docLen = view.state.doc.length;
+  const { from } = view.state.selection.main;
+  view.dispatch({
+    changes: [
+      { from, insert: ref },
+      { from: docLen, insert: def },
+    ],
+    // 两处插入按原坐标应用；ref 在 from(<docLen) 前插使其后整体右移 ref.length，故定义末尾 = 原 docLen + ref + def。
+    selection: { anchor: docLen + ref.length + def.length },
+    scrollIntoView: true,
+  });
+  view.focus();
+}
+
+/**
+ * 插入参考文献占位（ACAD-02 / ZOT-04 标记）：文末插 `## 参考文献` + `<!-- biblio -->`（编译时展开，后续）。
+ * 已存在则提示不重复插。
+ */
+export function insertBibliography(): void {
+  const view = getView();
+  if (!view) return;
+  const doc = view.state.doc.toString();
+  if (doc.includes('<!-- biblio -->')) {
+    showToast('warning', '文末已有参考文献占位（<!-- biblio -->）。');
+    return;
+  }
+  const prefix = doc.endsWith('\n\n') ? '' : doc.endsWith('\n') ? '\n' : '\n\n';
+  const insert = `${prefix}## 参考文献\n\n<!-- biblio -->\n`;
+  const docLen = view.state.doc.length;
+  view.dispatch({
+    changes: { from: docLen, insert },
+    selection: { anchor: docLen + insert.length },
+    scrollIntoView: true,
+  });
+  view.focus();
+}

@@ -93,10 +93,12 @@ const TITLES: Record<string, string> = {
   'fmt.clear': '格式：清除格式',
   // 学术组（Phase 8）
   'academic.cite': '学术：插入引用（Zotero）',
+  'academic.footnote': '学术：插入脚注',
+  'academic.bibliography': '学术：插入参考文献',
 };
 
-/** 生产命令总数：…前略… + Git Graph + 设置 + 使用教程 + 重新引导(簇③) + 学术插入引用(Phase8) = 61。 */
-const COMMAND_COUNT = 61;
+/** 生产命令总数：…前略… + 重新引导(簇③) + 学术引用/脚注/参考文献(Phase8 ZOT/ACAD) = 63。 */
+const COMMAND_COUNT = 63;
 
 /** 生产命令（剔除 dev.* DEV-only 命令，如 IME 探针 dev.ime-probe）。 */
 function prodCommands() {
