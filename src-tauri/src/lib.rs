@@ -55,7 +55,11 @@ pub fn run() {
             git::stash::git_stash_save,
             git::stash::git_stash_pop,
             git::stash::git_stash_drop,
-            git::stash::git_stash_list
+            git::stash::git_stash_list,
+            git::remote::git_fetch,
+            git::remote::git_push,
+            git::remote::git_pull,
+            git::remote::git_clone
         ])
         .setup(|app| {
             // watcher 单例状态注册（切 vault 时 start/stop_watch 经此句柄换装）。

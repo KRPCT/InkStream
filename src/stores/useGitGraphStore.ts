@@ -25,6 +25,8 @@ interface GitGraphState {
   commitFiles: FileDiff[];
   filesLoading: boolean;
   selectedFile: string | null;
+  /** 远程操作进行中的提示文案（W4，fetch/push/pull 期间显示；null=空闲）。 */
+  remoteBusy: string | null;
   loadLog: (repoRoot: string) => Promise<void>;
   selectCommit: (oid: string) => void;
   selectFile: (path: string) => void;
@@ -39,6 +41,7 @@ export const useGitGraphStore = create<GitGraphState>((set, get) => ({
   commitFiles: [],
   filesLoading: false,
   selectedFile: null,
+  remoteBusy: null,
 
   loadLog: async (repoRoot) => {
     set({ repoRoot, loading: true });

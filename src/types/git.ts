@@ -105,6 +105,14 @@ export interface StashEntry {
 /** reset 模式。 */
 export type ResetMode = 'soft' | 'mixed' | 'hard';
 
+/** 远程传输进度（Channel 推送；W4，git --progress 的 stderr 行）。 */
+export interface GitProgress {
+  line: string;
+}
+
+/** pull 结果（W4）。 */
+export type PullOutcome = { kind: 'upToDate' | 'fastForward' | 'diverged' };
+
 /** 指向某 commit 的 ref（git-graph 行内徽章；W2）。 */
 export interface GitRef {
   /** 短名：'main' / 'origin/main' / 'v1.0.0'。 */

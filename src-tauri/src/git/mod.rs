@@ -21,6 +21,7 @@ pub(crate) mod diff;
 pub(crate) mod log;
 pub(crate) mod refops;
 pub(crate) mod refs;
+pub(crate) mod remote;
 pub(crate) mod stash;
 pub(crate) mod status;
 mod types;

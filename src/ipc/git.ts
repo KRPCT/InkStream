@@ -1,12 +1,14 @@
-import { invoke } from './invoke';
+import { invoke, invokeStreamed } from './invoke';
 import type {
   BranchInfo,
   CommitInfo,
   DiffTarget,
   FileDiff,
   GitOpResult,
+  GitProgress,
   GitRef,
   GitStatus,
+  PullOutcome,
   ResetMode,
   StashEntry,
 } from '../types/git';
@@ -131,4 +133,44 @@ export function gitStashList(repoRoot: string): Promise<StashEntry[]> {
 /** 中止进行中的 merge/cherry-pick/revert，还原到操作前（冲突卡死时的安全出口）。 */
 export function gitAbortOp(repoRoot: string): Promise<null> {
   return invoke('git_abort_op', { repoRoot });
+}
+
+// ── 远程操作（W4，SSH）。进度走 Channel（invokeStreamed 自动塞 channel 参数）──────────────
+
+/** fetch 远程（默认 refspec 更新 refs/remotes/<remote>/*）。 */
+export function gitFetch(
+  repoRoot: string,
+  remote: string,
+  onProgress: (p: GitProgress) => void,
+): Promise<null> {
+  return invokeStreamed('git_fetch', { repoRoot, remote }, onProgress);
+}
+
+/** push 本地分支到远程同名分支。 */
+export function gitPush(
+  repoRoot: string,
+  remote: string,
+  branch: string,
+  onProgress: (p: GitProgress) => void,
+): Promise<null> {
+  return invokeStreamed('git_push', { repoRoot, remote, branch }, onProgress);
+}
+
+/** pull = fetch + merge_analysis（up-to-date/fast-forward 自动；分叉返回 diverged）。 */
+export function gitPull(
+  repoRoot: string,
+  remote: string,
+  branch: string,
+  onProgress: (p: GitProgress) => void,
+): Promise<PullOutcome> {
+  return invokeStreamed('git_pull', { repoRoot, remote, branch }, onProgress);
+}
+
+/** clone 到 dest 目录，返回工作区路径。 */
+export function gitClone(
+  url: string,
+  dest: string,
+  onProgress: (p: GitProgress) => void,
+): Promise<string> {
+  return invokeStreamed('git_clone', { url, dest }, onProgress);
 }

@@ -53,13 +53,12 @@ tauri-plugin-sql = { version = "=2.4.0", features = ["sqlite"] }
 # 索引 path 键 NFC 规范化（跨平台一致：macOS 分解形与 Win/Linux 合成形统一）。
 # rebuild 在 Rust 侧枚举文件，故 NFC 收口于 Rust（单一真相，autosave/watcher 路径同样经此）。纯数据表 crate。
 unicode-normalization = "=0.1.24"
-# Phase 6 GIT-01：原生 git（libgit2 绑定）。git2 0.21.0 实查 default=[]，本地读命令
-# （status/branch/log/diff）不需 ssh/https，故 W1 仅开 vendored-libgit2：
-# - vendored-libgit2：强制编内捆 libgit2 源，消除「系统装了 libgit2 就偷链系统版」的构建漂移，
-#   跨机确定、无系统依赖（首次编 libgit2 源，分钟级，之后增量缓存）。
-# ssh/https + vendored-openssl 推迟到 W4 远程：vendored-openssl 需 perl+make 重编 OpenSSL，
-# 本地操作用不到，避免 W1 背负该构建成本（W4 开启时一次性重编 libgit2，可接受）。
-# SSH 签名提交走 git CLI sidecar（W3，不引 ssh-key crate）。
+# Phase 6：原生 git（libgit2 绑定）。git2 0.21.0 实查 default=[]，仅开 vendored-libgit2
+# （cc 构建无需 cmake/make，跨机确定无系统依赖）。**不开 ssh/https**：
+# - 实测 Windows 上 libgit2 vendored 的 libssh2（WinCNG backend）不支持 ed25519 密钥（用户密钥即 ed25519），
+#   SSH 认证必失败；https feature 又会拉 openssl-sys（需 perl+make，本机缺）。
+# - 故远程操作（clone/fetch/push/pull，W4）改走系统 git CLI sidecar（同 W3 commit 范式）——OpenSSH 原生
+#   支持 ed25519 + ssh-agent + known_hosts，跨平台。git2 仅做本地读写（status/log/diff/checkout/reset/...）。
 git2 = { version = "=0.21.0", default-features = false, features = [
     "vendored-libgit2",
 ] }

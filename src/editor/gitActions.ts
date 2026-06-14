@@ -5,7 +5,7 @@ import { confirmDestructive } from '../stores/useConfirmStore';
 import { promptInput } from '../stores/usePromptStore';
 import { showToast } from '../stores/useToastStore';
 import { useWorkbenchStore } from '../stores/useWorkbenchStore';
-import type { GitOpResult, ResetMode } from '../types/git';
+import type { GitOpResult, GitProgress, ResetMode } from '../types/git';
 
 /**
  * git 写操作编排（Phase 6 GIT-03，非 React 模块，经 getState 调用）。
@@ -237,6 +237,74 @@ export async function deleteTagNamed(name: string): Promise<void> {
     await refreshAfter(root);
   } catch (e) {
     showToast('error', `删除标签失败：${errText(e)}`);
+  }
+}
+
+// ── 远程操作（W4，SSH；远程名默认 origin）。进度写 useGitGraphStore.remoteBusy ──────────
+
+/** 进度回调 → 更新 remoteBusy 文案（git --progress 行，如 "Receiving objects: 50% (5/10)"）。 */
+function onProg(label: string, p: GitProgress): void {
+  if (p.line) {
+    useGitGraphStore.setState({ remoteBusy: `${label}：${p.line}` });
+  }
+}
+
+/** 当前分支名（无则提示并返回 null）。 */
+function currentBranch(action: string): string | null {
+  const branch = useGitStore.getState().status?.branch ?? null;
+  if (!branch) showToast('warning', `当前未在分支上，无法${action}。`);
+  return branch;
+}
+
+/** fetch 远程（更新远程跟踪分支，不改工作区）。 */
+export async function fetchRemote(): Promise<void> {
+  const root = repo();
+  if (!root) return;
+  useGitGraphStore.setState({ remoteBusy: '获取中…' });
+  try {
+    await git.gitFetch(root, 'origin', (p) => onProg('获取', p));
+    await refreshAfter(root);
+  } catch (e) {
+    showToast('error', `获取失败：${errText(e)}`);
+  } finally {
+    useGitGraphStore.setState({ remoteBusy: null });
+  }
+}
+
+/** 推送当前分支到 origin。 */
+export async function pushCurrent(): Promise<void> {
+  const root = repo();
+  if (!root) return;
+  const branch = currentBranch('推送');
+  if (!branch) return;
+  useGitGraphStore.setState({ remoteBusy: '推送中…' });
+  try {
+    await git.gitPush(root, 'origin', branch, (p) => onProg('推送', p));
+    await refreshAfter(root);
+  } catch (e) {
+    showToast('error', `推送失败：${errText(e)}`);
+  } finally {
+    useGitGraphStore.setState({ remoteBusy: null });
+  }
+}
+
+/** 拉取当前分支（fast-forward 自动；分叉提示手动处理）。 */
+export async function pullCurrent(): Promise<void> {
+  const root = repo();
+  if (!root) return;
+  const branch = currentBranch('拉取');
+  if (!branch) return;
+  useGitGraphStore.setState({ remoteBusy: '拉取中…' });
+  try {
+    const outcome = await git.gitPull(root, 'origin', branch, (p) => onProg('拉取', p));
+    if (outcome.kind === 'diverged') {
+      showToast('warning', '本地与远程已分叉，请手动合并或 rebase 后再推送。');
+    }
+    await refreshAfter(root);
+  } catch (e) {
+    showToast('error', `拉取失败：${errText(e)}`);
+  } finally {
+    useGitGraphStore.setState({ remoteBusy: null });
   }
 }
 

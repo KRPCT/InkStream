@@ -6,6 +6,7 @@ import type {
   GitOpResult,
   GitRef,
   GitStatus,
+  PullOutcome,
   ResetMode,
   StashEntry,
 } from './git';
@@ -77,4 +78,9 @@ export interface IpcCommands {
   git_stash_drop: { args: { repoRoot: string; index: number }; result: null };
   git_stash_list: { args: { repoRoot: string }; result: StashEntry[] };
   git_abort_op: { args: { repoRoot: string }; result: null };
+  // Phase 6 W4 远程（SSH）。进度走 Channel（invokeStreamed 追加 channel 参数，args 不含 channel）。
+  git_fetch: { args: { repoRoot: string; remote: string }; result: null };
+  git_push: { args: { repoRoot: string; remote: string; branch: string }; result: null };
+  git_pull: { args: { repoRoot: string; remote: string; branch: string }; result: PullOutcome };
+  git_clone: { args: { url: string; dest: string }; result: string };
 }
