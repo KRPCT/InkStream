@@ -140,6 +140,9 @@ export const MENUS: GroupConfig[] = [
   {
     label: '帮助',
     items: [
+      { commandId: 'help.guide', label: '使用教程' },
+      { commandId: 'help.onboarding', label: '重新引导' },
+      { separator: true },
       { commandId: 'app.about', label: '关于 InkStream' },
       { commandId: 'help.shortcuts', label: '快捷键参考' },
     ],

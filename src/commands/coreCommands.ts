@@ -13,6 +13,8 @@ import { flushActiveFile } from '../editor/saveFlow';
 import { windowControls } from '../ipc/window';
 import { useAboutStore } from '../stores/useAboutStore';
 import { useEditorStore } from '../stores/useEditorStore';
+import { useHelpStore } from '../stores/useHelpStore';
+import { useOnboardingStore } from '../stores/useOnboardingStore';
 import { usePaletteStore } from '../stores/usePaletteStore';
 import { useSettingsStore } from '../stores/useSettingsStore';
 import { useSettingsUiStore } from '../stores/useSettingsUiStore';
@@ -175,6 +177,17 @@ export const CORE_COMMANDS: Command[] = [
     id: 'app.about',
     title: '帮助：关于 InkStream',
     run: () => useAboutStore.getState().openAbout(),
+  },
+  {
+    id: 'help.guide',
+    title: '帮助：使用教程',
+    // 图文教学：提交/回滚/分支/合并/多设备同步（簇③）。
+    run: () => useHelpStore.getState().openHelp(),
+  },
+  {
+    id: 'help.onboarding',
+    title: '帮助：重新引导',
+    run: () => useOnboardingStore.getState().start(),
   },
   {
     id: 'help.shortcuts',

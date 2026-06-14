@@ -60,6 +60,8 @@ const TITLES: Record<string, string> = {
   'mode.switch-academic': '模式：切换到 Academic（学术）',
   'mode.switch-creative': '模式：切换到 Creative（长篇创作）',
   'app.about': '帮助：关于 InkStream',
+  'help.guide': '帮助：使用教程',
+  'help.onboarding': '帮助：重新引导',
   'help.shortcuts': '帮助：快捷键参考',
   // 编辑组
   'edit.undo': '编辑：撤销',
@@ -91,8 +93,8 @@ const TITLES: Record<string, string> = {
   'fmt.clear': '格式：清除格式',
 };
 
-/** 生产命令总数：原 23 + 打开文件 + 快捷键参考 + 编辑8 + 段落14 + 格式8 + 新建文档 + Git Graph + 设置(簇②) = 58。 */
-const COMMAND_COUNT = 58;
+/** 生产命令总数：…前略… + Git Graph + 设置 + 使用教程 + 重新引导(簇③) = 60。 */
+const COMMAND_COUNT = 60;
 
 /** 生产命令（剔除 dev.* DEV-only 命令，如 IME 探针 dev.ime-probe）。 */
 function prodCommands() {

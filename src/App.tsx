@@ -4,6 +4,8 @@ import ConfirmDialog from './components/common/ConfirmDialog';
 import PromptDialog from './components/common/PromptDialog';
 import Toast from './components/common/Toast';
 import ImeProbe from './components/dev/ImeProbe';
+import HelpModal from './components/help/HelpModal';
+import OnboardingOverlay from './components/onboarding/OnboardingOverlay';
 import CommandPalette from './components/palette/CommandPalette';
 import SettingsModal from './components/settings/SettingsModal';
 import WorkbenchLayout from './components/workbench/WorkbenchLayout';
@@ -11,6 +13,7 @@ import { initExternalChangeArbiter, stopExternalChangeArbiter } from './editor/e
 import { initExitGuard, stopExitGuard } from './editor/exitGuard';
 import { restoreLastVault } from './editor/startupFlow';
 import { windowControls } from './ipc/window';
+import { initOnboarding } from './stores/useOnboardingStore';
 import { initPersistence } from './stores/persistSettings';
 import { initVaultPersistence } from './stores/persistVault';
 
@@ -27,7 +30,10 @@ export default function App() {
     initExitGuard();
     // FOUC 契约第 1 步收尾：首帧渲染后显示窗口（show 幂等，StrictMode 双执行无害）
     void windowControls.show();
+    // 首次引导（簇③）：延迟到布局渲染后再开，spotlight 才能命中侧栏/状态栏元素。seen 标记防重复弹。
+    const onboardingTimer = setTimeout(() => initOnboarding(), 1000);
     return () => {
+      clearTimeout(onboardingTimer);
       stopExternalChangeArbiter();
       stopExitGuard();
     };
@@ -40,6 +46,10 @@ export default function App() {
       <CommandPalette />
       {/* 设置模态（簇②）：view.settings 命令 / Ctrl+, 打开（useSettingsUiStore） */}
       <SettingsModal />
+      {/* 帮助/教程模态（簇③）：help.guide 命令打开（useHelpStore） */}
+      <HelpModal />
+      {/* 首次引导 spotlight（簇③）：首次启动自动弹，help.onboarding 重开（useOnboardingStore） */}
+      <OnboardingOverlay />
       {/* 关于对话框：app.about 命令打开（useAboutStore） */}
       <AboutDialog />
       {/* 破坏性确认模态：删除 / 覆盖磁盘二次确认（useConfirmStore，confirmDestructive 弹出） */}

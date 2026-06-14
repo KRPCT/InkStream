@@ -68,7 +68,7 @@ export default function SidebarGitPanel() {
   const files = status.files;
 
   return (
-    <div className="shrink-0 border-t border-[var(--background-modifier-border)]">
+    <div data-onboarding="git-panel" className="shrink-0 border-t border-[var(--background-modifier-border)]">
       <button
         type="button"
         onClick={() => setExpanded((e) => !e)}
