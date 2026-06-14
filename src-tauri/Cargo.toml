@@ -58,7 +58,7 @@ tauri-plugin-sql = { version = "=2.4.0", features = ["sqlite"] }
 # 索引 path 键 NFC 规范化（跨平台一致：macOS 分解形与 Win/Linux 合成形统一）。
 # rebuild 在 Rust 侧枚举文件，故 NFC 收口于 Rust（单一真相，autosave/watcher 路径同样经此）。纯数据表 crate。
 unicode-normalization = "=0.1.24"
-# Phase 6：原生 git（libgit2 绑定）。git2 0.21.0 实查 default=[]，仅开 vendored-libgit2
+# Phase 6：原生 git（libgit2 绑定）。git2 0.21.0 实查 default= []，仅开 vendored-libgit2
 # （cc 构建无需 cmake/make，跨机确定无系统依赖）。**不开 ssh/https**：
 # - 实测 Windows 上 libgit2 vendored 的 libssh2（WinCNG backend）不支持 ed25519 密钥（用户密钥即 ed25519），
 #   SSH 认证必失败；https feature 又会拉 openssl-sys（需 perl+make，本机缺）。

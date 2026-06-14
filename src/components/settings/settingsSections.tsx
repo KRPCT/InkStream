@@ -45,9 +45,10 @@ function Toggle({ checked, onChange }: { checked: boolean; onChange: (v: boolean
         checked ? 'bg-[var(--accent)]' : 'bg-[var(--background-modifier-border)]'
       }`}
     >
+      {/* 旋钮加投影：浅主题近白旋钮在浅灰关态轨道上才看得清（否则像空药丸）。行程对称到位（关 2px、开 flush）。 */}
       <span
-        className={`absolute top-0.5 h-4 w-4 rounded-full bg-[var(--background-primary)] transition-transform ${
-          checked ? 'translate-x-4' : 'translate-x-0.5'
+        className={`absolute left-0.5 top-0.5 h-4 w-4 rounded-full bg-[var(--background-primary)] shadow-[0_1px_2px_rgb(0_0_0/0.35)] transition-transform ${
+          checked ? 'translate-x-4' : 'translate-x-0'
         }`}
       />
     </button>

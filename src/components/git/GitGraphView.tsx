@@ -19,6 +19,7 @@ import {
 import { useGitGraphStore } from '../../stores/useGitGraphStore';
 import { useGitStore } from '../../stores/useGitStore';
 import { useWorkbenchStore } from '../../stores/useWorkbenchStore';
+import BranchManager from './BranchManager';
 import CommitGraphList from './graph/CommitGraphList';
 import CommitDetailPanel from './CommitDetailPanel';
 import FileDiffPanel from './FileDiffPanel';
@@ -37,6 +38,9 @@ export default function GitGraphView() {
   const remoteBusy = useGitGraphStore((s) => s.remoteBusy);
   const setCentralView = useWorkbenchStore((s) => s.setCentralView);
   const busy = remoteBusy !== null;
+  // 左栏：提交图谱 ⇄ 分支管理（参考 GitButler 的清晰分支 UX；置于 store 便于侧栏「分支」入口直达）。
+  const leftMode = useGitGraphStore((s) => s.leftMode);
+  const setLeftMode = useGitGraphStore((s) => s.setLeftMode);
 
   useEffect(() => {
     if (repoRoot) void loadLog(repoRoot);
@@ -45,9 +49,27 @@ export default function GitGraphView() {
   return (
     <div className="flex h-full flex-col bg-[var(--background-primary)]">
       <div className="flex h-8 shrink-0 items-center justify-between border-b border-[var(--background-modifier-border)] px-2">
-        <span className="text-[13px] font-medium text-[var(--text-normal)]">
-          Git Graph · {remoteBusy ?? (loading ? '加载中…' : `${commitCount} 提交`)}
-        </span>
+        <div className="flex items-center gap-3">
+          <span className="text-[13px] font-medium text-[var(--text-normal)]">
+            Git Graph · {remoteBusy ?? (loading ? '加载中…' : `${commitCount} 提交`)}
+          </span>
+          <div className="flex overflow-hidden rounded-[4px] border border-[var(--background-modifier-border)]">
+            {(['graph', 'branches'] as const).map((m) => (
+              <button
+                key={m}
+                type="button"
+                onClick={() => setLeftMode(m)}
+                className={`px-2 py-0.5 text-[12px] ${
+                  leftMode === m
+                    ? 'bg-[var(--accent)] text-[var(--background-primary)]'
+                    : 'text-[var(--text-muted)] hover:bg-[var(--background-modifier-hover)]'
+                }`}
+              >
+                {m === 'graph' ? '图谱' : '分支'}
+              </button>
+            ))}
+          </div>
+        </div>
         <div className="flex items-center gap-1">
           <button
             type="button"
@@ -113,7 +135,7 @@ export default function GitGraphView() {
       </div>
       <Group orientation="horizontal" className="min-h-0 flex-1">
         <Panel id="graph-list" minSize={300} defaultSize={560} className="h-full">
-          <CommitGraphList />
+          {leftMode === 'branches' ? <BranchManager /> : <CommitGraphList />}
         </Panel>
         <Separator className="workbench-separator" />
         <Panel id="graph-detail" minSize={240} defaultSize={340} className="h-full">

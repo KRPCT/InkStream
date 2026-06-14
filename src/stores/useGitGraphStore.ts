@@ -27,6 +27,9 @@ interface GitGraphState {
   selectedFile: string | null;
   /** 远程操作进行中的提示文案（W4，fetch/push/pull 期间显示；null=空闲）。 */
   remoteBusy: string | null;
+  /** git-graph 左栏：提交图谱 ⇄ 分支管理（侧栏「分支」入口可直接设 branches 再开 graph）。 */
+  leftMode: 'graph' | 'branches';
+  setLeftMode: (mode: 'graph' | 'branches') => void;
   loadLog: (repoRoot: string) => Promise<void>;
   selectCommit: (oid: string) => void;
   selectFile: (path: string) => void;
@@ -42,6 +45,8 @@ export const useGitGraphStore = create<GitGraphState>((set, get) => ({
   filesLoading: false,
   selectedFile: null,
   remoteBusy: null,
+  leftMode: 'graph',
+  setLeftMode: (leftMode) => set({ leftMode }),
 
   loadLog: async (repoRoot) => {
     set({ repoRoot, loading: true });

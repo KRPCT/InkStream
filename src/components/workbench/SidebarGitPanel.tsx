@@ -5,6 +5,7 @@ import {
   ChevronDown,
   ChevronRight,
   Download,
+  GitBranch,
   GitGraph,
   type LucideIcon,
 } from 'lucide-react';
@@ -14,6 +15,7 @@ import {
   pullCurrent,
   pushCurrent,
 } from '../../editor/gitActions';
+import { useGitGraphStore } from '../../stores/useGitGraphStore';
 import { useGitStore } from '../../stores/useGitStore';
 import { useWorkbenchStore } from '../../stores/useWorkbenchStore';
 import '../../styles/git-graph.css';
@@ -94,9 +96,20 @@ export default function SidebarGitPanel() {
             <IconBtn icon={ArrowUpFromLine} title="推送（push）" onClick={() => void pushCurrent()} />
             <span className="mx-0.5 h-4 w-px bg-[var(--background-modifier-border)]" aria-hidden="true" />
             <IconBtn
+              icon={GitBranch}
+              title="分支管理"
+              onClick={() => {
+                useGitGraphStore.getState().setLeftMode('branches');
+                useWorkbenchStore.getState().setCentralView('gitGraph');
+              }}
+            />
+            <IconBtn
               icon={GitGraph}
               title="打开 Git Graph"
-              onClick={() => useWorkbenchStore.getState().toggleCentralView('gitGraph')}
+              onClick={() => {
+                useGitGraphStore.getState().setLeftMode('graph');
+                useWorkbenchStore.getState().toggleCentralView('gitGraph');
+              }}
             />
           </div>
 

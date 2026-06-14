@@ -96,6 +96,29 @@ export default function WorkbenchLayout() {
     }
   }, [layout.rightPanelCollapsed, rightRef]);
 
+  // 窗口缩放后和解（修「小窗侧栏被挤折叠、放大后不恢复、需重复打开」）：窗口足够宽时，把 store 认为应展开
+  // 却被库挤到 collapsedSize(0) 的面板重新展开。命令式 expand 记 suppress，避免那拍误判对侧折叠（UAT #6 纪律）。
+  // 真相源仍是 store 各自的 toggle；本和解仅修复 squeeze 引发的 store↔面板脱同步。
+  useEffect(() => {
+    const RECONCILE_MIN_WIDTH = 870; // 三栏 minSize 合计≈854，宽于此才有空间展开侧栏
+    const reconcile = (): void => {
+      if (window.innerWidth < RECONCILE_MIN_WIDTH) return;
+      const l = useWorkbenchStore.getState().layouts[useWorkbenchStore.getState().mode];
+      const sb = sidebarRef.current;
+      if (sb && !l.sidebarCollapsed && sb.isCollapsed()) {
+        sb.expand();
+        suppressCollapsedWrites.current += 1;
+      }
+      const rp = rightRef.current;
+      if (rp && !l.rightPanelCollapsed && rp.isCollapsed()) {
+        rp.expand();
+        suppressCollapsedWrites.current += 1;
+      }
+    };
+    window.addEventListener('resize', reconcile);
+    return () => window.removeEventListener('resize', reconcile);
+  }, [sidebarRef, rightRef]);
+
   // 拖拽结束采样（onLayoutChanged：指针释放后触发，d.ts 推荐的持久化时点）。
   // 回调对命令式操作与用户拖拽一视同仁地触发、签名不区分来源；因此命令式触发的那拍
   // 只采样宽度（展开侧真实像素），绝不回写 collapsed flag。仅当 suppress 归零（真正的用户拖拽）
