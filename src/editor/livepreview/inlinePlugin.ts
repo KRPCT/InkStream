@@ -12,6 +12,8 @@ import {
   HR_NODE,
   HTML_TAG_NODE,
   IMAGE_NODE,
+  INLINE_MATH_CONTENT,
+  INLINE_MATH_NODE,
   INLINE_STYLE,
   LINE_REVEAL_MARK,
   TASK_MARKER_NODE,
@@ -24,6 +26,7 @@ import {
   isOrderedListMark,
 } from './nodeNames';
 import { HrWidget } from './widgets/HrWidget';
+import { InlineMathWidget } from './widgets/InlineMathWidget';
 import { type ImageVaultContext, ImageWidget } from './widgets/ImageWidget';
 import { ListBulletWidget } from './widgets/ListBulletWidget';
 import { TaskCheckboxWidget } from './widgets/TaskCheckboxWidget';
@@ -199,6 +202,17 @@ export function buildInlineDecorations(view: EditorView): DecorationSet {
           } else if (target) {
             ranges.push(WIKI_LINK_DECO.range(target.from, target.to));
           }
+          return false;
+        }
+
+        // 行内公式 `$...$`（FEAT-INLINE-MATH）：整节点 replace 为 InlineMathWidget（活动行由上方 active 分支
+        // 跳过 → 显 `$...$` 源码）。整节点替换故 return false（不下钻子节点，避免双装饰）。
+        if (node.name === INLINE_MATH_NODE) {
+          const content = node.node.getChild(INLINE_MATH_CONTENT);
+          const latex = content ? state.doc.sliceString(content.from, content.to) : '';
+          ranges.push(
+            Decoration.replace({ widget: new InlineMathWidget(latex) }).range(node.from, node.to),
+          );
           return false;
         }
 
@@ -393,6 +407,14 @@ const inlineTheme = EditorView.theme({
     textDecoration: 'underline',
     textUnderlineOffset: '2px',
   },
+  // 行内公式 widget（FEAT-INLINE-MATH）：inline-block 随文流，基线由 KaTeX 自身度量对齐；不另设字号
+  // （继承所在文本字号，公式与正文等大）。加载/错误占位用等宽 + faint/error 色（同 mathTheme 纪律，永不硬编色）。
+  '.cm-ink-inline-math': { display: 'inline-block', verticalAlign: 'baseline' },
+  '.cm-ink-inline-math-loading, .cm-ink-inline-math-empty': {
+    fontFamily: 'var(--font-mono)',
+    color: 'var(--text-faint)',
+  },
+  '.cm-ink-inline-math-error': { color: 'var(--color-error)', fontFamily: 'var(--font-mono)' },
   // 无序列表项目符号 widget：渲染可见 •（继承正文色，与正文等宽对齐），右侧留窄间距贴近文字。
   '.cm-ink-bullet': { color: 'var(--text-normal)', marginRight: '0.4em' },
   // 列表项行级：悬挂缩进（首行标记凸出、续行对齐文本起点），消费正文行高，不改文本不抖排版。

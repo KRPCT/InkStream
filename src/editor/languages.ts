@@ -4,6 +4,7 @@ import { StreamLanguage } from '@codemirror/language';
 import { markdown } from '@codemirror/lang-markdown';
 import { GFM } from '@lezer/markdown';
 import { wikiLink } from './livepreview/wikiLink';
+import { inlineMath } from './livepreview/inlineMath';
 import { codeLanguageFor } from './livepreview/codeLanguages';
 import { javascript } from '@codemirror/lang-javascript';
 import { python } from '@codemirror/lang-python';
@@ -96,7 +97,7 @@ const EXT_TO_LANG: Record<string, LanguageId> = {
 const SYNC_FACTORY: Record<Exclude<LanguageId, 'typst' | 'richtext'>, () => Extension> = {
   markdown: () =>
     markdown({
-      extensions: [GFM, wikiLink /* citation MarkdownConfig 注入点（Phase 8）*/],
+      extensions: [GFM, wikiLink, inlineMath /* citation MarkdownConfig 注入点（Phase 8）*/],
       // fenced 围栏块嵌套语法高亮（函数形态懒加载；math/latex/typst 显式排除→不嵌套→留给 blockField widget）。
       codeLanguages: codeLanguageFor,
     }),

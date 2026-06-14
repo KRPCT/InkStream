@@ -85,6 +85,17 @@ export const WIKI_LINK_TARGET = 'WikiLinkTarget';
 export const WIKI_LINK_ALIAS = 'WikiLinkAlias';
 
 /**
+ * 行内/块数学公式节点（FEAT-INLINE-MATH，自研 MarkdownConfig 见 inlineMath.ts）。
+ * 行内 `$...$`：inlinePlugin 整节点 replace 为 InlineMathWidget（block:false, displayMode:false），活动行显源码。
+ * 块 `$$...$$`（可跨行）：blockField 整块 replace 为 MathWidget（block:true, displayMode:true），range 并入
+ * formulaBlocks 走「光标进块显源码」（与 ```math 围栏同款、共享 KaTeX）。整节点处理 + return false，不下钻子节点。
+ */
+export const INLINE_MATH_NODE = 'InlineMath';
+export const INLINE_MATH_CONTENT = 'InlineMathContent';
+export const BLOCK_MATH_NODE = 'BlockMath';
+export const BLOCK_MATH_CONTENT = 'BlockMathContent';
+
+/**
  * 块级原子节点：blockField 用 Decoration.replace({ block: true }) 整块替换，光标进块整还原（D-06）。
  * 这些是「半渲染会错乱」的多行原子块（RESEARCH「元素识别」表 / UI-SPEC GFM 表格）。
  *

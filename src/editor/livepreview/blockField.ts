@@ -2,6 +2,8 @@ import { ensureSyntaxTree, syntaxTree } from '@codemirror/language';
 import { RangeSetBuilder, StateField, type EditorState } from '@codemirror/state';
 import { Decoration, type DecorationSet, EditorView } from '@codemirror/view';
 import {
+  BLOCK_MATH_CONTENT,
+  BLOCK_MATH_NODE,
   BLOCK_REPLACE,
   CODE_INFO_NODE,
   CODE_TEXT_NODE,
@@ -129,6 +131,20 @@ function buildBlockState(state: EditorState): BlockState {
           }
         }
         return false; // 不下钻 FencedCode 子树（公式块已处理；其它代码块本期不渲染）
+      }
+      // 块公式 $$...$$（FEAT-INLINE-MATH，自研 BlockMath 节点，非 FencedCode）：与 ```math 围栏平行——同 MathWidget、
+      // 同 formulaBlocks 边界（光标进块显源码/出块渲染），共享 KaTeX；不入 atomicRanges（保光标能进块还原源码）。
+      if (node.name === BLOCK_MATH_NODE) {
+        formulaBlocks.push({ from: node.from, to: node.to });
+        const firstLine = state.doc.lineAt(node.from).number;
+        const lastLine = state.doc.lineAt(node.to).number;
+        const cursorInBlock = firstLine <= selLastLine && lastLine >= selFirstLine;
+        if (!cursorInBlock) {
+          const content = node.node.getChild(BLOCK_MATH_CONTENT);
+          const src = content ? state.doc.sliceString(content.from, content.to) : '';
+          builder.add(node.from, node.to, Decoration.replace({ widget: new MathWidget(src), block: true }));
+        }
+        return false; // 整块处理，不下钻子节点
       }
       if (!BLOCK_REPLACE.has(node.name)) return undefined;
       tables.push({ from: node.from, to: node.to });
