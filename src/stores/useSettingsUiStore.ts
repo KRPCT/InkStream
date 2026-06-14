@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 
-/** 设置模态的分类（簇②，Obsidian 风左侧分类；'account' 簇④）。 */
-export type SettingsCategory = 'appearance' | 'editor' | 'git' | 'account';
+/** 设置模态的分类（簇②，Obsidian 风左侧分类；'account' 簇④；'zotero' Phase 8 ZOT-02）。 */
+export type SettingsCategory = 'appearance' | 'editor' | 'git' | 'account' | 'zotero';
 
 interface SettingsUiState {
   open: boolean;

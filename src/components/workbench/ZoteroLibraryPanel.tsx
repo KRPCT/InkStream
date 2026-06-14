@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
-import { BookMarked, RefreshCw } from 'lucide-react';
+import { BookMarked, CloudOff, RefreshCw } from 'lucide-react';
 import { insertCitekey } from '../../editor/academicActions';
-import { zoteroItems } from '../../ipc/zotero';
+import { zoteroItemsResilient } from '../../ipc/zotero';
 import type { ZoteroItem } from '../../types/zotero';
 
 /**
@@ -18,16 +18,20 @@ export default function ZoteroLibraryPanel() {
   const [items, setItems] = useState<ZoteroItem[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [offline, setOffline] = useState(false);
   const [filter, setFilter] = useState('');
 
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      setItems(await zoteroItems());
+      const { items: list, offline: fromCache } = await zoteroItemsResilient();
+      setItems(list);
+      setOffline(fromCache);
     } catch (e) {
       setError(errText(e));
       setItems([]);
+      setOffline(false);
     } finally {
       setLoading(false);
     }
@@ -53,6 +57,13 @@ export default function ZoteroLibraryPanel() {
         <BookMarked size={13} className="shrink-0 text-[var(--text-muted)]" aria-hidden="true" />
         <span className="font-medium text-[var(--text-normal)]">Zotero 文献库</span>
         <span className="text-[var(--text-faint)]">{error ? '未连接' : loading ? '…' : items.length}</span>
+        {offline && !error ? (
+          <CloudOff
+            size={12}
+            aria-label="离线缓存"
+            className="text-[var(--text-faint)]"
+          />
+        ) : null}
         <button
           type="button"
           title="刷新文献库"

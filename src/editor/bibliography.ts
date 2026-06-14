@@ -1,4 +1,4 @@
-import { zoteroCsl } from '../ipc/zotero';
+import { zoteroCslResilient } from '../ipc/zotero';
 import { showToast } from '../stores/useToastStore';
 import type { CitationStyle, CslItem } from '../types/zotero';
 import { extractCitations } from './citations';
@@ -86,7 +86,7 @@ async function expand(styleOverride?: CitationStyle): Promise<void> {
   const keys = extractCitations(view.state).map((c) => c.key);
   let items: CslItem[];
   try {
-    items = keys.length ? await zoteroCsl(keys) : [];
+    items = keys.length ? await zoteroCslResilient(keys) : [];
   } catch (e) {
     showToast('error', `展开参考文献失败：${errText(e)}`);
     return;

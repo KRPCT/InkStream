@@ -6,6 +6,7 @@ mod vault;
 mod watcher;
 mod window_guard;
 mod zotero;
+mod zotero_sync;
 
 use tauri::Manager;
 
@@ -70,7 +71,13 @@ pub fn run() {
             zotero::zotero_cayw,
             zotero::zotero_citekeys,
             zotero::zotero_items,
-            zotero::zotero_csl
+            zotero::zotero_csl,
+            zotero_sync::zotero_set_credentials,
+            zotero_sync::zotero_clear_credentials,
+            zotero_sync::zotero_credentials_status,
+            zotero_sync::zotero_sync,
+            zotero_sync::zotero_cache_items,
+            zotero_sync::zotero_cache_csl
         ])
         .setup(|app| {
             // watcher 单例状态注册（切 vault 时 start/stop_watch 经此句柄换装）。

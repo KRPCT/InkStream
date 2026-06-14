@@ -1,5 +1,11 @@
 import { type ReactNode, useEffect, useState } from 'react';
 import { gitGithubStatus, gitLoginGithub, gitLogoutGithub } from '../../ipc/git';
+import {
+  zoteroClearCredentials,
+  zoteroCredentialsStatus,
+  zoteroSetCredentials,
+  zoteroSync,
+} from '../../ipc/zotero';
 import { useHelpStore } from '../../stores/useHelpStore';
 import { useSettingsStore } from '../../stores/useSettingsStore';
 import { showToast } from '../../stores/useToastStore';
@@ -307,6 +313,135 @@ export function AccountSection() {
       >
         查看多设备同步教程 →
       </button>
+    </div>
+  );
+}
+
+export function ZoteroSection() {
+  const [configured, setConfigured] = useState<boolean | null>(null);
+  const [savedUserId, setSavedUserId] = useState('');
+  const [apiKey, setApiKey] = useState('');
+  const [userId, setUserId] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [syncMsg, setSyncMsg] = useState('');
+
+  const refresh = (): void => {
+    void zoteroCredentialsStatus()
+      .then((s) => {
+        setConfigured(s.hasKey);
+        setSavedUserId(s.userId);
+      })
+      .catch(() => setConfigured(false));
+  };
+  useEffect(refresh, []);
+
+  const save = async (): Promise<void> => {
+    if (!apiKey.trim() || !userId.trim()) return;
+    setBusy(true);
+    try {
+      await zoteroSetCredentials(apiKey.trim(), userId.trim());
+      setApiKey('');
+      setUserId('');
+      refresh();
+    } catch (e) {
+      showToast('error', `保存失败：${errText(e)}`);
+    } finally {
+      setBusy(false);
+    }
+  };
+  const clear = async (): Promise<void> => {
+    setBusy(true);
+    try {
+      await zoteroClearCredentials();
+      setConfigured(false);
+      setSavedUserId('');
+    } catch (e) {
+      showToast('error', `清除失败：${errText(e)}`);
+    } finally {
+      setBusy(false);
+    }
+  };
+  const sync = async (): Promise<void> => {
+    setBusy(true);
+    setSyncMsg('');
+    try {
+      const r = await zoteroSync();
+      setSyncMsg(
+        `同步完成：更新 ${r.synced} 条${r.removed ? `、删除 ${r.removed} 条` : ''}（库版本 ${r.version}）。`,
+      );
+    } catch (e) {
+      showToast('error', `同步失败：${errText(e)}`);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div>
+      <p className="py-3 text-[12px] leading-snug text-[var(--text-muted)]">
+        配置 Zotero Web API 后，可把文献库同步到本地缓存——Zotero 未运行时，文献库与参考文献仍可离线读取。
+        API Key 仅保存在本机 OS 凭据库，不会上传或回传界面。
+      </p>
+      {configured ? (
+        <>
+          <SettingRow label="已配置" description={`userID：${savedUserId}`}>
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => void clear()}
+              className="rounded-[4px] border border-[var(--background-modifier-border)] px-3 py-1 text-[12px] text-[var(--text-normal)] hover:bg-[var(--background-modifier-hover)] disabled:text-[var(--text-faint)]"
+            >
+              清除凭据
+            </button>
+          </SettingRow>
+          <SettingRow label="增量同步" description="拉取上次同步以来的改动，落地本地缓存。">
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => void sync()}
+              className="rounded-[4px] bg-[var(--accent)] px-3 py-1 text-[12px] font-medium text-[var(--background-primary)] disabled:opacity-50"
+            >
+              {busy ? '同步中…' : '立即同步'}
+            </button>
+          </SettingRow>
+          {syncMsg ? (
+            <p className="py-2 text-[12px] leading-snug text-[var(--text-muted)]">{syncMsg}</p>
+          ) : null}
+        </>
+      ) : (
+        <div className="py-1">
+          <div className="mt-2 flex flex-col gap-2">
+            <input
+              type="text"
+              value={userId}
+              placeholder="userID（数字，见 zotero.org/settings/keys）"
+              onChange={(e) => setUserId(e.target.value)}
+              className="rounded-[4px] border border-[var(--background-modifier-border)] bg-[var(--background-primary)] px-2 py-1 text-[12px] text-[var(--text-normal)] outline-none focus:border-[var(--accent)]"
+            />
+            <div className="flex items-center gap-2">
+              <input
+                type="password"
+                value={apiKey}
+                placeholder="API Key"
+                onChange={(e) => setApiKey(e.target.value)}
+                className="min-w-0 flex-1 rounded-[4px] border border-[var(--background-modifier-border)] bg-[var(--background-primary)] px-2 py-1 text-[12px] text-[var(--text-normal)] outline-none focus:border-[var(--accent)]"
+              />
+              <button
+                type="button"
+                disabled={busy || !apiKey.trim() || !userId.trim()}
+                onClick={() => void save()}
+                className="shrink-0 rounded-[4px] bg-[var(--accent)] px-3 py-1 text-[12px] font-medium text-[var(--background-primary)] disabled:opacity-50"
+              >
+                保存
+              </button>
+            </div>
+          </div>
+          <p className="mt-2 text-[12px] leading-snug text-[var(--text-faint)]">
+            在 zotero.org ▸ Settings ▸ Feeds/API ▸ Create new private key 创建一个含「Allow library
+            access」的只读 Key；userID 显示在同一页面。
+          </p>
+        </div>
+      )}
     </div>
   );
 }

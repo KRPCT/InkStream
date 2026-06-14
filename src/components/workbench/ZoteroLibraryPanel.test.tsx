@@ -5,7 +5,10 @@ import type { ZoteroItem } from '../../types/zotero';
 /** Sidebar Zotero 文献库回归门（Phase 8 ACAD-01）。zoteroItems 经替身，断言渲染 / 过滤 / 点击插入 / 错误态。 */
 
 const zoteroItems = vi.fn<() => Promise<ZoteroItem[]>>(() => Promise.resolve([]));
-vi.mock('../../ipc/zotero', () => ({ zoteroItems: () => zoteroItems() }));
+// 面板经 zoteroItemsResilient（在线优先、离线回退）取数；此处直通替身并标记非离线。
+vi.mock('../../ipc/zotero', () => ({
+  zoteroItemsResilient: async () => ({ items: await zoteroItems(), offline: false }),
+}));
 const insertCitekey = vi.fn<(k: string) => void>();
 vi.mock('../../editor/academicActions', () => ({ insertCitekey: (k: string) => insertCitekey(k) }));
 

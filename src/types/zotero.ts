@@ -14,6 +14,19 @@ export interface ZoteroItem {
 /** 参考文献排版样式（ZOT-04）。占位标记 `<!-- biblio:STYLE -->` 内编码。 */
 export type CitationStyle = 'gbt7714' | 'apa' | 'vancouver';
 
+/** Zotero Web API 凭据状态（ZOT-02）。API Key 本身绝不回传，仅暴露是否已配置 + userID。 */
+export interface ZoteroCredStatus {
+  hasKey: boolean;
+  userId: string;
+}
+
+/** 一次增量同步结果（ZOT-02）：本次写入条目数 / 删除数 / 同步后 library version。 */
+export interface ZoteroSyncResult {
+  synced: number;
+  removed: number;
+  version: number;
+}
+
 /** CSL-JSON 人名（作者/编者）。机构名走 literal。 */
 export interface CslName {
   family?: string;

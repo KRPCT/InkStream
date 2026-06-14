@@ -80,11 +80,60 @@ async fn bbt_search() -> Result<Vec<serde_json::Value>, String> {
 }
 
 /// CSL-JSON 字段名：citekey（BBT）/ citation-key（CSL），都试。
-fn item_citekey(it: &serde_json::Value) -> &str {
+pub(crate) fn item_citekey(it: &serde_json::Value) -> &str {
     it.get("citekey")
         .or_else(|| it.get("citation-key"))
         .and_then(|k| k.as_str())
         .unwrap_or("")
+}
+
+/// CSL-JSON 条目 → 精简视图（标题 / 首作者姓「等」/ 年）。无 citekey 返回 None（库视图只列可引用项）。
+/// BBT 实时取数与 ZOT-02 离线缓存读取共用，保证两路展示一致。
+pub(crate) fn to_zotero_item(it: &serde_json::Value) -> Option<ZoteroItem> {
+    let citekey = item_citekey(it);
+    if citekey.is_empty() {
+        return None;
+    }
+    let title = it.get("title").and_then(|t| t.as_str()).unwrap_or("(无标题)");
+    let authors = it
+        .get("author")
+        .and_then(|a| a.as_array())
+        .map(|arr| {
+            let first = arr
+                .first()
+                .and_then(|c| {
+                    c.get("family")
+                        .or_else(|| c.get("literal"))
+                        .and_then(|f| f.as_str())
+                })
+                .unwrap_or("");
+            if arr.len() > 1 {
+                format!("{first} 等")
+            } else {
+                first.to_string()
+            }
+        })
+        .unwrap_or_default();
+    let year = it
+        .get("issued")
+        .and_then(|i| i.get("date-parts"))
+        .and_then(|d| d.as_array())
+        .and_then(|d| d.first())
+        .and_then(|p| p.as_array())
+        .and_then(|p| p.first())
+        .map(|y| {
+            y.as_str()
+                .map(String::from)
+                .or_else(|| y.as_i64().map(|n| n.to_string()))
+                .unwrap_or_default()
+        })
+        .unwrap_or_default();
+    Some(ZoteroItem {
+        citekey: citekey.to_string(),
+        title: title.to_string(),
+        authors,
+        year,
+    })
 }
 
 /// 取 Zotero 库内全部 citekey（ZOT-03 解析用）。CitationPanel 据此判 `[@key]` 是否未解析。
@@ -114,54 +163,7 @@ pub struct ZoteroItem {
 #[tauri::command]
 pub async fn zotero_items() -> Result<Vec<ZoteroItem>, String> {
     let items = bbt_search().await?;
-    let mut out = Vec::new();
-    for it in &items {
-        let citekey = item_citekey(it);
-        if citekey.is_empty() {
-            continue;
-        }
-        let title = it.get("title").and_then(|t| t.as_str()).unwrap_or("(无标题)");
-        let authors = it
-            .get("author")
-            .and_then(|a| a.as_array())
-            .map(|arr| {
-                let first = arr
-                    .first()
-                    .and_then(|c| {
-                        c.get("family")
-                            .or_else(|| c.get("literal"))
-                            .and_then(|f| f.as_str())
-                    })
-                    .unwrap_or("");
-                if arr.len() > 1 {
-                    format!("{first} 等")
-                } else {
-                    first.to_string()
-                }
-            })
-            .unwrap_or_default();
-        let year = it
-            .get("issued")
-            .and_then(|i| i.get("date-parts"))
-            .and_then(|d| d.as_array())
-            .and_then(|d| d.first())
-            .and_then(|p| p.as_array())
-            .and_then(|p| p.first())
-            .map(|y| {
-                y.as_str()
-                    .map(String::from)
-                    .or_else(|| y.as_i64().map(|n| n.to_string()))
-                    .unwrap_or_default()
-            })
-            .unwrap_or_default();
-        out.push(ZoteroItem {
-            citekey: citekey.to_string(),
-            title: title.to_string(),
-            authors,
-            year,
-        });
-    }
-    Ok(out)
+    Ok(items.iter().filter_map(to_zotero_item).collect())
 }
 
 /// 取指定 citekey 的完整 CSL-JSON 条目（ZOT-04 参考文献按样式展开）。

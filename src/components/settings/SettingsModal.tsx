@@ -6,6 +6,7 @@ import {
   AppearanceSection,
   EditorSection,
   GitSection,
+  ZoteroSection,
 } from './settingsSections';
 
 /**
@@ -17,6 +18,7 @@ const CATEGORIES: { id: SettingsCategory; label: string }[] = [
   { id: 'editor', label: '编辑器' },
   { id: 'git', label: 'Git' },
   { id: 'account', label: '账户' },
+  { id: 'zotero', label: 'Zotero' },
 ];
 
 export default function SettingsModal() {
@@ -98,6 +100,7 @@ function SettingsPanel() {
             {category === 'editor' ? <EditorSection /> : null}
             {category === 'git' ? <GitSection /> : null}
             {category === 'account' ? <AccountSection /> : null}
+            {category === 'zotero' ? <ZoteroSection /> : null}
           </div>
         </div>
       </div>
