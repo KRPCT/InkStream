@@ -1,4 +1,5 @@
-import { insertBibliography, insertCitation, insertFootnote } from '../editor/academicActions';
+import { insertCitation, insertFootnote } from '../editor/academicActions';
+import { expandBibliographyAs, insertOrExpandBibliography } from '../editor/bibliography';
 import type { Command } from '../types/commands';
 
 /**
@@ -16,5 +17,10 @@ export const ACADEMIC_COMMANDS: Command[] = [
     run: () => void insertCitation(),
   },
   { id: 'academic.footnote', title: '学术：插入脚注', run: () => insertFootnote() },
-  { id: 'academic.bibliography', title: '学术：插入参考文献', run: () => insertBibliography() },
+  // 无占位 → 插入空占位；有占位 → 按文档已选样式展开/刷新（默认 GB/T 7714）。
+  { id: 'academic.bibliography', title: '学术：插入参考文献', run: () => void insertOrExpandBibliography() },
+  // 指定样式展开（写入 `<!-- biblio:STYLE -->` 标记，doc 即真相源）。
+  { id: 'academic.biblio-gbt7714', title: '学术：参考文献（GB/T 7714）', run: () => void expandBibliographyAs('gbt7714') },
+  { id: 'academic.biblio-apa', title: '学术：参考文献（APA）', run: () => void expandBibliographyAs('apa') },
+  { id: 'academic.biblio-vancouver', title: '学术：参考文献（Vancouver）', run: () => void expandBibliographyAs('vancouver') },
 ];

@@ -69,7 +69,8 @@ pub fn run() {
             git::pr::gh_pr_merge,
             zotero::zotero_cayw,
             zotero::zotero_citekeys,
-            zotero::zotero_items
+            zotero::zotero_items,
+            zotero::zotero_csl
         ])
         .setup(|app| {
             // watcher 单例状态注册（切 vault 时 start/stop_watch 经此句柄换装）。

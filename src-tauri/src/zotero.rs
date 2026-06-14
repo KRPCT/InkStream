@@ -163,3 +163,22 @@ pub async fn zotero_items() -> Result<Vec<ZoteroItem>, String> {
     }
     Ok(out)
 }
+
+/// 取指定 citekey 的完整 CSL-JSON 条目（ZOT-04 参考文献按样式展开）。
+/// 按入参 keys 顺序返回（引用首现序），库中缺失的键跳过；前端据返回集判未解析。
+#[tauri::command]
+pub async fn zotero_csl(keys: Vec<String>) -> Result<Vec<serde_json::Value>, String> {
+    let items = bbt_search().await?;
+    let mut by_key: std::collections::HashMap<&str, &serde_json::Value> =
+        std::collections::HashMap::new();
+    for it in &items {
+        let k = item_citekey(it);
+        if !k.is_empty() {
+            by_key.entry(k).or_insert(it);
+        }
+    }
+    Ok(keys
+        .iter()
+        .filter_map(|k| by_key.get(k.as_str()).map(|v| (*v).clone()))
+        .collect())
+}

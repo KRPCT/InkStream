@@ -112,26 +112,3 @@ export function insertFootnote(): void {
   });
   view.focus();
 }
-
-/**
- * 插入参考文献占位（ACAD-02 / ZOT-04 标记）：文末插 `## 参考文献` + `<!-- biblio -->`（编译时展开，后续）。
- * 已存在则提示不重复插。
- */
-export function insertBibliography(): void {
-  const view = getView();
-  if (!view) return;
-  const doc = view.state.doc.toString();
-  if (doc.includes('<!-- biblio -->')) {
-    showToast('warning', '文末已有参考文献占位（<!-- biblio -->）。');
-    return;
-  }
-  const prefix = doc.endsWith('\n\n') ? '' : doc.endsWith('\n') ? '\n' : '\n\n';
-  const insert = `${prefix}## 参考文献\n\n<!-- biblio -->\n`;
-  const docLen = view.state.doc.length;
-  view.dispatch({
-    changes: { from: docLen, insert },
-    selection: { anchor: docLen + insert.length },
-    scrollIntoView: true,
-  });
-  view.focus();
-}

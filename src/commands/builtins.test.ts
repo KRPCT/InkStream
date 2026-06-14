@@ -95,10 +95,13 @@ const TITLES: Record<string, string> = {
   'academic.cite': '学术：插入引用（Zotero）',
   'academic.footnote': '学术：插入脚注',
   'academic.bibliography': '学术：插入参考文献',
+  'academic.biblio-gbt7714': '学术：参考文献（GB/T 7714）',
+  'academic.biblio-apa': '学术：参考文献（APA）',
+  'academic.biblio-vancouver': '学术：参考文献（Vancouver）',
 };
 
-/** 生产命令总数：…前略… + 重新引导(簇③) + 学术引用/脚注/参考文献(Phase8 ZOT/ACAD) = 63。 */
-const COMMAND_COUNT = 63;
+/** 生产命令总数：…前略… + 学术引用/脚注/参考文献 + 参考文献三式(Phase8 ZOT-04) = 66。 */
+const COMMAND_COUNT = 66;
 
 /** 生产命令（剔除 dev.* DEV-only 命令，如 IME 探针 dev.ime-probe）。 */
 function prodCommands() {
