@@ -14,6 +14,7 @@ import type {
   StashEntry,
 } from './git';
 import type { FileEntry, TreeEntry, VaultInfo } from './vault';
+import type { ZoteroItem } from './zotero';
 
 /** 单条 IPC command 的形状：参数与返回值。 */
 export interface IpcCommandEntry {
@@ -107,4 +108,6 @@ export interface IpcCommands {
   zotero_cayw: { args: undefined; result: string };
   // Phase 8 ZOT-03：Zotero 库全部 citekey（Citation Panel 未解析判定）。
   zotero_citekeys: { args: undefined; result: string[] };
+  // Phase 8 ACAD-01：Zotero 库条目（Sidebar 文献库）。
+  zotero_items: { args: undefined; result: ZoteroItem[] };
 }

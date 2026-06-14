@@ -4,11 +4,13 @@ import EmptyState from '../common/EmptyState';
 import { requestOpenFolder } from '../../editor/vaultFlow';
 import { refreshTree } from '../../editor/fileTreeData';
 import { useVaultStore } from '../../stores/useVaultStore';
+import { useWorkbenchStore } from '../../stores/useWorkbenchStore';
 import FileTree from './FileTree';
 import GitGuidanceBar from './GitGuidanceBar';
 import RecentVaults from './RecentVaults';
 import SidebarGitPanel from './SidebarGitPanel';
 import { SearchResults, SidebarSearch } from './SidebarSearch';
+import ZoteroLibraryPanel from './ZoteroLibraryPanel';
 import { collapseAllInTree, newFileInTree, newFolderInTree } from './fileTreeController';
 
 /** 空态「打开文件夹」按钮（与 EditorArea 同构）。 */
@@ -45,6 +47,7 @@ function HeaderAction({ icon: Icon, label, onClick }: { icon: LucideIcon; label:
  */
 export default function Sidebar() {
   const vault = useVaultStore((s) => s.vault);
+  const mode = useWorkbenchStore((s) => s.mode);
   const [query, setQuery] = useState('');
   const searching = query.trim().length > 0;
 
@@ -77,6 +80,8 @@ export default function Sidebar() {
       </div>
       <SidebarSearch query={query} onQueryChange={setQuery} />
       <GitGuidanceBar />
+      {/* ACAD-01：Academic 模式 Sidebar 上半 Zotero 文献库（其余模式不显），下半为文件树 */}
+      {mode === 'academic' ? <ZoteroLibraryPanel /> : null}
       {/* 有查询 → 扁平递归结果列表（R4 §4.2）；清空 → 恢复受控折叠树 */}
       <div className="min-h-0 flex-1 overflow-auto">
         {searching ? <SearchResults query={query} /> : <FileTree />}

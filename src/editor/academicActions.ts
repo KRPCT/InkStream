@@ -70,6 +70,23 @@ export async function insertCitation(): Promise<void> {
 }
 
 /**
+ * 直接插入指定 citekey 的引用（ACAD-01 Sidebar 库点击）：不弹 CAYW，按文档语言重排后插光标处。
+ */
+export function insertCitekey(citekey: string): void {
+  const view = getView();
+  if (!view) return;
+  const path = useEditorStore.getState().activePath ?? '';
+  const text = formatCitationFor(`[@${citekey}]`, languageFromDoc(view.state.doc.toString(), path));
+  const { from, to } = view.state.selection.main;
+  view.dispatch({
+    changes: { from, to, insert: text },
+    selection: { anchor: from + text.length },
+    scrollIntoView: true,
+  });
+  view.focus();
+}
+
+/**
  * 插入脚注（ACAD-02）：光标处插 `[^N]` 引用标记，文末追加 `[^N]: ` 定义并把光标移到定义处。
  * N 取文档内未用的最小正整数。
  */

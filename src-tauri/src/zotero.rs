@@ -5,6 +5,7 @@
 //! 三态错误（成功标准 ZOT-01）：连接拒绝=Zotero 未运行；404=BBT 未装；超时=选择超时/取消。
 //! format=pandoc 直接返回 `[@citekey]`（多选 `[@a; @b]`），前端原样插入光标处。
 
+use serde::Serialize;
 use std::time::Duration;
 
 // brackets=true 强制方括号引用式 `[@citekey]`（多选 `[@a; @b]`）；缺省 pandoc 是行内式 `@citekey`（无括号）。
@@ -41,10 +42,9 @@ pub async fn zotero_cayw() -> Result<String, String> {
     Ok(text.trim().to_string())
 }
 
-/// 取 Zotero 库内全部 citekey（ZOT-03 解析用）：BBT JSON-RPC `item.search("")` → 各条目的 citationKey。
-/// CitationPanel 据此判文档 `[@key]` 是否「未解析」（不在此集合即标红）。短超时（非交互）。
-#[tauri::command]
-pub async fn zotero_citekeys() -> Result<Vec<String>, String> {
+/// BBT JSON-RPC `item.search("")` → 库内全部条目（CSL-JSON Value 数组）。短超时（非交互）。
+/// 连接拒绝=未运行、404=BBT 未装、超时分别友好报错。zotero_citekeys / zotero_items 共用。
+async fn bbt_search() -> Result<Vec<serde_json::Value>, String> {
     let client = reqwest::Client::builder()
         .timeout(Duration::from_secs(15))
         .build()
@@ -73,22 +73,93 @@ pub async fn zotero_citekeys() -> Result<Vec<String>, String> {
         .json()
         .await
         .map_err(|e| format!("解析 Zotero 响应失败: {e}"))?;
-    let items = v
-        .get("result")
+    Ok(v.get("result")
         .and_then(|r| r.as_array())
-        .ok_or("Zotero 响应缺少 result 数组")?;
-    let mut keys = Vec::new();
-    for it in items {
-        // BBT 字段名跨版本：citationKey（现）/ citekey（旧），都试。
-        if let Some(k) = it
-            .get("citationKey")
-            .or_else(|| it.get("citekey"))
-            .and_then(|k| k.as_str())
-        {
-            if !k.is_empty() {
-                keys.push(k.to_string());
-            }
+        .cloned()
+        .unwrap_or_default())
+}
+
+/// CSL-JSON 字段名：citekey（BBT）/ citation-key（CSL），都试。
+fn item_citekey(it: &serde_json::Value) -> &str {
+    it.get("citekey")
+        .or_else(|| it.get("citation-key"))
+        .and_then(|k| k.as_str())
+        .unwrap_or("")
+}
+
+/// 取 Zotero 库内全部 citekey（ZOT-03 解析用）。CitationPanel 据此判 `[@key]` 是否未解析。
+#[tauri::command]
+pub async fn zotero_citekeys() -> Result<Vec<String>, String> {
+    let items = bbt_search().await?;
+    Ok(items
+        .iter()
+        .map(item_citekey)
+        .filter(|k| !k.is_empty())
+        .map(String::from)
+        .collect())
+}
+
+/// 文献库条目精简视图（ACAD-01 Sidebar 文献库 + 点击插引用）。
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ZoteroItem {
+    pub citekey: String,
+    pub title: String,
+    /// 首作者姓（多作者加「等」）。
+    pub authors: String,
+    pub year: String,
+}
+
+/// 取 Zotero 库条目（ACAD-01）：citekey + 标题 + 首作者 + 年（CSL-JSON 解析）。
+#[tauri::command]
+pub async fn zotero_items() -> Result<Vec<ZoteroItem>, String> {
+    let items = bbt_search().await?;
+    let mut out = Vec::new();
+    for it in &items {
+        let citekey = item_citekey(it);
+        if citekey.is_empty() {
+            continue;
         }
+        let title = it.get("title").and_then(|t| t.as_str()).unwrap_or("(无标题)");
+        let authors = it
+            .get("author")
+            .and_then(|a| a.as_array())
+            .map(|arr| {
+                let first = arr
+                    .first()
+                    .and_then(|c| {
+                        c.get("family")
+                            .or_else(|| c.get("literal"))
+                            .and_then(|f| f.as_str())
+                    })
+                    .unwrap_or("");
+                if arr.len() > 1 {
+                    format!("{first} 等")
+                } else {
+                    first.to_string()
+                }
+            })
+            .unwrap_or_default();
+        let year = it
+            .get("issued")
+            .and_then(|i| i.get("date-parts"))
+            .and_then(|d| d.as_array())
+            .and_then(|d| d.first())
+            .and_then(|p| p.as_array())
+            .and_then(|p| p.first())
+            .map(|y| {
+                y.as_str()
+                    .map(String::from)
+                    .or_else(|| y.as_i64().map(|n| n.to_string()))
+                    .unwrap_or_default()
+            })
+            .unwrap_or_default();
+        out.push(ZoteroItem {
+            citekey: citekey.to_string(),
+            title: title.to_string(),
+            authors,
+            year,
+        });
     }
-    Ok(keys)
+    Ok(out)
 }
