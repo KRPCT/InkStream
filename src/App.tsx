@@ -7,6 +7,7 @@ import ImeProbe from './components/dev/ImeProbe';
 import CommandPalette from './components/palette/CommandPalette';
 import WorkbenchLayout from './components/workbench/WorkbenchLayout';
 import { initExternalChangeArbiter, stopExternalChangeArbiter } from './editor/externalChange';
+import { initExitGuard, stopExitGuard } from './editor/exitGuard';
 import { restoreLastVault } from './editor/startupFlow';
 import { windowControls } from './ipc/window';
 import { initPersistence } from './stores/persistSettings';
@@ -21,9 +22,14 @@ export default function App() {
     void initVaultPersistence().then(() => restoreLastVault());
     // 外部变更冲突仲裁订阅（D-04，FILE-02）：watcher 事件经此按 isDirty 双路径仲裁。
     initExternalChangeArbiter();
+    // 未提交退出提醒（簇①）：关窗时若 git 有未提交改动则确认。
+    initExitGuard();
     // FOUC 契约第 1 步收尾：首帧渲染后显示窗口（show 幂等，StrictMode 双执行无害）
     void windowControls.show();
-    return () => stopExternalChangeArbiter();
+    return () => {
+      stopExternalChangeArbiter();
+      stopExitGuard();
+    };
   }, []);
 
   return (

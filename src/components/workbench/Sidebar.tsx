@@ -7,6 +7,7 @@ import { useVaultStore } from '../../stores/useVaultStore';
 import FileTree from './FileTree';
 import GitGuidanceBar from './GitGuidanceBar';
 import RecentVaults from './RecentVaults';
+import SidebarGitPanel from './SidebarGitPanel';
 import { SearchResults, SidebarSearch } from './SidebarSearch';
 import { collapseAllInTree, newFileInTree, newFolderInTree } from './fileTreeController';
 
@@ -80,6 +81,8 @@ export default function Sidebar() {
       <div className="min-h-0 flex-1 overflow-auto">
         {searching ? <SearchResults query={query} /> : <FileTree />}
       </div>
+      {/* 簇①：侧栏简易源代码管理面板（git 仓库才显示，置底，可折叠） */}
+      <SidebarGitPanel />
     </div>
   );
 }

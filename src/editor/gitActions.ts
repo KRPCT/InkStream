@@ -54,11 +54,13 @@ export async function abortOp(): Promise<void> {
   }
 }
 
-/** 提交更改（暂存全部 + 签名提交）。 */
-export async function commitChanges(): Promise<void> {
+/**
+ * 用给定信息提交（暂存全部 + 签名提交）。返回是否成功。
+ * 供侧栏内联提交（簇①）与命令式提交复用。冲突中间态先确认防误提交字面冲突标记。
+ */
+export async function commitWithMessage(message: string): Promise<boolean> {
   const root = repo();
-  if (!root) return;
-  // 冲突中间态防误提交字面冲突标记：有未解决冲突文件先确认（解决后提交是正途，但提醒勿提交未解决标记 / 可中止）。
+  if (!root || !message.trim()) return false;
   const status = useGitStore.getState().status;
   if (status?.files.some((f) => f.status === 'conflicted')) {
     const ok = await confirmDestructive({
@@ -66,8 +68,21 @@ export async function commitChanges(): Promise<void> {
       body: '存在未解决的冲突文件。请确认已移除全部 <<<<<<< 冲突标记后再提交，否则会把冲突标记提交进历史。',
       confirmLabel: '我已解决，继续提交',
     });
-    if (!ok) return;
+    if (!ok) return false;
   }
+  try {
+    await git.gitCommit(root, message);
+    await refreshAfter(root);
+    return true;
+  } catch (e) {
+    showToast('error', `提交失败：${errText(e)}`);
+    return false;
+  }
+}
+
+/** 提交更改（弹输入框拿提交信息 → commitWithMessage）。 */
+export async function commitChanges(): Promise<void> {
+  if (repo() === null) return;
   const message = await promptInput({
     title: '提交更改',
     label: '提交信息（Conventional Commits）',
@@ -76,12 +91,7 @@ export async function commitChanges(): Promise<void> {
     multiline: true,
   });
   if (message === null) return;
-  try {
-    await git.gitCommit(root, message);
-    await refreshAfter(root);
-  } catch (e) {
-    showToast('error', `提交失败：${errText(e)}`);
-  }
+  await commitWithMessage(message);
 }
 
 /** checkout 分支/提交；失败（多为未提交改动）→ 询问是否丢弃并强制切换。 */
