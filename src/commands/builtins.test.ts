@@ -90,8 +90,8 @@ const TITLES: Record<string, string> = {
   'fmt.clear': '格式：清除格式',
 };
 
-/** 生产命令总数：原 23 + 打开文件 + 快捷键参考 + 编辑8 + 段落14 + 格式8 + 新建文档 = 56。 */
-const COMMAND_COUNT = 56;
+/** 生产命令总数：原 23 + 打开文件 + 快捷键参考 + 编辑8 + 段落14 + 格式8 + 新建文档 + Git Graph(Phase 6) = 57。 */
+const COMMAND_COUNT = 57;
 
 /** 生产命令（剔除 dev.* DEV-only 命令，如 IME 探针 dev.ime-probe）。 */
 function prodCommands() {

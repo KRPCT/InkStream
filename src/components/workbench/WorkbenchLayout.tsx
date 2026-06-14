@@ -9,7 +9,7 @@ import {
 } from 'react-resizable-panels';
 import { useWorkbenchStore } from '../../stores/useWorkbenchStore';
 import { buildLayoutPatch } from './layoutPatch';
-import EditorArea from './EditorArea';
+import CentralArea from './CentralArea';
 import RightPanel from './RightPanel';
 import Sidebar from './Sidebar';
 import StatusBar from './StatusBar';
@@ -129,7 +129,7 @@ export default function WorkbenchLayout() {
         </Panel>
         <Separator className="workbench-separator" />
         <Panel id="editor-area" minSize={400} className="h-full">
-          <EditorArea />
+          <CentralArea />
         </Panel>
         <Separator className="workbench-separator" />
         <Panel

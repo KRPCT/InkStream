@@ -1,4 +1,4 @@
-import type { BranchInfo, CommitInfo, DiffTarget, FileDiff, GitStatus } from './git';
+import type { BranchInfo, CommitInfo, DiffTarget, FileDiff, GitRef, GitStatus } from './git';
 import type { FileEntry, TreeEntry, VaultInfo } from './vault';
 
 /** 单条 IPC command 的形状：参数与返回值。 */
@@ -41,4 +41,5 @@ export interface IpcCommands {
   git_branch_list: { args: { repoRoot: string }; result: BranchInfo[] };
   git_log: { args: { repoRoot: string; skip: number; limit: number }; result: CommitInfo[] };
   git_diff: { args: { repoRoot: string; target: DiffTarget }; result: FileDiff[] };
+  git_refs: { args: { repoRoot: string }; result: GitRef[] };
 }

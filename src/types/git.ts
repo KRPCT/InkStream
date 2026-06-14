@@ -78,6 +78,20 @@ export interface FileDiff {
 
 /**
  * diff 目标（↔ Rust DiffTarget enum，externally-tagged）：
- * 'workdir' = 工作区(含暂存)↔HEAD；'staged' = 暂存区↔HEAD；{ commits } = 两 commit 间。
+ * 'workdir' = 工作区(含暂存)↔HEAD；'staged' = 暂存区↔HEAD；
+ * { commit } = 单 commit(vs 首父，root vs 空树)；{ commits } = 两 commit 间。
  */
-export type DiffTarget = 'workdir' | 'staged' | { commits: { from: string; to: string } };
+export type DiffTarget =
+  | 'workdir'
+  | 'staged'
+  | { commit: { oid: string } }
+  | { commits: { from: string; to: string } };
+
+/** 指向某 commit 的 ref（git-graph 行内徽章；W2）。 */
+export interface GitRef {
+  /** 短名：'main' / 'origin/main' / 'v1.0.0'。 */
+  name: string;
+  kind: 'localBranch' | 'remoteBranch' | 'tag';
+  /** 此 ref 指向的 commit oid（annotated tag 已 peel 到 commit）。 */
+  targetOid: string;
+}

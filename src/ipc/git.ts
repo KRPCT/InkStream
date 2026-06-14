@@ -1,5 +1,12 @@
 import { invoke } from './invoke';
-import type { BranchInfo, CommitInfo, DiffTarget, FileDiff, GitStatus } from '../types/git';
+import type {
+  BranchInfo,
+  CommitInfo,
+  DiffTarget,
+  FileDiff,
+  GitRef,
+  GitStatus,
+} from '../types/git';
 
 /**
  * git 读命令 IPC 封装（Phase 6 GIT-01）。全部经类型化 invoke（src/types/ipc.ts 约束）。
@@ -21,7 +28,12 @@ export function gitLog(repoRoot: string, skip = 0, limit = 100): Promise<CommitI
   return invoke('git_log', { repoRoot, skip, limit });
 }
 
-/** 结构化 diff（工作区/暂存区/两 commit 间）。 */
+/** 结构化 diff（工作区/暂存区/单 commit/两 commit 间）。 */
 export function gitDiff(repoRoot: string, target: DiffTarget): Promise<FileDiff[]> {
   return invoke('git_diff', { repoRoot, target });
+}
+
+/** ref 清单（分支 + tag，按指向 commit oid）——git-graph 行内徽章数据源。 */
+export function gitRefs(repoRoot: string): Promise<GitRef[]> {
+  return invoke('git_refs', { repoRoot });
 }

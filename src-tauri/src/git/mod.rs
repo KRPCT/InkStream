@@ -18,6 +18,7 @@
 pub(crate) mod branch;
 pub(crate) mod diff;
 pub(crate) mod log;
+pub(crate) mod refs;
 pub(crate) mod status;
 mod types;
 

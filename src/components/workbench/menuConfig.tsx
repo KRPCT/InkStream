@@ -114,6 +114,8 @@ export const MENUS: GroupConfig[] = [
       { commandId: 'view.toggle-right-panel', label: '切换右侧面板' },
       { commandId: 'view.collapse-tree', label: '折叠文件树' },
       { separator: true },
+      { commandId: 'git.toggle-graph', label: 'Git Graph' },
+      { separator: true },
       {
         label: '外观',
         submenu: [

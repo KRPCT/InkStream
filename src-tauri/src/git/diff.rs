@@ -16,6 +16,16 @@ pub fn build_diff(repo: &Repository, target: DiffTarget) -> Result<Vec<FileDiff>
             repo.diff_tree_to_workdir_with_index(head_tree.as_ref(), Some(&mut opts))?
         }
         DiffTarget::Staged => repo.diff_tree_to_index(head_tree.as_ref(), None, Some(&mut opts))?,
+        DiffTarget::Commit { oid } => {
+            // 单 commit 的改动 = 该 commit tree vs 首父 tree（root commit 无父 → vs 空树）。
+            let commit = repo.revparse_single(&oid)?.peel_to_commit()?;
+            let new_tree = commit.tree()?;
+            let old_tree = match commit.parent(0) {
+                Ok(p) => Some(p.tree()?),
+                Err(_) => None,
+            };
+            repo.diff_tree_to_tree(old_tree.as_ref(), Some(&new_tree), Some(&mut opts))?
+        }
         DiffTarget::Commits { from, to } => {
             let ot = repo.revparse_single(&from)?.peel_to_commit()?.tree()?;
             let nt = repo.revparse_single(&to)?.peel_to_commit()?.tree()?;

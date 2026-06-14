@@ -82,14 +82,28 @@ pub struct FileDiff {
     pub hunks: Vec<DiffHunk>,
 }
 
-/// diff 目标：工作区(含暂存)↔HEAD / 暂存区↔HEAD / 两 commit 间。
+/// 指向某 commit 的 ref（git-graph 行内徽章 + 详情；W2）。
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GitRef {
+    /// 短名：'main' / 'origin/main' / 'v1.0.0'。
+    pub name: String,
+    /// localBranch | remoteBranch | tag。
+    pub kind: String,
+    /// 此 ref 指向的 commit oid（annotated tag 已 peel 到 commit）。
+    pub target_oid: String,
+}
+
+/// diff 目标：工作区(含暂存)↔HEAD / 暂存区↔HEAD / 单 commit(vs 首父) / 两 commit 间。
 ///
 /// serde externally-tagged + lowercase 变体名：`Workdir`→`"workdir"`、`Staged`→`"staged"`、
-/// `Commits{from,to}`→`{"commits":{"from":..,"to":..}}`（与前端 TS 联合精确对齐）。
+/// `Commit{oid}`→`{"commit":{"oid":..}}`、`Commits{from,to}`→`{"commits":{"from":..,"to":..}}`
+/// （与前端 TS 联合精确对齐）。
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum DiffTarget {
     Workdir,
     Staged,
+    Commit { oid: String },
     Commits { from: String, to: String },
 }

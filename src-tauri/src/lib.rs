@@ -39,7 +39,8 @@ pub fn run() {
             git::status::git_status,
             git::branch::git_branch_list,
             git::log::git_log,
-            git::diff::git_diff
+            git::diff::git_diff,
+            git::refs::git_refs
         ])
         .setup(|app| {
             // watcher 单例状态注册（切 vault 时 start/stop_watch 经此句柄换装）。

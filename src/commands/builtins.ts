@@ -1,6 +1,7 @@
 import { registerImeProbeCommand } from '../components/dev/imeProbeCommand';
 import type { Command } from '../types/commands';
 import { CORE_COMMANDS } from './coreCommands';
+import { GIT_COMMANDS } from './gitCommands';
 import { bind } from './keymap';
 import { register } from './registry';
 import { TEXT_COMMANDS } from './textCommands';
@@ -11,7 +12,7 @@ import { TEXT_COMMANDS } from './textCommands';
  *   textCommands — 编辑/段落/格式（R4 §1.3，接 CM6）。
  * 本文件只做合并 + window 级键位绑定 + StrictMode 安全的 dispose 管理（拆分自避免单文件超 200 行）。
  */
-const BUILTINS: Command[] = [...CORE_COMMANDS, ...TEXT_COMMANDS];
+const BUILTINS: Command[] = [...CORE_COMMANDS, ...TEXT_COMMANDS, ...GIT_COMMANDS];
 
 let activeDispose: (() => void) | null = null;
 
@@ -37,6 +38,7 @@ export function registerBuiltinCommands(): () => void {
     bind('Ctrl+Shift+O', 'file.open-folder'),
     bind('Ctrl+S', 'file.save'),
     bind('Ctrl+E', 'view.toggle-render-mode'),
+    bind('Ctrl+Shift+G', 'git.toggle-graph'),
     // DEV-only：IME 输入探针命令（R2 实验入口）。非 DEV 为 no-op，不进注册表。
     registerImeProbeCommand(),
   ];

@@ -1,0 +1,52 @@
+/* git-graph 视图色板（Phase 6 GIT-02）：泳道 8 色循环 + ref/状态/diff 色，明暗双套。
+   承「不硬编色」铁律——组件只引 var(--graph-*)，具体值集中此处随 data-theme 切换。 */
+
+html[data-theme='light'] {
+  --graph-lane-0: #2563eb;
+  --graph-lane-1: #16a34a;
+  --graph-lane-2: #d97706;
+  --graph-lane-3: #dc2626;
+  --graph-lane-4: #9333ea;
+  --graph-lane-5: #0891b2;
+  --graph-lane-6: #db2777;
+  --graph-lane-7: #65a30d;
+
+  --graph-ref-branch-bg: hsl(220, 70%, 92%);
+  --graph-ref-tag-bg: hsl(45, 90%, 88%);
+  --graph-ref-fg: hsl(220, 20%, 25%);
+
+  --graph-status-added: #16a34a;
+  --graph-status-modified: #d97706;
+  --graph-status-deleted: #dc2626;
+  --graph-status-renamed: #2563eb;
+  --graph-status-copied: #0891b2;
+  --graph-status-typechange: #9333ea;
+
+  --graph-diff-add-bg: hsl(140, 55%, 92%);
+  --graph-diff-del-bg: hsl(0, 70%, 95%);
+}
+
+html[data-theme='dark'] {
+  --graph-lane-0: #60a5fa;
+  --graph-lane-1: #4ade80;
+  --graph-lane-2: #fbbf24;
+  --graph-lane-3: #f87171;
+  --graph-lane-4: #c084fc;
+  --graph-lane-5: #22d3ee;
+  --graph-lane-6: #f472b6;
+  --graph-lane-7: #a3e635;
+
+  --graph-ref-branch-bg: hsl(220, 40%, 30%);
+  --graph-ref-tag-bg: hsl(45, 45%, 30%);
+  --graph-ref-fg: hsl(220, 25%, 90%);
+
+  --graph-status-added: #4ade80;
+  --graph-status-modified: #fbbf24;
+  --graph-status-deleted: #f87171;
+  --graph-status-renamed: #60a5fa;
+  --graph-status-copied: #22d3ee;
+  --graph-status-typechange: #c084fc;
+
+  --graph-diff-add-bg: hsl(140, 35%, 18%);
+  --graph-diff-del-bg: hsl(0, 40%, 22%);
+}

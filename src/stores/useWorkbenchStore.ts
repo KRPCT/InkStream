@@ -3,17 +3,25 @@ import { MODE_PRESETS } from '../modes/presets';
 import type { AppMode } from '../types/settings';
 import { DEFAULT_LAYOUT, type ModeLayout, type TabId } from '../types/workbench';
 
+/** 中央区视图（Phase 6 GIT-02）：编辑器 or git-graph 整页接管。 */
+export type CentralView = 'editor' | 'gitGraph';
+
 interface WorkbenchState {
   mode: AppMode;
   /** 三模式各自的面板几何与折叠态（D-10：按模式记忆）。 */
   layouts: Record<AppMode, ModeLayout>;
   activeTab: TabId;
+  /** 中央区当前视图：'editor' 或 'gitGraph'（GIT-02，切换不卸载 EditorArea，保 CM 实例与 IME）。 */
+  centralView: CentralView;
   setMode: (mode: AppMode) => void;
   setLayout: (partial: Partial<ModeLayout>) => void;
   toggleSidebar: () => void;
   toggleRightPanel: () => void;
   resetCurrentLayout: () => void;
   setActiveTab: (tab: TabId) => void;
+  /** 切到指定中央视图；再按同一视图回 'editor'（git.toggle-graph 用）。 */
+  toggleCentralView: (view: CentralView) => void;
+  setCentralView: (view: CentralView) => void;
 }
 
 function initialLayouts(): Record<AppMode, ModeLayout> {
@@ -57,6 +65,7 @@ export const useWorkbenchStore = create<WorkbenchState>((set) => ({
   mode: 'standard',
   layouts: initialLayouts(),
   activeTab: 'outline',
+  centralView: 'editor',
   setMode: (mode) => {
     document.documentElement.dataset.mode = mode;
     writeBootMode(mode);
@@ -69,4 +78,7 @@ export const useWorkbenchStore = create<WorkbenchState>((set) => ({
     set((s) => patchCurrent(s, { rightPanelCollapsed: !s.layouts[s.mode].rightPanelCollapsed })),
   resetCurrentLayout: () => set((s) => patchCurrent(s, { ...DEFAULT_LAYOUT })),
   setActiveTab: (activeTab) => set({ activeTab }),
+  toggleCentralView: (view) =>
+    set((s) => ({ centralView: s.centralView === view ? 'editor' : view })),
+  setCentralView: (centralView) => set({ centralView }),
 }));
