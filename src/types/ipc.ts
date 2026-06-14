@@ -1,3 +1,4 @@
+import type { BranchInfo, CommitInfo, DiffTarget, FileDiff, GitStatus } from './git';
 import type { FileEntry, TreeEntry, VaultInfo } from './vault';
 
 /** 单条 IPC command 的形状：参数与返回值。 */
@@ -35,4 +36,9 @@ export interface IpcCommands {
   index_remove_doc: { args: { path: string }; result: null };
   index_rebuild: { args: { root: string }; result: null };
   index_switch_vault: { args: { root: string }; result: null };
+  // Phase 6 GIT-01：git 读命令（Rust spawn_blocking；仓库根 = VaultInfo.repoRoot）。
+  git_status: { args: { repoRoot: string }; result: GitStatus };
+  git_branch_list: { args: { repoRoot: string }; result: BranchInfo[] };
+  git_log: { args: { repoRoot: string; skip: number; limit: number }; result: CommitInfo[] };
+  git_diff: { args: { repoRoot: string; target: DiffTarget }; result: FileDiff[] };
 }

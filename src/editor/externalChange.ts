@@ -2,6 +2,7 @@ import { onVaultChange, type UnlistenFn, type VaultChangePayload } from '../ipc/
 import { readFile } from '../ipc/files';
 import { indexRemoveDoc, indexUpsertDoc, isIndexable } from '../ipc/indexService';
 import { consumeSuppressedWatch, freezeAutosave } from '../stores/autosave';
+import { useGitStore } from '../stores/useGitStore';
 import { showToast } from '../stores/useToastStore';
 import { useEditorStore } from '../stores/useEditorStore';
 import { useVaultStore } from '../stores/useVaultStore';
@@ -62,6 +63,10 @@ function reindexExternal(root: string, rel: string, kind: string): void {
 export async function arbitrateVaultChange(payload: VaultChangePayload): Promise<void> {
   const vault = useVaultStore.getState().vault;
   if (!vault) return;
+  // Phase 6 GIT-01：vault 内任何变更（含自身 autosave 写）都可能改 git 工作区状态 → 去抖刷新
+  // 分支脏标记。置于自激抑制前：自己保存文件同样改 git status，应反映（commit 改 .git 被 watcher 跳过，
+  // 故 W3 的写命令直接调 refresh，不依赖此路径）。
+  useGitStore.getState().scheduleRefresh();
   const rel = toRelative(vault.root, payload.path);
   if (rel === null || rel === '') return;
 

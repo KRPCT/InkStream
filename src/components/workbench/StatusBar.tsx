@@ -1,3 +1,4 @@
+import GitBranchIndicator from './GitBranchIndicator';
 import ModeIndicator from './ModeIndicator';
 import RenderModeIndicator from './RenderModeIndicator';
 
@@ -11,7 +12,9 @@ export default function StatusBar() {
       data-testid="status-bar"
       className="flex h-6 shrink-0 items-center justify-between border-t border-[var(--background-modifier-border)] bg-[var(--background-secondary)] pl-2 text-[12px] text-[var(--text-muted)]"
     >
-      <div data-testid="status-bar-left" />
+      <div data-testid="status-bar-left" className="flex h-full">
+        <GitBranchIndicator />
+      </div>
       <div data-testid="status-bar-right" className="flex h-full">
         <RenderModeIndicator />
         <ModeIndicator />

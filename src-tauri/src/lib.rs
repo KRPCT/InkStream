@@ -1,4 +1,5 @@
 mod files;
+mod git;
 mod index;
 mod path_guard;
 mod vault;
@@ -34,7 +35,11 @@ pub fn run() {
             index::index_upsert_doc,
             index::index_remove_doc,
             index::index_rebuild,
-            index::index_switch_vault
+            index::index_switch_vault,
+            git::status::git_status,
+            git::branch::git_branch_list,
+            git::log::git_log,
+            git::diff::git_diff
         ])
         .setup(|app| {
             // watcher 单例状态注册（切 vault 时 start/stop_watch 经此句柄换装）。

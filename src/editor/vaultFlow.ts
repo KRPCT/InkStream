@@ -4,6 +4,7 @@ import { indexRebuild } from '../ipc/indexService';
 import { listDir, listFiles, openVault } from '../ipc/vault';
 import { showToast } from '../stores/useToastStore';
 import { useGitGuidanceStore } from '../stores/useGitGuidanceStore';
+import { useGitStore } from '../stores/useGitStore';
 import { useVaultStore } from '../stores/useVaultStore';
 import type { VaultInfo } from '../types/vault';
 import { entriesToNodes } from './fileTreeData';
@@ -54,6 +55,9 @@ export async function openVaultByPath(path: string): Promise<void> {
     useVaultStore.getState().pushRecent(info.root);
     useVaultStore.getState().setLastVaultPath(info.root);
     applyGitGuidance(info);
+    // Phase 6 GIT-01：设 git 仓库根并刷新（status + branches）→ StatusBar 分支指示上屏。
+    // 非 git 工作区 repoRoot 为 null，store 清空、指示器隐藏（与 applyGitGuidance 的 init 引导协同）。
+    useGitStore.getState().setRepoRoot(info.repoRoot);
     // 快速打开（Ctrl+P，FILE-03）文件清单快照：fileProvider 同步消费此 store 快照。
     // 枚举失败不阻断打开 vault——快速打开仅暂无结果，文件树仍可用。
     try {
