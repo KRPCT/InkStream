@@ -105,4 +105,6 @@ export interface IpcCommands {
   };
   // Phase 8 ZOT-01：Zotero Better BibTeX CAYW（Rust reqwest 代理 localhost:23119）。
   zotero_cayw: { args: undefined; result: string };
+  // Phase 8 ZOT-03：Zotero 库全部 citekey（Citation Panel 未解析判定）。
+  zotero_citekeys: { args: undefined; result: string[] };
 }

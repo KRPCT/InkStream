@@ -2,6 +2,7 @@ import { EditorView } from '@codemirror/view';
 import { scheduleAutosave } from '../stores/autosave';
 import { useEditorStore } from '../stores/useEditorStore';
 import { isComposing } from './composition';
+import { syncCitations } from './citations';
 import { syncRichtext } from './editorState';
 import { reconfigureLanguageFromDoc } from './languages';
 import { syncOutline } from './outline';
@@ -38,6 +39,8 @@ export const mirrorListener = EditorView.updateListener.of((u) => {
     syncRichtext(u.view);
     // 大纲镜像（RightPanel 大纲 tab）：标题随编辑增删，同纪律单向写入 store（变化才更新）。
     syncOutline(u.view);
+    // 引用镜像（ZOT-03，RightPanel 引用 tab）：[@key] 随编辑增删，同纪律单向写入 store。
+    syncCitations(u.view);
   }
   if (u.selectionSet || u.docChanged) {
     useEditorStore.getState().setCursor(u.state.selection.main.head);

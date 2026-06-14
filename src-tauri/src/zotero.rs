@@ -11,6 +11,7 @@ use std::time::Duration;
 const CAYW_URL: &str = "http://127.0.0.1:23119/better-bibtex/cayw?format=pandoc&brackets=true";
 /// 交互式选择，给足时间（用户在 Zotero picker 里挑条目）。
 const CAYW_TIMEOUT_SECS: u64 = 120;
+const JSONRPC_URL: &str = "http://127.0.0.1:23119/better-bibtex/json-rpc";
 
 #[tauri::command]
 pub async fn zotero_cayw() -> Result<String, String> {
@@ -38,4 +39,56 @@ pub async fn zotero_cayw() -> Result<String, String> {
         .await
         .map_err(|e| format!("读取 Zotero 响应失败: {e}"))?;
     Ok(text.trim().to_string())
+}
+
+/// 取 Zotero 库内全部 citekey（ZOT-03 解析用）：BBT JSON-RPC `item.search("")` → 各条目的 citationKey。
+/// CitationPanel 据此判文档 `[@key]` 是否「未解析」（不在此集合即标红）。短超时（非交互）。
+#[tauri::command]
+pub async fn zotero_citekeys() -> Result<Vec<String>, String> {
+    let client = reqwest::Client::builder()
+        .timeout(Duration::from_secs(15))
+        .build()
+        .map_err(|e| format!("初始化请求失败: {e}"))?;
+    let payload =
+        serde_json::json!({ "jsonrpc": "2.0", "method": "item.search", "params": [""], "id": 1 });
+    let resp = client
+        .post(JSONRPC_URL)
+        .header("Accept", "application/json")
+        .json(&payload)
+        .send()
+        .await
+        .map_err(|e| {
+            if e.is_connect() {
+                "Zotero 未运行（请先启动 Zotero）".to_string()
+            } else if e.is_timeout() {
+                "Zotero 响应超时".to_string()
+            } else {
+                format!("连接 Zotero 失败: {e}")
+            }
+        })?;
+    if resp.status().as_u16() == 404 {
+        return Err("Zotero 未安装 Better BibTeX 插件".to_string());
+    }
+    let v: serde_json::Value = resp
+        .json()
+        .await
+        .map_err(|e| format!("解析 Zotero 响应失败: {e}"))?;
+    let items = v
+        .get("result")
+        .and_then(|r| r.as_array())
+        .ok_or("Zotero 响应缺少 result 数组")?;
+    let mut keys = Vec::new();
+    for it in items {
+        // BBT 字段名跨版本：citationKey（现）/ citekey（旧），都试。
+        if let Some(k) = it
+            .get("citationKey")
+            .or_else(|| it.get("citekey"))
+            .and_then(|k| k.as_str())
+        {
+            if !k.is_empty() {
+                keys.push(k.to_string());
+            }
+        }
+    }
+    Ok(keys)
 }

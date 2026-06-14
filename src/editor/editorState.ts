@@ -7,6 +7,7 @@ import { isComposing, queueAfterComposition } from './composition';
 import { baseExtensions } from './extensions';
 import { readLanguage } from './frontmatter';
 import { languageFromDoc, markAppliedLanguage } from './languages';
+import { syncCitations } from './citations';
 import { getView, scrollContainer } from './viewHandle';
 import { syncOutline } from './outline';
 import { imageVaultFacet } from './livepreview/inlinePlugin';
@@ -102,6 +103,7 @@ export function openFile(view: EditorView, path: string, doc: string, ext: Exten
     markAppliedLanguage(view, languageFromDoc(state.doc.toString(), path));
     // 大纲镜像（RightPanel 大纲 tab）：换装不触发 updateListener，故同 syncRichtext 在此显式同步。
     syncOutline(view);
+    syncCitations(view); // 引用镜像（ZOT-03）同此显式同步
   });
   // 焦点纪律：不程序化抢焦点。WebView2 只在「真实指针进入编辑器」时武装 OS IME/TSF，
   // 任何 programmatic 聚焦（view.focus / MoveFocus / EditContext）都不武装中文输入（真机 CDP 证）；
@@ -154,6 +156,7 @@ export function switchToTab(path: string): void {
     // IN-06：换装后对齐语言 diff 基线到目标文件实际语言（同 openFile，防多余/漏 reconfigure）。
     markAppliedLanguage(view, languageFromDoc(cached.doc.toString(), path));
     syncOutline(view);
+    syncCitations(view); // 引用镜像（ZOT-03）
   });
   useEditorStore.getState().setActive(path);
 }

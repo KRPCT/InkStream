@@ -12,3 +12,8 @@ import { invoke } from './invoke';
 export function zoteroCayw(): Promise<string> {
   return invoke('zotero_cayw', undefined);
 }
+
+/** 取 Zotero 库内全部 citekey（ZOT-03 解析 Citation Panel 的未解析判定）。失败 throw 友好错误。 */
+export function zoteroCitekeys(): Promise<string[]> {
+  return invoke('zotero_citekeys', undefined);
+}
