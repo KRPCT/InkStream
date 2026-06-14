@@ -37,6 +37,7 @@ function insertFencedBlock(lang: string): SlashCommand['apply'] {
 const SLASH_COMMANDS: readonly SlashCommand[] = [
   { label: '/math', detail: '数学公式块（KaTeX）', apply: insertFencedBlock('math') },
   { label: '/latex', detail: 'LaTeX 公式块（MathJax）', apply: insertFencedBlock('latex') },
+  { label: '/typst', detail: 'Typst 排版块（typst.ts）', apply: insertFencedBlock('typst') },
 ];
 
 /** slash 命令补全源：匹配行首 / 空白后的 `/命令名`（避免 a/b 路径误触发）。 */

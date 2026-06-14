@@ -10,6 +10,12 @@ export default defineConfig({
     strictPort: true,
   },
   envPrefix: ['VITE_', 'TAURI_ENV_'],
+  optimizeDeps: {
+    // typst.ts JS glue 模块多，dev 预构建避免首个 typst 块编译前现场 pre-bundle 卡顿（Phase 5 W3）。
+    include: ['@myriaddreamin/typst.ts'],
+    // 两个 wasm 包不可被 esbuild pre-bundle（会破 `?url` 资源语义）——wasm 经 ?url import 当同源资源处理。
+    exclude: ['@myriaddreamin/typst-ts-web-compiler', '@myriaddreamin/typst-ts-renderer'],
+  },
   build: {
     rolldownOptions: {
       // codemirror-lang-typst 内部 `import * as wasm from "*.wasm"`（wasm-bindgen ESM）

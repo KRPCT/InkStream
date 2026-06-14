@@ -8,10 +8,12 @@ import {
   FENCED_CODE_NODE,
   LATEX_INFO,
   MATH_INFO,
+  TYPST_INFO,
 } from './nodeNames';
 import { TableWidget } from './widgets/TableWidget';
 import { MathWidget } from './widgets/MathWidget';
 import { LatexWidget } from './widgets/LatexWidget';
+import { TypstWidget } from './widgets/TypstWidget';
 import { tableModelFromNode } from './tableModel';
 import { tableStructFromNode } from './tableOps';
 import { clearTableEdit, setTableEdit, tableEditState } from './tableEditState';
@@ -109,7 +111,7 @@ function buildBlockState(state: EditorState): BlockState {
         const infoText = info
           ? state.doc.sliceString(info.from, info.to).trim().split(/\s+/)[0]
           : '';
-        if (infoText === MATH_INFO || infoText === LATEX_INFO) {
+        if (infoText === MATH_INFO || infoText === LATEX_INFO || infoText === TYPST_INFO) {
           formulaBlocks.push({ from: node.from, to: node.to });
           const firstLine = state.doc.lineAt(node.from).number;
           const lastLine = state.doc.lineAt(node.to).number;
@@ -117,7 +119,12 @@ function buildBlockState(state: EditorState): BlockState {
           if (!cursorInBlock) {
             const codeText = node.node.getChild(CODE_TEXT_NODE);
             const src = codeText ? state.doc.sliceString(codeText.from, codeText.to) : '';
-            const widget = infoText === MATH_INFO ? new MathWidget(src) : new LatexWidget(src);
+            const widget =
+              infoText === MATH_INFO
+                ? new MathWidget(src)
+                : infoText === LATEX_INFO
+                  ? new LatexWidget(src)
+                  : new TypstWidget(src, node.from);
             builder.add(node.from, node.to, Decoration.replace({ widget, block: true }));
           }
         }
@@ -445,8 +452,41 @@ const latexTheme = EditorView.theme({
 });
 
 /**
+ * ```typst 块样式（Phase 5 W3）：块就地渲染 SVG。typst 排版默认黑字（SVG 写死色，非 currentColor），暗色主题下
+ * 黑字看不清——W3 用「白纸卡片」兜底（白底圆角，类 PDF 预览），主题色源注入（#set text(fill)）留 W4（需主题变化
+ * 监听 + 缓存失效）。SVG 自带页面尺寸，max-width:100% 等比缩到版心、overflow-x 兜底超宽；占位/错误同前纪律。
+ */
+const typstTheme = EditorView.theme({
+  '.cm-ink-typst': {
+    display: 'block',
+    margin: '0.5em 0',
+    maxWidth: '100%',
+    overflowX: 'auto',
+    // 白纸卡片兜底（typst 默认黑字需亮底；主题集成留 W4）：固定白底是 typst「纸张」语义而非主题色。
+    backgroundColor: '#ffffff',
+    borderRadius: '6px',
+    padding: '0.5em',
+  },
+  '.cm-ink-typst svg': { maxWidth: '100%', height: 'auto' },
+  '.cm-ink-typst-loading, .cm-ink-typst-empty': {
+    minHeight: '1.6em',
+    color: 'var(--text-faint)',
+    fontFamily: 'var(--font-mono)',
+    fontSize: '0.9em',
+    textAlign: 'left',
+    whiteSpace: 'pre-wrap',
+    backgroundColor: 'transparent',
+  },
+  '.cm-ink-typst-error': {
+    color: 'var(--color-error)',
+    fontFamily: 'var(--font-mono)',
+    backgroundColor: 'transparent',
+  },
+});
+
+/**
  * 块级层组合（挂入 livePreviewExtensions）：tableEditState（就地编辑态）+ blockField（decorations provide）
- * + atomicRanges + 表格/math/latex 样式。tableEditState 须在 blockField 前——buildBlockState 经 state.field 读它。
+ * + atomicRanges + 表格/math/latex/typst 样式。tableEditState 须在 blockField 前——buildBlockState 经 state.field 读它。
  */
 export const blockExtensions = [
   tableEditState,
@@ -455,4 +495,5 @@ export const blockExtensions = [
   tableTheme,
   mathTheme,
   latexTheme,
+  typstTheme,
 ];
