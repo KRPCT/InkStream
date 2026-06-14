@@ -70,6 +70,9 @@ export function buildFormulaToolbar(
   blockTo: number,
   source: string,
 ): void {
+  // 块定位数据：供 formulaGesture「点公式进双栏编辑」读取（点击是主入口，工具栏为辅）。
+  wrap.dataset.formulaFrom = String(blockFrom);
+  wrap.dataset.formulaTo = String(blockTo);
   const bar = document.createElement('div');
   bar.className = 'cm-ink-formula-toolbar';
   bar.setAttribute('role', 'toolbar');

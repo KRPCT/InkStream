@@ -28,6 +28,11 @@ export class LatexWidget extends WidgetType {
     );
   }
 
+  // 放行 mousedown（同 MathWidget）：让 formulaGesture 接管「点公式进双栏编辑」。
+  ignoreEvent(event: Event): boolean {
+    return event.type !== 'mousedown';
+  }
+
   toDOM(view: EditorView): HTMLElement {
     const wrap = document.createElement('div');
     wrap.className = 'cm-ink-latex';

@@ -40,6 +40,11 @@ export class MathWidget extends WidgetType {
     );
   }
 
+  // 放行 mousedown（默认 ignoreEvent 返回 true 会让 CM 忽略 widget 上的事件 → formulaGesture 不触发，点公式进不了编辑）。
+  ignoreEvent(event: Event): boolean {
+    return event.type !== 'mousedown';
+  }
+
   toDOM(view: EditorView): HTMLElement {
     const wrap = document.createElement('div');
     wrap.className = 'cm-ink-math';

@@ -555,12 +555,21 @@ const typstTheme = EditorView.theme({
  * （源码 textarea 左 / 实时预览右）。typst 预览黑字白纸兜底（同 typstTheme）。
  */
 const formulaEditTheme = EditorView.theme({
-  // 就地渲染容器相对定位（承绝对定位工具条）。
-  '.cm-ink-math, .cm-ink-latex, .cm-ink-typst': { position: 'relative' },
+  // 就地渲染容器相对定位（承绝对定位工具条）；cursor:pointer + hover 描边暗示「点击进双栏编辑」。
+  '.cm-ink-math, .cm-ink-latex, .cm-ink-typst': {
+    position: 'relative',
+    cursor: 'pointer',
+    borderRadius: '4px',
+    transition: 'background-color var(--duration-fast, 120ms) ease',
+  },
+  '.cm-ink-math:hover, .cm-ink-latex:hover, .cm-ink-typst:hover': {
+    backgroundColor: 'var(--background-modifier-hover)',
+  },
   '.cm-ink-formula-toolbar': {
+    // 置公式内右上角（非上方）——上方有 hover 间隙，鼠标移过去即脱离 .cm-ink-math:hover 区、工具栏消失点不到。
     position: 'absolute',
-    top: '-32px',
-    right: '0',
+    top: '2px',
+    right: '2px',
     display: 'flex',
     gap: '1px',
     padding: '3px',
