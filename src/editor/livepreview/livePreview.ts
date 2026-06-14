@@ -1,6 +1,7 @@
 import { Compartment, type Extension } from '@codemirror/state';
 import { inlinePlugin } from './inlinePlugin';
 import { blockExtensions } from './blockField';
+import { codeBlockDeco, codeBlockTheme } from './codeBlockDeco';
 import { linkGesture } from './linkGesture';
 import { tableGesture } from './tableGesture';
 import { wikiLinkCompletion } from './wikiLinkComplete';
@@ -40,7 +41,15 @@ import { wikiLinkCompletion } from './wikiLinkComplete';
  * Option 2 的「活动行整行纯源码」build 路径不变，作为重建路径的文本相等闸门不变量与门叠加。
  */
 export function livePreviewExtensions(): Extension[] {
-  return [inlinePlugin, blockExtensions, linkGesture, tableGesture, wikiLinkCompletion];
+  return [
+    inlinePlugin,
+    blockExtensions,
+    codeBlockDeco, // 代码块底纹 + 语言角标（行级装饰，与公式块 widget 正交）
+    codeBlockTheme,
+    linkGesture,
+    tableGesture,
+    wikiLinkCompletion,
+  ];
 }
 
 /**
