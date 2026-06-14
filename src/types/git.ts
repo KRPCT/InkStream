@@ -121,3 +121,29 @@ export interface GitRef {
   /** 此 ref 指向的 commit oid（annotated tag 已 peel 到 commit）。 */
   targetOid: string;
 }
+
+/** GitHub Pull Request（GIT-07，↔ Rust pr.rs PullRequest serde camelCase）。 */
+export interface PullRequest {
+  number: number;
+  title: string;
+  body: string;
+  /** open / closed。 */
+  state: string;
+  draft: boolean;
+  /** github.com 网页地址（外链打开用）。 */
+  url: string;
+  author: string;
+  /** 来源分支名。 */
+  headRef: string;
+  /** 目标分支名。 */
+  baseRef: string;
+}
+
+/** PR 合并方式（GitHub merge_method）。 */
+export type MergeMethod = 'merge' | 'squash' | 'rebase';
+
+/** PR 合并结果（↔ Rust MergeResult）。 */
+export interface MergeResult {
+  merged: boolean;
+  message: string;
+}

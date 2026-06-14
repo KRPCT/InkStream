@@ -8,7 +8,10 @@ import type {
   GitProgress,
   GitRef,
   GitStatus,
+  MergeMethod,
+  MergeResult,
   PullOutcome,
+  PullRequest,
   ResetMode,
   StashEntry,
 } from '../types/git';
@@ -28,9 +31,9 @@ export function gitBranchList(repoRoot: string): Promise<BranchInfo[]> {
   return invoke('git_branch_list', { repoRoot });
 }
 
-/** 提交历史（拓扑 + 时间序，分页）。 */
-export function gitLog(repoRoot: string, skip = 0, limit = 100): Promise<CommitInfo[]> {
-  return invoke('git_log', { repoRoot, skip, limit });
+/** 提交历史（拓扑 + 时间序，分页）。refs 空 = 全部分支；非空 = 仅这些分支（W5 Filter Branches）。 */
+export function gitLog(repoRoot: string, refs: string[] = [], skip = 0, limit = 100): Promise<CommitInfo[]> {
+  return invoke('git_log', { repoRoot, refs, skip, limit });
 }
 
 /** 结构化 diff（工作区/暂存区/单 commit/两 commit 间）。 */
@@ -190,4 +193,31 @@ export function gitLogoutGithub(): Promise<null> {
 /** 是否已登录（token 存在；token 本身不回传）。 */
 export function gitGithubStatus(): Promise<boolean> {
   return invoke('git_github_status', undefined);
+}
+
+// ── GitHub PR 流程（GIT-07，REST API 走 Rust；owner/repo 由 origin 远程解析）────────────
+
+/** 列出仓库的开放 PR。 */
+export function ghPrList(repoRoot: string): Promise<PullRequest[]> {
+  return invoke('gh_pr_list', { repoRoot });
+}
+
+/** 新建 PR：head（来源分支）→ base（目标分支）。 */
+export function ghPrCreate(
+  repoRoot: string,
+  title: string,
+  body: string,
+  base: string,
+  head: string,
+): Promise<PullRequest> {
+  return invoke('gh_pr_create', { repoRoot, title, body, base, head });
+}
+
+/** 合并 PR（merge/squash/rebase）。 */
+export function ghPrMerge(
+  repoRoot: string,
+  prNumber: number,
+  method: MergeMethod,
+): Promise<MergeResult> {
+  return invoke('gh_pr_merge', { repoRoot, number: prNumber, method });
 }

@@ -1,7 +1,25 @@
-use tauri::WebviewWindow;
+use tauri::{LogicalSize, WebviewWindow};
 
 /// 矩形 (x, y, w, h)，物理像素坐标（坐标可负：多显示器副屏在主屏左/上方）。
 pub type Rect = (i32, i32, u32, u32);
+
+/// 异常小尺寸阈值（物理像素）：低于此判定为塌缩，强制复位。
+const COLLAPSE_THRESHOLD: u32 = 200;
+
+/// Fixed-Version WebView2 运行时下，窗口可能塌缩成极小尺寸（如 6x6）——控制器初始化时序所致，
+/// Evergreen 模式无此问题。检测到异常小则强制可用尺寸 + 居中；总是 show + 聚焦。
+/// 根治"窗口不可见 / 6x6 空窗、minWidth 未生效"。任何窗口 API 错误静默放行。
+pub fn ensure_sized(window: &WebviewWindow) {
+    if let Ok(size) = window.outer_size() {
+        if size.width < COLLAPSE_THRESHOLD || size.height < COLLAPSE_THRESHOLD {
+            let _ = window.unmaximize();
+            let _ = window.set_size(LogicalSize::new(1200.0, 800.0));
+            let _ = window.center();
+        }
+    }
+    let _ = window.show();
+    let _ = window.set_focus();
+}
 
 /// 窗口矩形与任一显示器矩形相交即 true（D-04 离屏判定，纯函数）。
 /// 空显示器列表视为不相交（调用方据此 center()）。

@@ -20,6 +20,7 @@ pub(crate) mod branch;
 pub(crate) mod commit;
 pub(crate) mod diff;
 pub(crate) mod log;
+pub(crate) mod pr;
 pub(crate) mod refops;
 pub(crate) mod refs;
 pub(crate) mod remote;

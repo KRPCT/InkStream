@@ -22,14 +22,14 @@ export default function DiffHunkView({ fileDiff }: { fileDiff: FileDiff }) {
     return <div className="p-3 text-[13px] text-[var(--text-muted)]">无文本变更</div>;
   }
   return (
-    <div className="h-full overflow-auto font-mono text-[12px] leading-[1.5]">
+    <div className="h-full overflow-x-hidden overflow-y-auto font-mono text-[12px] leading-[1.5]">
       {fileDiff.hunks.map((h, hi) => (
         <div key={hi}>
-          <div className="select-none bg-[var(--background-secondary)] px-2 py-0.5 text-[var(--text-muted)]">
+          <div className="select-none break-all bg-[var(--background-secondary)] px-2 py-0.5 text-[var(--text-muted)]">
             {h.header.trim()}
           </div>
           {h.lines.map((ln, li) => (
-            <div key={li} className="flex" style={{ background: LINE_BG[ln.origin] }}>
+            <div key={li} className="flex items-start" style={{ background: LINE_BG[ln.origin] }}>
               <span className="w-10 shrink-0 select-none px-1 text-right text-[var(--text-faint)]">
                 {ln.oldLineno ?? ''}
               </span>
@@ -39,7 +39,7 @@ export default function DiffHunkView({ fileDiff }: { fileDiff: FileDiff }) {
               <span className="w-3 shrink-0 select-none text-center text-[var(--text-faint)]">
                 {ln.origin === ' ' ? '' : ln.origin}
               </span>
-              <span className="min-w-0 flex-1 whitespace-pre text-[var(--text-normal)]">
+              <span className="min-w-0 flex-1 whitespace-pre-wrap break-all text-[var(--text-normal)]">
                 {ln.content.replace(/\n$/, '')}
               </span>
             </div>

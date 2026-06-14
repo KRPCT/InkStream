@@ -1,90 +1,55 @@
 import { memo } from 'react';
-import {
-  DOT_R,
-  LANE_W,
-  ROW_H,
-  laneColor,
-  laneX,
-  type GraphNode,
-  type GraphSegment,
-} from './layoutGraph';
+import { ROW_H } from './layoutGraph';
 import type { GitRef } from '../../../types/git';
 
 /**
- * git-graph 单行（Phase 6 GIT-02）：左 lane SVG（圆点 + 跨行连线段）+ refs 徽章 + summary/author/date。
- * memo：仅本行数据变才重渲染（虚拟化下大量行复用）。色全走 CSS 变量（laneColor / --graph-*，无硬编色）。
+ * git-graph 单行**文字层**（重构后）：refs 徽章 + summary/author/date。圆点与连线由 GraphCanvas 整图单 SVG 画，
+ * 本行只负责左缩进让出图谱列（paddingLeft=graphWidth）+ 选区/hover 背景 + 点击。memo：虚拟化下大量行复用。
  */
 
-/** 一截线段 → SVG path：y 从 0(上行中点) 到 ROW_H(本行中点) 跨整行；分叉/收束走三次贝塞尔平滑 S 拐。 */
-function segPath(s: GraphSegment): string {
-  const x1 = laneX(s.fromLane);
-  const x2 = laneX(s.toLane);
-  if (s.kind === 'straight') return `M${x1} 0 L${x1} ${ROW_H}`;
-  const my = ROW_H / 2;
-  return `M${x1} 0 C${x1} ${my} ${x2} ${my} ${x2} ${ROW_H}`;
-}
-
 interface Props {
-  node: GraphNode;
-  segments: GraphSegment[];
-  laneCount: number;
+  graphWidth: number;
   refs: GitRef[];
   currentBranch: string | null;
   summary: string;
   author: string;
   date: string;
   selected: boolean;
+  /** Find 命中（W5）：非选中时浅黄底高亮。 */
+  matched?: boolean;
   onClick: () => void;
   onContextMenu: (e: React.MouseEvent) => void;
 }
 
 function CommitRow({
-  node,
-  segments,
-  laneCount,
+  graphWidth,
   refs,
   currentBranch,
   summary,
   author,
   date,
   selected,
+  matched = false,
   onClick,
   onContextMenu,
 }: Props) {
-  const width = Math.max(laneCount * LANE_W, LANE_W);
   return (
     <div
       role="row"
       aria-selected={selected}
       onClick={onClick}
       onContextMenu={onContextMenu}
-      className={`flex cursor-pointer items-center gap-2 px-2 ${
+      className={`flex cursor-pointer items-center gap-2 pr-2 ${
         selected
           ? 'bg-[var(--background-modifier-active)]'
           : 'hover:bg-[var(--background-modifier-hover)]'
       }`}
-      style={{ height: ROW_H }}
+      style={{
+        height: ROW_H,
+        paddingLeft: graphWidth + 8,
+        ...(matched && !selected ? { background: 'var(--graph-find-match-bg)' } : {}),
+      }}
     >
-      {/* 左：lane SVG（overflow visible 让相邻行线段在边界重叠 1px 接续不断） */}
-      <svg width={width} height={ROW_H} className="shrink-0" style={{ overflow: 'visible' }}>
-        {segments.map((s, i) => (
-          <path
-            key={i}
-            d={segPath(s)}
-            fill="none"
-            stroke={laneColor(s.colorIndex)}
-            strokeWidth={1.5}
-          />
-        ))}
-        <circle
-          cx={laneX(node.lane)}
-          cy={ROW_H / 2}
-          r={DOT_R}
-          fill={laneColor(node.colorIndex)}
-          stroke="var(--background-primary)"
-          strokeWidth={1}
-        />
-      </svg>
       {refs.map((r) => {
         const isCurrent = r.kind === 'localBranch' && r.name === currentBranch;
         return (

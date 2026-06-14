@@ -45,7 +45,7 @@ interface Strand {
 
 /** 几何常量（行高/列宽/圆点半径；虚拟化 estimateSize 与 SVG 坐标共用）。 */
 export const ROW_H = 26;
-export const LANE_W = 14;
+export const LANE_W = 16;
 export const DOT_R = 4;
 /** 调色板循环长度（与 git-graph.css 的 --graph-lane-0..7 对应）。 */
 export const PALETTE_N = 8;
@@ -54,6 +54,8 @@ export const PALETTE_N = 8;
 export const laneX = (lane: number): number => lane * LANE_W + LANE_W / 2;
 /** colorIndex → CSS 变量色。 */
 export const laneColor = (i: number): string => `var(--graph-lane-${i % PALETTE_N})`;
+/** 图谱列像素宽（= 最大泳道数 × 列宽，至少一列）。文字行据此左缩进，整图 SVG 据此定宽。 */
+export const graphWidth = (laneCount: number): number => Math.max(laneCount * LANE_W, LANE_W);
 
 export function layoutGraph(commits: readonly DagCommit[]): GraphLayout {
   const nodes: GraphNode[] = [];

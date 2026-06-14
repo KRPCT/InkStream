@@ -6,7 +6,10 @@ import type {
   GitOpResult,
   GitRef,
   GitStatus,
+  MergeMethod,
+  MergeResult,
   PullOutcome,
+  PullRequest,
   ResetMode,
   StashEntry,
 } from './git';
@@ -50,7 +53,10 @@ export interface IpcCommands {
   // Phase 6 GIT-01：git 读命令（Rust spawn_blocking；仓库根 = VaultInfo.repoRoot）。
   git_status: { args: { repoRoot: string }; result: GitStatus };
   git_branch_list: { args: { repoRoot: string }; result: BranchInfo[] };
-  git_log: { args: { repoRoot: string; skip: number; limit: number }; result: CommitInfo[] };
+  git_log: {
+    args: { repoRoot: string; refs: string[]; skip: number; limit: number };
+    result: CommitInfo[];
+  };
   git_diff: { args: { repoRoot: string; target: DiffTarget }; result: FileDiff[] };
   git_refs: { args: { repoRoot: string }; result: GitRef[] };
   // Phase 6 W3 写命令。产生提交类（commit/merge/cherry-pick/revert）走 git CLI -S 签名；引用操作走 git2。
@@ -87,4 +93,14 @@ export interface IpcCommands {
   git_login_github: { args: { token: string }; result: null };
   git_logout_github: { args: undefined; result: null };
   git_github_status: { args: undefined; result: boolean };
+  // Phase 6 GIT-07 GitHub PR（REST API 走 Rust reqwest，token 留 keyring）。owner/repo 由 origin 远程解析。
+  gh_pr_list: { args: { repoRoot: string }; result: PullRequest[] };
+  gh_pr_create: {
+    args: { repoRoot: string; title: string; body: string; base: string; head: string };
+    result: PullRequest;
+  };
+  gh_pr_merge: {
+    args: { repoRoot: string; number: number; method: MergeMethod };
+    result: MergeResult;
+  };
 }

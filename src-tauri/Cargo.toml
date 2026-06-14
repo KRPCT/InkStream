@@ -67,3 +67,10 @@ unicode-normalization = "=0.1.24"
 git2 = { version = "=0.21.0", default-features = false, features = [
     "vendored-libgit2",
 ] }
+# GitHub PR 流程（GIT-07）：REST API 走 Rust，token 留 keyring 永不进 webview（XSS 面）。
+# default-tls=Windows schannel（系统自带，免 OpenSSL/cmake/nasm，同 git2 避 vendored-openssl 思路）；
+# json 用 serde 解析。注：reqwest 的 rustls feature 名是 `rustls` 非 `rustls-tls`，留作跨平台后续。
+reqwest = { version = "=0.13.4", default-features = false, features = [
+    "default-tls",
+    "json",
+] }

@@ -62,7 +62,10 @@ pub fn run() {
             git::remote::git_clone,
             git::auth::git_login_github,
             git::auth::git_logout_github,
-            git::auth::git_github_status
+            git::auth::git_github_status,
+            git::pr::gh_pr_list,
+            git::pr::gh_pr_create,
+            git::pr::gh_pr_merge
         ])
         .setup(|app| {
             // watcher 单例状态注册（切 vault 时 start/stop_watch 经此句柄换装）。
@@ -73,6 +76,14 @@ pub fn run() {
             // 此处校验窗口与任一显示器相交，否则 center()
             if let Some(win) = app.get_webview_window("main") {
                 window_guard::ensure_visible(&win);
+                // Fixed-Version WebView2 下窗口会塌缩成 6x6（控制器异步附着时序）→ 强制复位尺寸/显示。
+                window_guard::ensure_sized(&win);
+                // 延迟重试：控制器可能在 setup 之后才附着并再次塌缩，800ms 后再强制一次。
+                let win2 = win.clone();
+                std::thread::spawn(move || {
+                    std::thread::sleep(std::time::Duration::from_millis(800));
+                    window_guard::ensure_sized(&win2);
+                });
             }
             Ok(())
         })

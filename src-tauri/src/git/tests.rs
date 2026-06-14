@@ -53,7 +53,7 @@ fn unborn_repo_has_no_branch_and_empty_log() {
     let dir = temp_dir("unborn");
     let repo = Repository::init(&dir).unwrap();
     assert!(collect_status(&repo).unwrap().branch.is_none()); // 无提交：HEAD 未生分支
-    assert!(walk_log(&repo, 0, 10).unwrap().is_empty());
+    assert!(walk_log(&repo, &[], 0, 10).unwrap().is_empty());
     std::fs::remove_dir_all(&dir).ok();
 }
 
@@ -75,7 +75,7 @@ fn commit_then_log_and_branch() {
     let repo = Repository::init(&dir).unwrap();
     commit_file(&repo, "a.md", "one", "feat: a");
     commit_file(&repo, "a.md", "two", "fix: a2");
-    let log = walk_log(&repo, 0, 10).unwrap();
+    let log = walk_log(&repo, &[], 0, 10).unwrap();
     assert_eq!(log.len(), 2);
     assert_eq!(log[0].summary, "fix: a2"); // 拓扑+时间序：最新在前
     assert_eq!(log[0].parents.len(), 1);
@@ -92,8 +92,8 @@ fn log_paging_skip_and_limit() {
     for i in 0..5 {
         commit_file(&repo, "a.md", &format!("v{i}"), &format!("c{i}"));
     }
-    assert_eq!(walk_log(&repo, 0, 2).unwrap().len(), 2);
-    let page2 = walk_log(&repo, 2, 2).unwrap();
+    assert_eq!(walk_log(&repo, &[], 0, 2).unwrap().len(), 2);
+    let page2 = walk_log(&repo, &[], 2, 2).unwrap();
     assert_eq!(page2.len(), 2);
     assert_eq!(page2[0].summary, "c2"); // skip 2 个最新，第三新是 c2
     std::fs::remove_dir_all(&dir).ok();

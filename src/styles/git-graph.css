@@ -24,6 +24,9 @@ html[data-theme='light'] {
 
   --graph-diff-add-bg: hsl(140, 55%, 92%);
   --graph-diff-del-bg: hsl(0, 70%, 95%);
+
+  /* Find Widget 命中高亮（W5）：浅黄底，活动命中加 accent 描边。 */
+  --graph-find-match-bg: hsl(48, 95%, 82%);
 }
 
 html[data-theme='dark'] {
@@ -49,4 +52,7 @@ html[data-theme='dark'] {
 
   --graph-diff-add-bg: hsl(140, 35%, 18%);
   --graph-diff-del-bg: hsl(0, 40%, 22%);
+
+  /* Find Widget 命中高亮（W5）：暗色降饱和暖底。 */
+  --graph-find-match-bg: hsl(48, 60%, 28%);
 }

@@ -34,7 +34,7 @@ export default function CommitDetailPanel() {
   }
 
   return (
-    <div className="flex h-full flex-col overflow-auto p-3 text-[13px]">
+    <div className="flex h-full flex-col overflow-x-hidden overflow-y-auto break-words p-3 text-[13px]">
       <div className="font-semibold text-[var(--text-normal)]">{commit.summary}</div>
       {commit.body ? (
         <pre className="mt-1 whitespace-pre-wrap font-mono text-[12px] text-[var(--text-muted)]">

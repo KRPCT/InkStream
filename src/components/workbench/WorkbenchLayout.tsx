@@ -9,6 +9,7 @@ import {
 } from 'react-resizable-panels';
 import { useWorkbenchStore } from '../../stores/useWorkbenchStore';
 import { buildLayoutPatch } from './layoutPatch';
+import GitGraphView from '../git/GitGraphView';
 import CentralArea from './CentralArea';
 import RightPanel from './RightPanel';
 import Sidebar from './Sidebar';
@@ -57,6 +58,8 @@ export default function WorkbenchLayout() {
   const mode = useWorkbenchStore((s) => s.mode);
   const layout = useWorkbenchStore((s) => s.layouts[s.mode]);
   const setLayout = useWorkbenchStore((s) => s.setLayout);
+  // git-graph 全宽：开图谱时作覆盖层盖住三栏（Group 不卸载保编辑器/CM 状态），故不动面板折叠机制（避 UAT #6）。
+  const gitGraphOpen = useWorkbenchStore((s) => s.centralView === 'gitGraph');
   const groupRef = useGroupRef();
   const sidebarRef = usePanelRef();
   const rightRef = usePanelRef();
@@ -132,11 +135,12 @@ export default function WorkbenchLayout() {
   return (
     <div className="flex h-screen flex-col bg-[var(--background-primary)]">
       <TitleBar />
+      <div className="relative min-h-0 flex-1">
       <Group
         groupRef={groupRef}
         orientation="horizontal"
         onLayoutChanged={handleLayoutChanged}
-        className="min-h-0 flex-1"
+        className="h-full w-full"
       >
         <Panel
           id="sidebar"
@@ -168,6 +172,12 @@ export default function WorkbenchLayout() {
           <RightPanel />
         </Panel>
       </Group>
+        {gitGraphOpen ? (
+          <div className="absolute inset-0 bg-[var(--background-primary)]">
+            <GitGraphView />
+          </div>
+        ) : null}
+      </div>
       <StatusBar />
     </div>
   );

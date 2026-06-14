@@ -27,9 +27,21 @@ interface GitGraphState {
   selectedFile: string | null;
   /** 远程操作进行中的提示文案（W4，fetch/push/pull 期间显示；null=空闲）。 */
   remoteBusy: string | null;
-  /** git-graph 左栏：提交图谱 ⇄ 分支管理（侧栏「分支」入口可直接设 branches 再开 graph）。 */
-  leftMode: 'graph' | 'branches';
-  setLeftMode: (mode: 'graph' | 'branches') => void;
+  /** git-graph 左栏视图：提交图谱 / 分支管理 / Pull Requests（侧栏入口可直接设再开 graph）。 */
+  leftMode: 'graph' | 'branches' | 'pr';
+  setLeftMode: (mode: 'graph' | 'branches' | 'pr') => void;
+  /** Find Widget 开关（W5）：提交搜索栏显隐。 */
+  findOpen: boolean;
+  setFindOpen: (open: boolean) => void;
+  /** Filter Branches（W5）：选中的分支名（空 = 全部分支）；改变即重载 log。 */
+  filterRefs: string[];
+  setFilterRefs: (refs: string[]) => void;
+  /** Repository Settings（W5）：加载提交数上限；改变即重载 log。 */
+  graphLimit: number;
+  setGraphLimit: (n: number) => void;
+  /** Repository Settings（W5）：日期相对显示（'3天前'）vs 绝对（本地日期时间）。 */
+  dateRelative: boolean;
+  setDateRelative: (b: boolean) => void;
   loadLog: (repoRoot: string) => Promise<void>;
   selectCommit: (oid: string) => void;
   selectFile: (path: string) => void;
@@ -47,11 +59,30 @@ export const useGitGraphStore = create<GitGraphState>((set, get) => ({
   remoteBusy: null,
   leftMode: 'graph',
   setLeftMode: (leftMode) => set({ leftMode }),
+  findOpen: false,
+  setFindOpen: (findOpen) => set({ findOpen }),
+  filterRefs: [],
+  setFilterRefs: (filterRefs) => {
+    set({ filterRefs });
+    const root = get().repoRoot;
+    if (root) void get().loadLog(root);
+  },
+  graphLimit: LOG_LIMIT,
+  setGraphLimit: (graphLimit) => {
+    set({ graphLimit });
+    const root = get().repoRoot;
+    if (root) void get().loadLog(root);
+  },
+  dateRelative: false,
+  setDateRelative: (dateRelative) => set({ dateRelative }),
 
   loadLog: async (repoRoot) => {
     set({ repoRoot, loading: true });
     try {
-      const [commits, refs] = await Promise.all([gitLog(repoRoot, 0, LOG_LIMIT), gitRefs(repoRoot)]);
+      const [commits, refs] = await Promise.all([
+        gitLog(repoRoot, get().filterRefs, 0, get().graphLimit),
+        gitRefs(repoRoot),
+      ]);
       if (get().repoRoot !== repoRoot) return; // 防竞态：加载期间切了仓库
       set({ commits, refs, loading: false });
       if (commits.length > 0) get().selectCommit(commits[0].oid); // 默认选最新
