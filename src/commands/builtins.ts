@@ -29,6 +29,7 @@ export function registerBuiltinCommands(): () => void {
   const disposers = [
     ...BUILTINS.map(register),
     bind('Ctrl+Shift+P', 'view.command-palette'),
+    bind('Ctrl+,', 'view.settings'),
     bind('Ctrl+P', 'go.quick-open'),
     bind('Ctrl+\\', 'view.toggle-sidebar'),
     bind('Ctrl+Alt+B', 'view.toggle-right-panel'),

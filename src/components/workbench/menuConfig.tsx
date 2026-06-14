@@ -116,6 +116,8 @@ export const MENUS: GroupConfig[] = [
       { separator: true },
       { commandId: 'git.toggle-graph', label: 'Git Graph' },
       { separator: true },
+      { commandId: 'view.settings', label: '设置' },
+      { separator: true },
       {
         label: '外观',
         submenu: [

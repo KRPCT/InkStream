@@ -25,9 +25,21 @@ let unsubscribers: Array<() => void> = [];
 
 /** 当前内存态快照，写盘前经 validateSettings 再过一遍（防内存异常外溢）。 */
 function snapshot(): PersistedSettings {
-  const { theme } = useSettingsStore.getState();
+  const { theme, autosaveEnabled, autosaveDelayMs, editorFontSize, gitRemoteMode, gitCustomServer } =
+    useSettingsStore.getState();
   const { mode, layouts } = useWorkbenchStore.getState();
-  return validateSettings({ version: 1, theme, mode, layouts, commandMru: listMru() });
+  return validateSettings({
+    version: 1,
+    theme,
+    mode,
+    layouts,
+    commandMru: listMru(),
+    autosaveEnabled,
+    autosaveDelayMs,
+    editorFontSize,
+    gitRemoteMode,
+    gitCustomServer,
+  });
 }
 
 function scheduleSave(): void {
@@ -42,6 +54,14 @@ function scheduleSave(): void {
 
 function apply(s: PersistedSettings): void {
   useSettingsStore.getState().setTheme(s.theme);
+  // 簇②：无副作用项直接 setState；字体经 setEditorFontSize 落 CSS 变量。
+  useSettingsStore.setState({
+    autosaveEnabled: s.autosaveEnabled,
+    autosaveDelayMs: s.autosaveDelayMs,
+    gitRemoteMode: s.gitRemoteMode,
+    gitCustomServer: s.gitCustomServer,
+  });
+  useSettingsStore.getState().setEditorFontSize(s.editorFontSize);
   useWorkbenchStore.getState().setMode(s.mode);
   useWorkbenchStore.setState({ layouts: s.layouts });
   hydrateMru(s.commandMru);

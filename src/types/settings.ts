@@ -9,6 +9,9 @@ export type ResolvedTheme = 'light' | 'dark';
 /** 三模式（布局预设 + 功能集，Plan 03/05 消费），驱动 <html data-mode>。 */
 export type AppMode = 'standard' | 'academic' | 'creative';
 
+/** git 远程方式（簇②设置，簇④接入行为）：仅本地 / SSH / GitHub OAuth(HTTPS) / 自定义 git 服务器。 */
+export type GitRemoteMode = 'local' | 'ssh' | 'oauth' | 'custom';
+
 /**
  * settings.json 磁盘契约（01-RESEARCH.md Pattern 6 形状，D-11）。
  * 真相源：tauri-plugin-store 落盘；localStorage 'inkstream.boot' 仅为首帧镜像。
@@ -19,4 +22,15 @@ export interface PersistedSettings {
   mode: AppMode;
   layouts: Record<AppMode, ModeLayout>;
   commandMru: string[];
+  // ── 簇② 用户可调项 ──
+  /** 自动保存开关（关则编辑不自动落盘，仍标脏、Ctrl+S 手动存）。 */
+  autosaveEnabled: boolean;
+  /** 自动保存防抖延迟（毫秒，200–5000）。 */
+  autosaveDelayMs: number;
+  /** 编辑器字体大小（px，10–28）。 */
+  editorFontSize: number;
+  /** git 远程方式（簇④接入行为）。 */
+  gitRemoteMode: GitRemoteMode;
+  /** 自定义 git 服务器地址（gitRemoteMode='custom' 时用）。 */
+  gitCustomServer: string;
 }

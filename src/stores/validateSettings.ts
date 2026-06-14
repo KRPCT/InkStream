@@ -1,4 +1,4 @@
-import type { AppMode, PersistedSettings, ThemeSetting } from '../types/settings';
+import type { AppMode, GitRemoteMode, PersistedSettings, ThemeSetting } from '../types/settings';
 import { DEFAULT_LAYOUT, type ModeLayout } from '../types/workbench';
 
 /**
@@ -8,6 +8,7 @@ import { DEFAULT_LAYOUT, type ModeLayout } from '../types/workbench';
 
 const THEMES: readonly string[] = ['light', 'dark', 'system'];
 const MODES: readonly string[] = ['standard', 'academic', 'creative'];
+const GIT_MODES: readonly string[] = ['local', 'ssh', 'oauth', 'custom'];
 const MRU_LIMIT = 10;
 
 function defaults(): PersistedSettings {
@@ -21,6 +22,11 @@ function defaults(): PersistedSettings {
       creative: { ...DEFAULT_LAYOUT },
     },
     commandMru: [],
+    autosaveEnabled: true,
+    autosaveDelayMs: 500,
+    editorFontSize: 16,
+    gitRemoteMode: 'ssh',
+    gitCustomServer: '',
   };
 }
 
@@ -65,5 +71,13 @@ export function validateSettings(raw: unknown): PersistedSettings {
     commandMru: Array.isArray(raw.commandMru)
       ? raw.commandMru.filter((x): x is string => typeof x === 'string').slice(0, MRU_LIMIT)
       : [],
+    autosaveEnabled: typeof raw.autosaveEnabled === 'boolean' ? raw.autosaveEnabled : true,
+    autosaveDelayMs: clamp(raw.autosaveDelayMs, 200, 5000, 500),
+    editorFontSize: clamp(raw.editorFontSize, 10, 28, 16),
+    gitRemoteMode: (GIT_MODES.includes(raw.gitRemoteMode as string)
+      ? raw.gitRemoteMode
+      : 'ssh') as GitRemoteMode,
+    gitCustomServer:
+      typeof raw.gitCustomServer === 'string' ? raw.gitCustomServer.slice(0, 500) : '',
   };
 }

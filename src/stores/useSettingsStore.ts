@@ -1,11 +1,27 @@
 import { create } from 'zustand';
 import { subscribeSystemTheme, type Unsubscribe } from '../ipc/theme';
-import type { ResolvedTheme, ThemeSetting } from '../types/settings';
+import type { GitRemoteMode, ResolvedTheme, ThemeSetting } from '../types/settings';
 
 interface SettingsState {
   theme: ThemeSetting;
   resolvedTheme: ResolvedTheme;
   setTheme: (theme: ThemeSetting) => void;
+  // ── 簇② 用户可调项 ──
+  autosaveEnabled: boolean;
+  autosaveDelayMs: number;
+  editorFontSize: number;
+  gitRemoteMode: GitRemoteMode;
+  gitCustomServer: string;
+  setAutosaveEnabled: (enabled: boolean) => void;
+  setAutosaveDelayMs: (ms: number) => void;
+  setEditorFontSize: (px: number) => void;
+  setGitRemoteMode: (mode: GitRemoteMode) => void;
+  setGitCustomServer: (server: string) => void;
+}
+
+/** 字体大小落到 CSS 变量（编辑器 .cm-editor 经 var(--editor-font-size) 消费，见 app.css）。 */
+function applyFontSize(px: number): void {
+  document.documentElement.style.setProperty('--editor-font-size', `${px}px`);
 }
 
 let systemUnsubscribe: Unsubscribe | null = null;
@@ -62,6 +78,20 @@ export const useSettingsStore = create<SettingsState>((set) => ({
     set({ theme, resolvedTheme: resolved });
     if (theme === 'system') followSystem(set);
   },
+  // 簇② 默认值（启动时由 persistSettings.apply 以磁盘值覆写）。
+  autosaveEnabled: true,
+  autosaveDelayMs: 500,
+  editorFontSize: 16,
+  gitRemoteMode: 'ssh',
+  gitCustomServer: '',
+  setAutosaveEnabled: (autosaveEnabled) => set({ autosaveEnabled }),
+  setAutosaveDelayMs: (autosaveDelayMs) => set({ autosaveDelayMs }),
+  setEditorFontSize: (editorFontSize) => {
+    applyFontSize(editorFontSize);
+    set({ editorFontSize });
+  },
+  setGitRemoteMode: (gitRemoteMode) => set({ gitRemoteMode }),
+  setGitCustomServer: (gitCustomServer) => set({ gitCustomServer }),
 }));
 
 /**

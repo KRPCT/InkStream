@@ -5,6 +5,7 @@ import { getView } from '../editor/viewHandle';
 import { writeFileAtomic } from '../ipc/files';
 import { indexUpsertDoc, isIndexable } from '../ipc/indexService';
 import { useEditorStore } from './useEditorStore';
+import { useSettingsStore } from './useSettingsStore';
 import { useToastStore } from './useToastStore';
 import { useVaultStore } from './useVaultStore';
 
@@ -21,8 +22,6 @@ import { useVaultStore } from './useVaultStore';
  * 按 path 取（活动文件读 live view、非活动文件读其缓存 state，CR-01）；
  * 测试经 configureAutosave 注入 getDoc/getRoot 桩（不依赖真实 CM/vault）。
  */
-
-const DEBOUNCE_MS = 500;
 
 /**
  * 自激抑制窗口时长（毫秒，EDIT-06 Layer 2）。
@@ -128,6 +127,8 @@ async function writeOnce(path: string): Promise<void> {
 /** 编辑触发：防抖窗口内多次调用合并为一次落盘。草稿（draft://）无真实路径，一律跳过。 */
 export function scheduleAutosave(path: string): void {
   if (isDraftPath(path)) return;
+  // 簇②：自动保存关闭则不调度——编辑已由 mirrorListener 先 markDirty（脏标记仍显），用户 Ctrl+S 手动落盘。
+  if (!useSettingsStore.getState().autosaveEnabled) return;
   const existing = timers.get(path);
   if (existing !== undefined) clearTimeout(existing);
   timers.set(
@@ -140,7 +141,7 @@ export function scheduleAutosave(path: string): void {
       const view = getView();
       if (view) queueAfterComposition(view, 'autosave:' + path, () => enqueueWrite(path));
       else void enqueueWrite(path); // 无 view（测试/未挂载）直接写
-    }, DEBOUNCE_MS),
+    }, useSettingsStore.getState().autosaveDelayMs),
   );
 }
 

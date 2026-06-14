@@ -5,6 +5,7 @@ import PromptDialog from './components/common/PromptDialog';
 import Toast from './components/common/Toast';
 import ImeProbe from './components/dev/ImeProbe';
 import CommandPalette from './components/palette/CommandPalette';
+import SettingsModal from './components/settings/SettingsModal';
 import WorkbenchLayout from './components/workbench/WorkbenchLayout';
 import { initExternalChangeArbiter, stopExternalChangeArbiter } from './editor/externalChange';
 import { initExitGuard, stopExitGuard } from './editor/exitGuard';
@@ -37,6 +38,8 @@ export default function App() {
       <WorkbenchLayout />
       {/* 统一弹层：永挂载，显隐由 usePaletteStore.open 控制 */}
       <CommandPalette />
+      {/* 设置模态（簇②）：view.settings 命令 / Ctrl+, 打开（useSettingsUiStore） */}
+      <SettingsModal />
       {/* 关于对话框：app.about 命令打开（useAboutStore） */}
       <AboutDialog />
       {/* 破坏性确认模态：删除 / 覆盖磁盘二次确认（useConfirmStore，confirmDestructive 弹出） */}

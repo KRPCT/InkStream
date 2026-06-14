@@ -15,6 +15,7 @@ import { useAboutStore } from '../stores/useAboutStore';
 import { useEditorStore } from '../stores/useEditorStore';
 import { usePaletteStore } from '../stores/usePaletteStore';
 import { useSettingsStore } from '../stores/useSettingsStore';
+import { useSettingsUiStore } from '../stores/useSettingsUiStore';
 import { useWorkbenchStore } from '../stores/useWorkbenchStore';
 import { showToast } from '../stores/useToastStore';
 import { useVaultStore } from '../stores/useVaultStore';
@@ -75,6 +76,12 @@ export const CORE_COMMANDS: Command[] = [
     title: '视图：命令面板',
     shortcut: 'Ctrl+Shift+P',
     run: () => usePaletteStore.getState().toggle(),
+  },
+  {
+    id: 'view.settings',
+    title: '视图：设置',
+    shortcut: 'Ctrl+,',
+    run: () => useSettingsUiStore.getState().openSettings(),
   },
   {
     id: 'mode.switch-standard',

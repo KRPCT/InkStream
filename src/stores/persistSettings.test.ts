@@ -87,6 +87,11 @@ describe('persistSettings', () => {
       mode: 'standard',
       layouts: useWorkbenchStore.getState().layouts,
       commandMru: [],
+      autosaveEnabled: true,
+      autosaveDelayMs: 500,
+      editorFontSize: 16,
+      gitRemoteMode: 'ssh',
+      gitCustomServer: '',
     });
   });
 

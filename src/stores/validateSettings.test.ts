@@ -12,6 +12,11 @@ const VALID = {
     creative: { ...DEFAULT_LAYOUT },
   },
   commandMru: ['theme.dark', 'view.toggle-sidebar'],
+  autosaveEnabled: false,
+  autosaveDelayMs: 1000,
+  editorFontSize: 18,
+  gitRemoteMode: 'oauth',
+  gitCustomServer: 'git@example.com:u/r.git',
 };
 
 describe('validateSettings', () => {
@@ -101,6 +106,11 @@ describe('validateSettings', () => {
       mode: 'standard',
       layouts: { standard: DEFAULT_LAYOUT, academic: DEFAULT_LAYOUT, creative: DEFAULT_LAYOUT },
       commandMru: [],
+      autosaveEnabled: true,
+      autosaveDelayMs: 500,
+      editorFontSize: 16,
+      gitRemoteMode: 'ssh',
+      gitCustomServer: '',
     });
   });
 
