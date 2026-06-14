@@ -47,4 +47,31 @@ describe('slashCommandSource', () => {
     expect((view as EditorView).state.doc.toString()).toBe('```math\n\n```');
     expect((view as EditorView).state.selection.main.head).toBe('```math\n'.length);
   });
+
+  it('/code apply 插入空 info 围栏，光标落 info 位（``` 之后）', () => {
+    const res = source('/code', 5);
+    expect(res?.options.map((o) => o.label)).toContain('/code');
+    const opt = res?.options.find((o) => o.label === '/code');
+    (opt?.apply as (v: EditorView, c: unknown, f: number, t: number) => void)(
+      view as EditorView,
+      opt,
+      res?.from ?? 0,
+      5,
+    );
+    expect((view as EditorView).state.doc.toString()).toBe('```\n\n```');
+    expect((view as EditorView).state.selection.main.head).toBe(3); // info 位 = from(0)+3
+  });
+
+  it('/code-js apply 插入 ```js 围栏，光标落块内空行', () => {
+    const res = source('/code-js', 8);
+    const opt = res?.options.find((o) => o.label === '/code-js');
+    (opt?.apply as (v: EditorView, c: unknown, f: number, t: number) => void)(
+      view as EditorView,
+      opt,
+      res?.from ?? 0,
+      8,
+    );
+    expect((view as EditorView).state.doc.toString()).toBe('```js\n\n```');
+    expect((view as EditorView).state.selection.main.head).toBe('```js\n'.length);
+  });
 });

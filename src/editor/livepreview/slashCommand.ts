@@ -34,7 +34,25 @@ function insertFencedBlock(lang: string): SlashCommand['apply'] {
   };
 }
 
+/** 插入空 info 的 ``` 围栏块，光标落首行 ``` 之后（info 位）——用户立即键语言名，lezer 即时换语言高亮。 */
+function insertCodeBlock(): SlashCommand['apply'] {
+  const insert = '```\n\n```';
+  return (view, _c, from, to) => {
+    view.dispatch({
+      changes: { from, to, insert },
+      selection: EditorSelection.cursor(from + 3), // ``` 之后 = info 位
+      scrollIntoView: true,
+      userEvent: 'input.complete',
+    });
+  };
+}
+
 const SLASH_COMMANDS: readonly SlashCommand[] = [
+  { label: '/code', detail: '代码块（键入语言名高亮）', apply: insertCodeBlock() },
+  { label: '/code-js', detail: 'JavaScript 代码块', apply: insertFencedBlock('js') },
+  { label: '/code-py', detail: 'Python 代码块', apply: insertFencedBlock('python') },
+  { label: '/code-rust', detail: 'Rust 代码块', apply: insertFencedBlock('rust') },
+  { label: '/code-bash', detail: 'Shell 代码块', apply: insertFencedBlock('bash') },
   { label: '/math', detail: '数学公式块（KaTeX）', apply: insertFencedBlock('math') },
   { label: '/latex', detail: 'LaTeX 公式块（MathJax）', apply: insertFencedBlock('latex') },
   { label: '/typst', detail: 'Typst 排版块（typst.ts）', apply: insertFencedBlock('typst') },
@@ -42,7 +60,7 @@ const SLASH_COMMANDS: readonly SlashCommand[] = [
 
 /** slash 命令补全源：匹配行首 / 空白后的 `/命令名`（避免 a/b 路径误触发）。 */
 export function slashCommandSource(ctx: CompletionContext): CompletionResult | null {
-  const m = ctx.matchBefore(/(?:^|\s)\/\w*$/);
+  const m = ctx.matchBefore(/(?:^|\s)\/[\w-]*$/);
   if (!m) return null;
   // matchBefore 命中可能含前导空白：from 修正到真正的 `/` 处。
   const slashIdx = m.text.lastIndexOf('/');
