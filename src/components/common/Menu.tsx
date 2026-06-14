@@ -1,6 +1,7 @@
 import { ChevronRight } from 'lucide-react';
 import {
   useEffect,
+  useLayoutEffect,
   useRef,
   useState,
   type CSSProperties,
@@ -68,6 +69,24 @@ export default function Menu({
   const [active, setActive] = useState(-1);
   const [subOpen, setSubOpen] = useState<string | null>(null);
   const closeAfterSelect = onSelectClose ?? onClose;
+  // 视口夹取：仅对固定坐标定位的菜单（style 含 left/top，右键菜单场景）。挂载后量自身尺寸，
+  // 贴右/贴底则左移/上移保持完整可见（贴边翻转）。锚定菜单（className 定位、无 left/top）原样透传。
+  const [adjustedStyle, setAdjustedStyle] = useState<CSSProperties | undefined>(style);
+  useLayoutEffect(() => {
+    if (style?.left == null || style?.top == null) {
+      setAdjustedStyle(style);
+      return;
+    }
+    const el = rootRef.current;
+    if (!el) return;
+    const { width, height } = el.getBoundingClientRect();
+    const M = 8; // 视口边距
+    let left = Number(style.left);
+    let top = Number(style.top);
+    if (left + width > window.innerWidth - M) left = Math.max(M, window.innerWidth - width - M);
+    if (top + height > window.innerHeight - M) top = Math.max(M, window.innerHeight - height - M);
+    setAdjustedStyle({ ...style, left, top });
+  }, [style]);
 
   useEffect(() => {
     rootRef.current?.focus();
@@ -133,7 +152,7 @@ export default function Menu({
       aria-label={label}
       tabIndex={-1}
       onKeyDown={onKeyDown}
-      style={style}
+      style={adjustedStyle}
       className={`menu-pop z-50 min-w-40 rounded-[8px] border border-[var(--background-modifier-border)] bg-[var(--background-primary)] py-1 [box-shadow:var(--shadow-popup)] ${className}`}
     >
       {items.map((item, index) =>
