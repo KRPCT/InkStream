@@ -35,6 +35,11 @@ serde = { version = "=1.0.228", features = ["derive"] }
 serde_json = "=1.0.150"
 # 结构化错误类型派生（git 模块 GitError 等）。纯 proc-macro，零运行时依赖。
 thiserror = "=2.0.18"
+# OS 凭据库（簇④）：GitHub Personal Access Token 安全存取。Windows=Credential Manager、
+# macOS=Keychain、Linux=Secret Service。keyring 4.0 重构：keyring 提供 use_native_store 注册默认 store，
+# Entry API 在 keyring-core。无 Cargo feature，平台 store 按 cfg 默认编入。
+keyring = "=4.0.1"
+keyring-core = "=1.0.0"
 # 回收站删除（D-09）。Byron/trash-rs，跨平台。build.rs 审查见 02-03-SUMMARY。
 trash = "=5.2.6"
 # 防抖文件监听（FILE-02 watcher）。内捆 notify 7.x；裸 notify 不显式 pin，

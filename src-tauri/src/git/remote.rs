@@ -1,12 +1,12 @@
-//! 远程操作（Phase 6 W4 / GIT-06）：clone/fetch/push/pull 走**系统 git CLI（sidecar）**。
+//! 远程操作（Phase 6 W4 / GIT-06 + 簇④）：clone/fetch/push/pull 走**系统 git CLI（sidecar）**。
 //!
 //! 为何不用 git2/libssh2：实测 Windows 上 libgit2 vendored 的 libssh2（WinCNG backend）不支持 ed25519
-//! 密钥（用户密钥即 ed25519），SSH 认证必失败（系统 git/OpenSSH 同密钥 clone 成功，已验证）。系统 git 原生
-//! 支持 ed25519 + ssh-agent + known_hosts，跨平台，且与 W3 commit 签名同走 git CLI 范式一致。凭据/known_hosts
-//! 全由系统 git/OpenSSH 处理（无需自写 CredCtx/known_hosts 校验）。
+//! 密钥（用户密钥即 ed25519），SSH 认证必失败；系统 git/OpenSSH 同密钥 clone 成功。系统 git 原生支持
+//! ed25519 + ssh-agent + known_hosts，跨平台，且与 W3 commit 同走 git CLI 范式。
 //!
-//! 进度：git --progress 把进度写 stderr（用 \r 刷新同一行），逐段（\r/\n 分隔）经 tauri Channel 推前端。
-//! 注入安全：std::process::Command argv 数组无 shell；远程/分支/url 前加 -- 终止符防 flag 注入。
+//! HTTPS token 注入（簇④）：远程 URL 为 https:// 且已 GitHub 登录时，把 keyring 里的 token 经环境变量
+//! INKSTREAM_GH_TOKEN + inline credential helper 临时注入——token 不入 argv（不进进程列表）、不写用户 GCM。
+//! 进度：git --progress 写 stderr，逐段（\r/\n）经 tauri Channel 推前端。注入安全：argv 数组无 shell，远程/分支/url 前加 --。
 
 use super::GitError;
 use serde::Serialize;
@@ -14,33 +14,36 @@ use std::io::{BufRead, BufReader};
 use std::process::{Command, Stdio};
 use tauri::ipc::Channel;
 
-/// 传输进度（git --progress 的 stderr 行）。
+/// inline credential helper：git 调 "<helper> get" 时回显凭据（用户名 x-access-token，密码取自 env）。
+const CRED_HELPER: &str = "credential.helper=!f() { if test \"$1\" = get; then echo username=x-access-token; echo \"password=${INKSTREAM_GH_TOKEN}\"; fi; }; f";
+
 #[derive(Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct GitProgress {
     pub line: String,
 }
 
-/// pull 结果。
 #[derive(Clone, Serialize)]
 #[serde(tag = "kind", rename_all = "camelCase")]
 pub enum PullOutcome {
     UpToDate,
     FastForward,
-    /// 本地与远程分叉，需手动合并/rebase（pull 仅做 ff-only，不自动产 merge 提交）。
     Diverged,
 }
 
-/// 跑 git 远程子命令，stderr 进度逐段推 channel；返回 (success, stderr 全文)。
-/// stdout 置 null（远程命令进度全在 stderr，无需 stdout，免双管道阻塞）。
+/// 跑 git 远程子命令，stderr 进度逐段推 channel；token 经 env 注入（HTTPS 凭据）。返回 (success, stderr 全文)。
 fn run_streamed(
     repo: Option<&str>,
     args: &[&str],
+    token: Option<&str>,
     channel: &Channel<GitProgress>,
 ) -> Result<(bool, String), GitError> {
     let mut cmd = Command::new("git");
     if let Some(r) = repo {
         cmd.current_dir(r);
+    }
+    if let Some(t) = token {
+        cmd.env("INKSTREAM_GH_TOKEN", t); // token 走 env，不入 argv
     }
     let mut child = cmd
         .args(args)
@@ -67,14 +70,13 @@ fn run_streamed(
     Ok((status.success(), collected))
 }
 
-/// 按 \r 或 \n 读一段（git 进度用 \r 刷新同一行，须二者皆为分隔才能流式更新）。返回读取字节数（0=EOF）。
+/// 按 \r 或 \n 读一段（git 进度用 \r 刷新同一行）。返回读取字节数（0=EOF）。
 fn read_segment<R: BufRead>(r: &mut R, buf: &mut Vec<u8>) -> Result<usize, GitError> {
     buf.clear();
     let mut total = 0usize;
     let mut byte = [0u8; 1];
     loop {
-        let n = r
-            .read(&mut byte)
+        let n = std::io::Read::read(r, &mut byte)
             .map_err(|e| GitError::Internal(format!("读 git 输出失败: {e}")))?;
         if n == 0 {
             return Ok(total);
@@ -87,7 +89,6 @@ fn read_segment<R: BufRead>(r: &mut R, buf: &mut Vec<u8>) -> Result<usize, GitEr
     }
 }
 
-/// stderr 末行（失败时给最有信息量的一行）。
 fn last_line(s: &str) -> String {
     s.lines()
         .filter(|l| !l.trim().is_empty())
@@ -97,7 +98,6 @@ fn last_line(s: &str) -> String {
         .to_string()
 }
 
-/// 当前 HEAD oid（判 ff 前后是否变化）。
 fn head_oid(repo: &str) -> Option<String> {
     Command::new("git")
         .current_dir(repo)
@@ -108,7 +108,37 @@ fn head_oid(repo: &str) -> Option<String> {
         .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
 }
 
-/// fetch（更新远程跟踪分支）。
+/// 取远程 URL（判 HTTPS 是否注入 token）。
+fn remote_url(repo: &str, remote: &str) -> Option<String> {
+    Command::new("git")
+        .current_dir(repo)
+        .args(["remote", "get-url", "--", remote])
+        .output()
+        .ok()
+        .filter(|o| o.status.success())
+        .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
+}
+
+/// 该 URL 为 HTTPS 且已登录 → 返回 token（注入凭据）；否则 None（SSH/未登录走系统凭据）。
+fn token_for(url: &str) -> Option<String> {
+    if url.starts_with("https://") {
+        super::auth::github_token()
+    } else {
+        None
+    }
+}
+
+/// 组装带可选凭据 -c 前缀的 args（token 有则 git 子命令前加 -c CRED_HELPER）。
+fn with_cred<'a>(token: &Option<String>, op: &[&'a str]) -> Vec<&'a str> {
+    let mut v: Vec<&str> = Vec::new();
+    if token.is_some() {
+        v.push("-c");
+        v.push(CRED_HELPER);
+    }
+    v.extend_from_slice(op);
+    v
+}
+
 #[tauri::command]
 pub async fn git_fetch(
     repo_root: String,
@@ -116,7 +146,9 @@ pub async fn git_fetch(
     channel: Channel<GitProgress>,
 ) -> Result<(), String> {
     super::blocking(move || {
-        let (ok, err) = run_streamed(Some(&repo_root), &["fetch", "--progress", "--", &remote], &channel)?;
+        let token = remote_url(&repo_root, &remote).and_then(|u| token_for(&u));
+        let args = with_cred(&token, &["fetch", "--progress", "--", &remote]);
+        let (ok, err) = run_streamed(Some(&repo_root), &args, token.as_deref(), &channel)?;
         if !ok {
             return Err(GitError::Git(format!("获取失败: {}", last_line(&err))));
         }
@@ -125,7 +157,6 @@ pub async fn git_fetch(
     .await
 }
 
-/// push 本地分支到远程同名分支。非快进（远程有新提交）→ git 拒绝并报错（不强推）。
 #[tauri::command]
 pub async fn git_push(
     repo_root: String,
@@ -134,11 +165,9 @@ pub async fn git_push(
     channel: Channel<GitProgress>,
 ) -> Result<(), String> {
     super::blocking(move || {
-        let (ok, err) = run_streamed(
-            Some(&repo_root),
-            &["push", "--progress", "--", &remote, &branch],
-            &channel,
-        )?;
+        let token = remote_url(&repo_root, &remote).and_then(|u| token_for(&u));
+        let args = with_cred(&token, &["push", "--progress", "--", &remote, &branch]);
+        let (ok, err) = run_streamed(Some(&repo_root), &args, token.as_deref(), &channel)?;
         if !ok {
             return Err(GitError::Git(format!(
                 "推送失败（远程可能有新提交，先拉取）: {}",
@@ -150,7 +179,6 @@ pub async fn git_push(
     .await
 }
 
-/// pull = fetch + merge --ff-only。up-to-date/fast-forward 自动；分叉返回 Diverged（不自动产无签名 merge）。
 #[tauri::command]
 pub async fn git_pull(
     repo_root: String,
@@ -160,15 +188,12 @@ pub async fn git_pull(
 ) -> Result<PullOutcome, String> {
     super::blocking(move || {
         let before = head_oid(&repo_root);
-        let (ok, err) = run_streamed(
-            Some(&repo_root),
-            &["fetch", "--progress", "--", &remote, &branch],
-            &channel,
-        )?;
+        let token = remote_url(&repo_root, &remote).and_then(|u| token_for(&u));
+        let args = with_cred(&token, &["fetch", "--progress", "--", &remote, &branch]);
+        let (ok, err) = run_streamed(Some(&repo_root), &args, token.as_deref(), &channel)?;
         if !ok {
             return Err(GitError::Git(format!("拉取（获取阶段）失败: {}", last_line(&err))));
         }
-        // ff-only 合并 FETCH_HEAD：成功=ff/up-to-date（不丢工作区，冲突即拒绝），失败=分叉。
         let merged = Command::new("git")
             .current_dir(&repo_root)
             .args(["merge", "--ff-only", "FETCH_HEAD"])
@@ -186,7 +211,6 @@ pub async fn git_pull(
     .await
 }
 
-/// clone 到 dest 目录，返回 dest。
 #[tauri::command]
 pub async fn git_clone(
     url: String,
@@ -194,7 +218,9 @@ pub async fn git_clone(
     channel: Channel<GitProgress>,
 ) -> Result<String, String> {
     super::blocking(move || {
-        let (ok, err) = run_streamed(None, &["clone", "--progress", "--", &url, &dest], &channel)?;
+        let token = token_for(&url);
+        let args = with_cred(&token, &["clone", "--progress", "--", &url, &dest]);
+        let (ok, err) = run_streamed(None, &args, token.as_deref(), &channel)?;
         if !ok {
             return Err(GitError::Git(format!("克隆失败: {}", last_line(&err))));
         }

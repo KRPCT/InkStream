@@ -174,3 +174,20 @@ export function gitClone(
 ): Promise<string> {
   return invokeStreamed('git_clone', { url, dest }, onProgress);
 }
+
+// ── GitHub 登录（簇④，Personal Access Token 存 OS 凭据库）──────────────────────
+
+/** 登录：保存 GitHub Personal Access Token（HTTPS 同步用）。 */
+export function gitLoginGithub(token: string): Promise<null> {
+  return invoke('git_login_github', { token });
+}
+
+/** 登出：清除 token。 */
+export function gitLogoutGithub(): Promise<null> {
+  return invoke('git_logout_github', undefined);
+}
+
+/** 是否已登录（token 存在；token 本身不回传）。 */
+export function gitGithubStatus(): Promise<boolean> {
+  return invoke('git_github_status', undefined);
+}

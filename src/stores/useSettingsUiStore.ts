@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 
-/** 设置模态的分类（簇②，Obsidian 风左侧分类）。簇④ 加 'account'。 */
-export type SettingsCategory = 'appearance' | 'editor' | 'git';
+/** 设置模态的分类（簇②，Obsidian 风左侧分类；'account' 簇④）。 */
+export type SettingsCategory = 'appearance' | 'editor' | 'git' | 'account';
 
 interface SettingsUiState {
   open: boolean;

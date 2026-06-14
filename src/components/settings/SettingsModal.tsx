@@ -1,7 +1,12 @@
 import { type KeyboardEvent, useEffect, useRef } from 'react';
 import { X } from 'lucide-react';
 import { useSettingsUiStore, type SettingsCategory } from '../../stores/useSettingsUiStore';
-import { AppearanceSection, EditorSection, GitSection } from './settingsSections';
+import {
+  AccountSection,
+  AppearanceSection,
+  EditorSection,
+  GitSection,
+} from './settingsSections';
 
 /**
  * 设置模态（簇②，Obsidian 风：左分类侧栏 + 右内容）。自绘覆盖层（同 ConfirmDialog/AboutDialog 范式）。
@@ -11,6 +16,7 @@ const CATEGORIES: { id: SettingsCategory; label: string }[] = [
   { id: 'appearance', label: '外观' },
   { id: 'editor', label: '编辑器' },
   { id: 'git', label: 'Git' },
+  { id: 'account', label: '账户' },
 ];
 
 export default function SettingsModal() {
@@ -91,6 +97,7 @@ function SettingsPanel() {
             {category === 'appearance' ? <AppearanceSection /> : null}
             {category === 'editor' ? <EditorSection /> : null}
             {category === 'git' ? <GitSection /> : null}
+            {category === 'account' ? <AccountSection /> : null}
           </div>
         </div>
       </div>

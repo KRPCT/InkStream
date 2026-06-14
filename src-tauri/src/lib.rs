@@ -59,7 +59,10 @@ pub fn run() {
             git::remote::git_fetch,
             git::remote::git_push,
             git::remote::git_pull,
-            git::remote::git_clone
+            git::remote::git_clone,
+            git::auth::git_login_github,
+            git::auth::git_logout_github,
+            git::auth::git_github_status
         ])
         .setup(|app| {
             // watcher 单例状态注册（切 vault 时 start/stop_watch 经此句柄换装）。

@@ -15,6 +15,7 @@
 // 子模块 pub(crate)：lib.rs 的 generate_handler! 须按全路径（git::status::git_status）引用命令，
 // 才能连带解析 #[tauri::command] 在该模块生成的 __cmd__/__tauri_command_name_ 辅助项
 // （pub use 只重导出函数本体、不含这些隐藏宏项，故不可用 git::git_status 简写）。
+pub(crate) mod auth;
 pub(crate) mod branch;
 pub(crate) mod commit;
 pub(crate) mod diff;

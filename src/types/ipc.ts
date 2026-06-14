@@ -83,4 +83,8 @@ export interface IpcCommands {
   git_push: { args: { repoRoot: string; remote: string; branch: string }; result: null };
   git_pull: { args: { repoRoot: string; remote: string; branch: string }; result: PullOutcome };
   git_clone: { args: { url: string; dest: string }; result: string };
+  // 簇④ GitHub 登录（PAT 存 keyring）。
+  git_login_github: { args: { token: string }; result: null };
+  git_logout_github: { args: undefined; result: null };
+  git_github_status: { args: undefined; result: boolean };
 }

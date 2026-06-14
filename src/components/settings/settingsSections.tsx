@@ -1,5 +1,8 @@
-import type { ReactNode } from 'react';
+import { type ReactNode, useEffect, useState } from 'react';
+import { gitGithubStatus, gitLoginGithub, gitLogoutGithub } from '../../ipc/git';
+import { useHelpStore } from '../../stores/useHelpStore';
 import { useSettingsStore } from '../../stores/useSettingsStore';
+import { showToast } from '../../stores/useToastStore';
 import type { GitRemoteMode, ThemeSetting } from '../../types/settings';
 
 /**
@@ -208,6 +211,101 @@ export function GitSection() {
 const MODE_DESC: Record<GitRemoteMode, string> = {
   local: '仅在本机做版本管理（提交/分支/回滚），不连任何远程。',
   ssh: '用 SSH 密钥与远程同步（推荐，支持 ed25519）。需把公钥加入 GitHub/服务器。',
-  oauth: '用 GitHub 账号登录后经 HTTPS 同步（在账户设置中登录，即将支持）。',
+  oauth: '用 GitHub 令牌经 HTTPS 同步。在「账户」分区登录后，HTTPS 远程会自动带上令牌。',
   custom: '连接自建或第三方 git 服务器。',
 };
+
+function errText(e: unknown): string {
+  return typeof e === 'string' ? e : e instanceof Error ? e.message : String(e);
+}
+
+export function AccountSection() {
+  const [loggedIn, setLoggedIn] = useState<boolean | null>(null);
+  const [token, setToken] = useState('');
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    void gitGithubStatus()
+      .then(setLoggedIn)
+      .catch(() => setLoggedIn(false));
+  }, []);
+
+  const login = async (): Promise<void> => {
+    const t = token.trim();
+    if (!t) return;
+    setBusy(true);
+    try {
+      await gitLoginGithub(t);
+      setToken('');
+      setLoggedIn(true);
+    } catch (e) {
+      showToast('error', `登录失败：${errText(e)}`);
+    } finally {
+      setBusy(false);
+    }
+  };
+  const logout = async (): Promise<void> => {
+    setBusy(true);
+    try {
+      await gitLogoutGithub();
+      setLoggedIn(false);
+    } catch (e) {
+      showToast('error', `登出失败：${errText(e)}`);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div>
+      {loggedIn === null ? (
+        <p className="py-3 text-[13px] text-[var(--text-muted)]">检查登录状态…</p>
+      ) : loggedIn ? (
+        <SettingRow label="GitHub" description="已登录。HTTPS 远程会自动带上令牌，可推送/拉取/克隆。">
+          <button
+            type="button"
+            disabled={busy}
+            onClick={() => void logout()}
+            className="rounded-[4px] border border-[var(--background-modifier-border)] px-3 py-1 text-[12px] text-[var(--text-normal)] hover:bg-[var(--background-modifier-hover)] disabled:text-[var(--text-faint)]"
+          >
+            登出
+          </button>
+        </SettingRow>
+      ) : (
+        <div className="py-3">
+          <div className="text-[13px] text-[var(--text-normal)]">GitHub 个人访问令牌（PAT）</div>
+          <div className="mt-0.5 text-[12px] leading-snug text-[var(--text-muted)]">
+            用于经 HTTPS 同步；也可改用 SSH（见「Git ▸ 远程方式」）。令牌仅保存在本机 OS 凭据库，不会上传。
+          </div>
+          <div className="mt-2 flex items-center gap-2">
+            <input
+              type="password"
+              value={token}
+              placeholder="ghp_..."
+              onChange={(e) => setToken(e.target.value)}
+              className="min-w-0 flex-1 rounded-[4px] border border-[var(--background-modifier-border)] bg-[var(--background-primary)] px-2 py-1 text-[12px] text-[var(--text-normal)] outline-none focus:border-[var(--accent)]"
+            />
+            <button
+              type="button"
+              disabled={busy || !token.trim()}
+              onClick={() => void login()}
+              className="shrink-0 rounded-[4px] bg-[var(--accent)] px-3 py-1 text-[12px] font-medium text-[var(--background-primary)] disabled:opacity-50"
+            >
+              登录
+            </button>
+          </div>
+          <p className="mt-2 text-[12px] leading-snug text-[var(--text-faint)]">
+            在 GitHub ▸ Settings ▸ Developer settings ▸ Personal access tokens 创建一个含 repo 权限的令牌。
+          </p>
+        </div>
+      )}
+      <button
+        type="button"
+        onClick={() => useHelpStore.getState().openHelp('sync')}
+        className="mt-3 text-[12px] text-[var(--accent)] hover:underline"
+      >
+        查看多设备同步教程 →
+      </button>
+    </div>
+  );
+}
