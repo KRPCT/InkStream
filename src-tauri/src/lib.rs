@@ -5,6 +5,7 @@ mod path_guard;
 mod vault;
 mod watcher;
 mod window_guard;
+mod zotero;
 
 use tauri::Manager;
 
@@ -65,7 +66,8 @@ pub fn run() {
             git::auth::git_github_status,
             git::pr::gh_pr_list,
             git::pr::gh_pr_create,
-            git::pr::gh_pr_merge
+            git::pr::gh_pr_merge,
+            zotero::zotero_cayw
         ])
         .setup(|app| {
             // watcher 单例状态注册（切 vault 时 start/stop_watch 经此句柄换装）。

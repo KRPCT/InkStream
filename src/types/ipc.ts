@@ -103,4 +103,6 @@ export interface IpcCommands {
     args: { repoRoot: string; number: number; method: MergeMethod };
     result: MergeResult;
   };
+  // Phase 8 ZOT-01：Zotero Better BibTeX CAYW（Rust reqwest 代理 localhost:23119）。
+  zotero_cayw: { args: undefined; result: string };
 }

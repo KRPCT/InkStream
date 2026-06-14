@@ -1,5 +1,6 @@
 import { registerImeProbeCommand } from '../components/dev/imeProbeCommand';
 import type { Command } from '../types/commands';
+import { ACADEMIC_COMMANDS } from './academicCommands';
 import { CORE_COMMANDS } from './coreCommands';
 import { GIT_COMMANDS } from './gitCommands';
 import { bind } from './keymap';
@@ -12,7 +13,12 @@ import { TEXT_COMMANDS } from './textCommands';
  *   textCommands — 编辑/段落/格式（R4 §1.3，接 CM6）。
  * 本文件只做合并 + window 级键位绑定 + StrictMode 安全的 dispose 管理（拆分自避免单文件超 200 行）。
  */
-const BUILTINS: Command[] = [...CORE_COMMANDS, ...TEXT_COMMANDS, ...GIT_COMMANDS];
+const BUILTINS: Command[] = [
+  ...CORE_COMMANDS,
+  ...TEXT_COMMANDS,
+  ...GIT_COMMANDS,
+  ...ACADEMIC_COMMANDS,
+];
 
 let activeDispose: (() => void) | null = null;
 
@@ -40,6 +46,9 @@ export function registerBuiltinCommands(): () => void {
     bind('Ctrl+S', 'file.save'),
     bind('Ctrl+E', 'view.toggle-render-mode'),
     bind('Ctrl+Shift+G', 'git.toggle-graph'),
+    // ZOT-01：编辑器聚焦时由 CM6 keymap 处理（preventDefault → 本 window 级短路不重复）；
+    // 编辑器未聚焦时本绑定兜底触发，insertCitation 经 getView() 仍插入到编辑器光标处。
+    bind('Ctrl+Shift+Z', 'academic.cite'),
     // DEV-only：IME 输入探针命令（R2 实验入口）。非 DEV 为 no-op，不进注册表。
     registerImeProbeCommand(),
   ];

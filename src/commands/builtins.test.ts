@@ -91,10 +91,12 @@ const TITLES: Record<string, string> = {
   'fmt.link': '格式：插入链接',
   'fmt.image': '格式：插入图片',
   'fmt.clear': '格式：清除格式',
+  // 学术组（Phase 8）
+  'academic.cite': '学术：插入引用（Zotero）',
 };
 
-/** 生产命令总数：…前略… + Git Graph + 设置 + 使用教程 + 重新引导(簇③) = 60。 */
-const COMMAND_COUNT = 60;
+/** 生产命令总数：…前略… + Git Graph + 设置 + 使用教程 + 重新引导(簇③) + 学术插入引用(Phase8) = 61。 */
+const COMMAND_COUNT = 61;
 
 /** 生产命令（剔除 dev.* DEV-only 命令，如 IME 探针 dev.ime-probe）。 */
 function prodCommands() {

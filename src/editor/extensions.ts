@@ -3,6 +3,7 @@ import { search, searchKeymap } from '@codemirror/search';
 import { syntaxHighlighting } from '@codemirror/language';
 import { drawSelection, EditorView, highlightActiveLine, keymap } from '@codemirror/view';
 import type { Extension } from '@codemirror/state';
+import { insertCitation } from './academicActions';
 import { inkstreamHighlightStyle } from './highlightTheme';
 import { extensionsForLanguage, langCompartment } from './languages';
 import { livePreviewExtensions, renderModeCompartment } from './livepreview/livePreview';
@@ -76,7 +77,22 @@ export function baseExtensions(lang: string = 'markdown'): Extension[] {
     history(),
     drawSelection(),
     highlightActiveLine(),
-    keymap.of([...defaultKeymap, ...historyKeymap, ...searchKeymap, indentWithTab]),
+    keymap.of([
+      // ZOT-01 键位裁决：Ctrl+Shift+Z = 插入引用，置于 historyKeymap 前以高优先级覆盖其 redo；
+      // redo 改走 Ctrl+Y（historyKeymap 的 Mod-y 保留）。
+      {
+        key: 'Mod-Shift-z',
+        preventDefault: true,
+        run: () => {
+          void insertCitation();
+          return true;
+        },
+      },
+      ...defaultKeymap,
+      ...historyKeymap,
+      ...searchKeymap,
+      indentWithTab,
+    ]),
     search(),
     syntaxHighlighting(inkstreamHighlightStyle),
     langCompartment.of(extensionsForLanguage(lang)),
