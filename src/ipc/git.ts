@@ -4,8 +4,11 @@ import type {
   CommitInfo,
   DiffTarget,
   FileDiff,
+  GitOpResult,
   GitRef,
   GitStatus,
+  ResetMode,
+  StashEntry,
 } from '../types/git';
 
 /**
@@ -36,4 +39,96 @@ export function gitDiff(repoRoot: string, target: DiffTarget): Promise<FileDiff[
 /** ref 清单（分支 + tag，按指向 commit oid）——git-graph 行内徽章数据源。 */
 export function gitRefs(repoRoot: string): Promise<GitRef[]> {
   return invoke('git_refs', { repoRoot });
+}
+
+// ── 写命令（W3）。产生提交类走 git CLI -S 签名（保 Verified）；引用操作走 git2 ──────────
+
+/** 暂存 + 签名提交（paths 空 = 全部改动）。 */
+export function gitCommit(repoRoot: string, message: string, paths: string[] = []): Promise<GitOpResult> {
+  return invoke('git_commit', { repoRoot, message, paths });
+}
+
+/** 合并分支到当前分支（--no-ff -S）。 */
+export function gitMerge(repoRoot: string, branch: string): Promise<GitOpResult> {
+  return invoke('git_merge', { repoRoot, branch });
+}
+
+/** cherry-pick 一个提交（-S）。 */
+export function gitCherryPick(repoRoot: string, oid: string): Promise<GitOpResult> {
+  return invoke('git_cherry_pick', { repoRoot, oid });
+}
+
+/** revert 一个提交（-S）。 */
+export function gitRevert(repoRoot: string, oid: string): Promise<GitOpResult> {
+  return invoke('git_revert', { repoRoot, oid });
+}
+
+/** checkout 分支/提交（force=丢弃冲突改动，须二次确认）。 */
+export function gitCheckout(repoRoot: string, target: string, force = false): Promise<null> {
+  return invoke('git_checkout', { repoRoot, target, force });
+}
+
+/** 在指定提交（null=HEAD）创建分支，可选同时切过去。 */
+export function gitCreateBranch(
+  repoRoot: string,
+  name: string,
+  targetOid: string | null = null,
+  checkout = false,
+): Promise<null> {
+  return invoke('git_create_branch', { repoRoot, name, targetOid, checkout });
+}
+
+/** 删除本地分支。 */
+export function gitDeleteBranch(repoRoot: string, name: string): Promise<null> {
+  return invoke('git_delete_branch', { repoRoot, name });
+}
+
+/** reset 到某提交（hard 须 confirmHard=true）。 */
+export function gitReset(
+  repoRoot: string,
+  targetOid: string,
+  mode: ResetMode,
+  confirmHard = false,
+): Promise<null> {
+  return invoke('git_reset', { repoRoot, targetOid, mode, confirmHard });
+}
+
+/** 创建 tag（message=附注 tag，null=轻量 tag；targetOid null=HEAD）。 */
+export function gitTagCreate(
+  repoRoot: string,
+  name: string,
+  targetOid: string | null = null,
+  message: string | null = null,
+): Promise<null> {
+  return invoke('git_tag_create', { repoRoot, name, targetOid, message });
+}
+
+/** 删除 tag（短名）。 */
+export function gitTagDelete(repoRoot: string, name: string): Promise<null> {
+  return invoke('git_tag_delete', { repoRoot, name });
+}
+
+/** 暂存当前改动（含未跟踪）。 */
+export function gitStashSave(repoRoot: string, message: string): Promise<null> {
+  return invoke('git_stash_save', { repoRoot, message });
+}
+
+/** 恢复并删除指定 stash。 */
+export function gitStashPop(repoRoot: string, index: number): Promise<null> {
+  return invoke('git_stash_pop', { repoRoot, index });
+}
+
+/** 删除指定 stash（不恢复）。 */
+export function gitStashDrop(repoRoot: string, index: number): Promise<null> {
+  return invoke('git_stash_drop', { repoRoot, index });
+}
+
+/** 列出全部 stash。 */
+export function gitStashList(repoRoot: string): Promise<StashEntry[]> {
+  return invoke('git_stash_list', { repoRoot });
+}
+
+/** 中止进行中的 merge/cherry-pick/revert，还原到操作前（冲突卡死时的安全出口）。 */
+export function gitAbortOp(repoRoot: string): Promise<null> {
+  return invoke('git_abort_op', { repoRoot });
 }

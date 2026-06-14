@@ -35,6 +35,7 @@ interface Props {
   date: string;
   selected: boolean;
   onClick: () => void;
+  onContextMenu: (e: React.MouseEvent) => void;
 }
 
 function CommitRow({
@@ -48,6 +49,7 @@ function CommitRow({
   date,
   selected,
   onClick,
+  onContextMenu,
 }: Props) {
   const width = Math.max(laneCount * LANE_W, LANE_W);
   return (
@@ -55,6 +57,7 @@ function CommitRow({
       role="row"
       aria-selected={selected}
       onClick={onClick}
+      onContextMenu={onContextMenu}
       className={`flex cursor-pointer items-center gap-2 px-2 ${
         selected
           ? 'bg-[var(--background-modifier-active)]'

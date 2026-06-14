@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import { Group, Panel, Separator } from 'react-resizable-panels';
-import { RefreshCw, X } from 'lucide-react';
+import { Archive, GitCommitVertical, RefreshCw, X } from 'lucide-react';
+import { commitChanges, stashChanges } from '../../editor/gitActions';
 import { useGitGraphStore } from '../../stores/useGitGraphStore';
 import { useGitStore } from '../../stores/useGitStore';
 import { useWorkbenchStore } from '../../stores/useWorkbenchStore';
@@ -32,6 +33,22 @@ export default function GitGraphView() {
           Git Graph{loading ? ' · 加载中…' : ` · ${commitCount} 提交`}
         </span>
         <div className="flex items-center gap-1">
+          <button
+            type="button"
+            title="提交更改"
+            onClick={() => void commitChanges()}
+            className="rounded p-1 text-[var(--text-muted)] hover:bg-[var(--background-modifier-hover)] hover:text-[var(--text-normal)]"
+          >
+            <GitCommitVertical size={14} aria-hidden="true" />
+          </button>
+          <button
+            type="button"
+            title="暂存改动（stash）"
+            onClick={() => void stashChanges()}
+            className="rounded p-1 text-[var(--text-muted)] hover:bg-[var(--background-modifier-hover)] hover:text-[var(--text-normal)]"
+          >
+            <Archive size={14} aria-hidden="true" />
+          </button>
           <button
             type="button"
             title="刷新"

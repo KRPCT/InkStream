@@ -40,7 +40,22 @@ pub fn run() {
             git::branch::git_branch_list,
             git::log::git_log,
             git::diff::git_diff,
-            git::refs::git_refs
+            git::refs::git_refs,
+            git::commit::git_commit,
+            git::commit::git_merge,
+            git::commit::git_cherry_pick,
+            git::commit::git_revert,
+            git::commit::git_abort_op,
+            git::refops::git_checkout,
+            git::refops::git_create_branch,
+            git::refops::git_delete_branch,
+            git::refops::git_reset,
+            git::refops::git_tag_create,
+            git::refops::git_tag_delete,
+            git::stash::git_stash_save,
+            git::stash::git_stash_pop,
+            git::stash::git_stash_drop,
+            git::stash::git_stash_list
         ])
         .setup(|app| {
             // watcher 单例状态注册（切 vault 时 start/stop_watch 经此句柄换装）。

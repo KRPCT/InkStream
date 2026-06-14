@@ -16,9 +16,12 @@
 // 才能连带解析 #[tauri::command] 在该模块生成的 __cmd__/__tauri_command_name_ 辅助项
 // （pub use 只重导出函数本体、不含这些隐藏宏项，故不可用 git::git_status 简写）。
 pub(crate) mod branch;
+pub(crate) mod commit;
 pub(crate) mod diff;
 pub(crate) mod log;
+pub(crate) mod refops;
 pub(crate) mod refs;
+pub(crate) mod stash;
 pub(crate) mod status;
 mod types;
 

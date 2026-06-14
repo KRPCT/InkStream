@@ -1,4 +1,14 @@
-import type { BranchInfo, CommitInfo, DiffTarget, FileDiff, GitRef, GitStatus } from './git';
+import type {
+  BranchInfo,
+  CommitInfo,
+  DiffTarget,
+  FileDiff,
+  GitOpResult,
+  GitRef,
+  GitStatus,
+  ResetMode,
+  StashEntry,
+} from './git';
 import type { FileEntry, TreeEntry, VaultInfo } from './vault';
 
 /** 单条 IPC command 的形状：参数与返回值。 */
@@ -42,4 +52,29 @@ export interface IpcCommands {
   git_log: { args: { repoRoot: string; skip: number; limit: number }; result: CommitInfo[] };
   git_diff: { args: { repoRoot: string; target: DiffTarget }; result: FileDiff[] };
   git_refs: { args: { repoRoot: string }; result: GitRef[] };
+  // Phase 6 W3 写命令。产生提交类（commit/merge/cherry-pick/revert）走 git CLI -S 签名；引用操作走 git2。
+  git_commit: { args: { repoRoot: string; message: string; paths: string[] }; result: GitOpResult };
+  git_merge: { args: { repoRoot: string; branch: string }; result: GitOpResult };
+  git_cherry_pick: { args: { repoRoot: string; oid: string }; result: GitOpResult };
+  git_revert: { args: { repoRoot: string; oid: string }; result: GitOpResult };
+  git_checkout: { args: { repoRoot: string; target: string; force: boolean }; result: null };
+  git_create_branch: {
+    args: { repoRoot: string; name: string; targetOid: string | null; checkout: boolean };
+    result: null;
+  };
+  git_delete_branch: { args: { repoRoot: string; name: string }; result: null };
+  git_reset: {
+    args: { repoRoot: string; targetOid: string; mode: ResetMode; confirmHard: boolean };
+    result: null;
+  };
+  git_tag_create: {
+    args: { repoRoot: string; name: string; targetOid: string | null; message: string | null };
+    result: null;
+  };
+  git_tag_delete: { args: { repoRoot: string; name: string }; result: null };
+  git_stash_save: { args: { repoRoot: string; message: string }; result: null };
+  git_stash_pop: { args: { repoRoot: string; index: number }; result: null };
+  git_stash_drop: { args: { repoRoot: string; index: number }; result: null };
+  git_stash_list: { args: { repoRoot: string }; result: StashEntry[] };
+  git_abort_op: { args: { repoRoot: string }; result: null };
 }

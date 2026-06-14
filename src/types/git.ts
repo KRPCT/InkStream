@@ -87,6 +87,24 @@ export type DiffTarget =
   | { commit: { oid: string } }
   | { commits: { from: string; to: string } };
 
+/** 产生提交类写操作（commit/merge/cherry-pick/revert）结果（W3）。 */
+export interface GitOpResult {
+  /** 成功时操作后 HEAD oid；冲突/未产生提交时 null。 */
+  oid: string | null;
+  /** 是否有未解决冲突（需用户在工作区解决后再提交）。 */
+  conflicted: boolean;
+}
+
+/** 单条 stash（index 越小越新）。 */
+export interface StashEntry {
+  index: number;
+  message: string;
+  oid: string;
+}
+
+/** reset 模式。 */
+export type ResetMode = 'soft' | 'mixed' | 'hard';
+
 /** 指向某 commit 的 ref（git-graph 行内徽章；W2）。 */
 export interface GitRef {
   /** 短名：'main' / 'origin/main' / 'v1.0.0'。 */
