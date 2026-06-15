@@ -119,4 +119,6 @@ export interface IpcCommands {
   zotero_sync: { args: undefined; result: ZoteroSyncResult };
   zotero_cache_items: { args: undefined; result: ZoteroItem[] };
   zotero_cache_csl: { args: { keys: string[] }; result: CslItem[] };
+  // #6：冷启动「打开方式」——取启动 argv 解析到的文件绝对路径（消费一次，无则 null）。
+  initial_open_file: { args: undefined; result: string | null };
 }

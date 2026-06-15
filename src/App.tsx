@@ -12,6 +12,7 @@ import SettingsModal from './components/settings/SettingsModal';
 import WorkbenchLayout from './components/workbench/WorkbenchLayout';
 import { initExternalChangeArbiter, stopExternalChangeArbiter } from './editor/externalChange';
 import { initExitGuard, stopExitGuard } from './editor/exitGuard';
+import { initOsFileOpen, stopOsFileOpen } from './editor/osFileOpen';
 import { restoreLastVault } from './editor/startupFlow';
 import { windowControls } from './ipc/window';
 import { initOnboarding } from './stores/useOnboardingStore';
@@ -29,6 +30,8 @@ export default function App() {
     initExternalChangeArbiter();
     // 未提交退出提醒（簇①）：关窗时若 git 有未提交改动则确认。
     initExitGuard();
+    // #6：OS 文件接入（拖拽 + 「打开方式」冷启动/热转发）→ openExternalFile。
+    initOsFileOpen();
     // FOUC 契约第 1 步收尾：首帧渲染后显示窗口（show 幂等，StrictMode 双执行无害）
     void windowControls.show();
     // 首次引导（簇③）：延迟到布局渲染后再开，spotlight 才能命中侧栏/状态栏元素。seen 标记防重复弹。
@@ -37,6 +40,7 @@ export default function App() {
       clearTimeout(onboardingTimer);
       stopExternalChangeArbiter();
       stopExitGuard();
+      stopOsFileOpen();
     };
   }, []);
 

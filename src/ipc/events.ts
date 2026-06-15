@@ -27,6 +27,19 @@ export function onVaultChange(cb: (payload: VaultChangePayload) => void): Promis
   return listen<VaultChangePayload>('vault://change', ({ payload }) => cb(payload));
 }
 
+/**
+ * 订阅「打开方式」/拖拽转发的文件打开事件（#6）：Rust（单实例第二次启动）发文件绝对路径，
+ * 前端路由到 openExternalFile。返回取消订阅函数的 Promise。
+ */
+export function onOpenFile(cb: (path: string) => void): Promise<UnlistenFn> {
+  return listen<string>('inkstream://open-file', ({ payload }) => cb(payload));
+}
+
+/** 取冷启动「打开方式」的初始文件参数（argv 解析，消费一次）；无则 null（#6）。 */
+export function getInitialOpenFile(): Promise<string | null> {
+  return invoke('initial_open_file', undefined);
+}
+
 /** 启动 vault 根 watcher（切入新 vault 时调）。 */
 export function startWatch(root: string): Promise<null> {
   return invoke('start_watch', { root });

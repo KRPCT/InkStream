@@ -1,4 +1,5 @@
-import { getCurrentWindow, type CloseRequestedEvent } from '@tauri-apps/api/window';
+import { getCurrentWindow, type CloseRequestedEvent, type DragDropEvent } from '@tauri-apps/api/window';
+import type { UnlistenFn } from '@tauri-apps/api/event';
 
 const win = getCurrentWindow();
 
@@ -16,4 +17,7 @@ export const windowControls = {
   /** 跟随系统主题（D-13）：订阅系统亮暗变化，返回取消订阅函数的 Promise。 */
   onThemeChanged: (cb: (theme: 'light' | 'dark') => void) =>
     win.onThemeChanged(({ payload }) => cb(payload)),
+  /** OS 文件拖拽（#6）：拖文件到窗口，type:'drop' 携带绝对路径数组。返回取消订阅函数的 Promise。 */
+  onDragDrop: (cb: (event: DragDropEvent) => void): Promise<UnlistenFn> =>
+    win.onDragDropEvent((e) => cb(e.payload)),
 };

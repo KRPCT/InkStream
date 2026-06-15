@@ -1,6 +1,7 @@
 mod files;
 mod git;
 mod index;
+mod os_open;
 mod path_guard;
 mod vault;
 mod watcher;
@@ -12,6 +13,15 @@ use tauri::Manager;
 
 pub fn run() {
     tauri::Builder::default()
+        // #6：单实例——「打开方式」第二次启动时把 argv 转发给运行中的实例（聚焦 + 发 open-file 事件），
+        // 而非另起一个 app 进程。须最先注册（第二实例检测早于其它 init）。
+        .plugin(tauri_plugin_single_instance::init(|app, argv, _cwd| {
+            os_open::handle_second_instance(app, argv);
+        }))
+        // #6：冷启动「打开方式」——启动 argv 解析到的文件路径存入管理态，前端经 initial_open_file 取一次。
+        .manage(os_open::InitialOpenFile(std::sync::Mutex::new(
+            os_open::file_from_args(std::env::args()),
+        )))
         .plugin(tauri_plugin_window_state::Builder::default().build())
         .plugin(tauri_plugin_store::Builder::default().build())
         .plugin(tauri_plugin_fs::init())
@@ -24,6 +34,7 @@ pub fn run() {
             vault::list_dir,
             vault::list_files,
             vault::find_repo_root,
+            os_open::initial_open_file,
             files::read_file,
             files::write_file_atomic,
             files::write_file_to_path,
