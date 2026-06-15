@@ -15,6 +15,7 @@ import {
   fetchRemote,
   pullCurrent,
   pushCurrent,
+  refreshGitAll,
   stashChanges,
 } from '../../editor/gitActions';
 import { useGitGraphStore } from '../../stores/useGitGraphStore';
@@ -36,7 +37,6 @@ import '../../styles/git-graph.css';
  */
 export default function GitGraphView() {
   const repoRoot = useGitStore((s) => s.repoRoot);
-  const loadLog = useGitGraphStore((s) => s.loadLog);
   const loading = useGitGraphStore((s) => s.loading);
   const commitCount = useGitGraphStore((s) => s.commits.length);
   const remoteBusy = useGitGraphStore((s) => s.remoteBusy);
@@ -49,9 +49,10 @@ export default function GitGraphView() {
   const findOpen = useGitGraphStore((s) => s.findOpen);
   const setFindOpen = useGitGraphStore((s) => s.setFindOpen);
 
+  // 进入 Git Graph 视图即全量刷新（状态栏 + 图谱），同时捕获 app 外（终端等）改动。
   useEffect(() => {
-    if (repoRoot) void loadLog(repoRoot);
-  }, [repoRoot, loadLog]);
+    if (repoRoot) void refreshGitAll(repoRoot);
+  }, [repoRoot]);
 
   return (
     <div className="flex h-full flex-col bg-[var(--background-primary)]">
@@ -143,7 +144,7 @@ export default function GitGraphView() {
           <button
             type="button"
             title="刷新"
-            onClick={() => repoRoot && void loadLog(repoRoot)}
+            onClick={() => repoRoot && void refreshGitAll(repoRoot)}
             className="rounded p-1 text-[var(--text-muted)] hover:bg-[var(--background-modifier-hover)] hover:text-[var(--text-normal)]"
           >
             <RefreshCw size={14} aria-hidden="true" />

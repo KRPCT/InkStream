@@ -31,6 +31,16 @@ async function refreshAfter(repoRoot: string): Promise<void> {
   }
 }
 
+/**
+ * 全量重刷 git 全局状态：状态栏分支/脏标记（useGitStore）+ 提交图（useGitGraphStore）一并刷新。
+ * 供 GitGraph 自身的刷新入口（刷新按钮 / 进入视图）调用——这两条路径以前只刷图谱、不刷 useGitStore，
+ * 而 watcher 又跳过 `.git/*` 事件，导致左下角状态栏冻结在旧分支/旧脏标记（git 全局状态不同步）。
+ */
+export async function refreshGitAll(repoRoot: string): Promise<void> {
+  await useGitStore.getState().refresh();
+  await useGitGraphStore.getState().loadLog(repoRoot);
+}
+
 /** 冲突结果 → 警告 + 「撤销」中止入口（merge/cherry-pick/revert 共用）。 */
 function reportConflict(res: GitOpResult, label: string): void {
   if (res.conflicted) {
