@@ -10,11 +10,13 @@ interface SettingsState {
   autosaveEnabled: boolean;
   autosaveDelayMs: number;
   editorFontSize: number;
+  dailyWordGoal: number;
   gitRemoteMode: GitRemoteMode;
   gitCustomServer: string;
   setAutosaveEnabled: (enabled: boolean) => void;
   setAutosaveDelayMs: (ms: number) => void;
   setEditorFontSize: (px: number) => void;
+  setDailyWordGoal: (goal: number) => void;
   setGitRemoteMode: (mode: GitRemoteMode) => void;
   setGitCustomServer: (server: string) => void;
 }
@@ -82,6 +84,7 @@ export const useSettingsStore = create<SettingsState>((set) => ({
   autosaveEnabled: true,
   autosaveDelayMs: 500,
   editorFontSize: 16,
+  dailyWordGoal: 1000,
   gitRemoteMode: 'ssh',
   gitCustomServer: '',
   setAutosaveEnabled: (autosaveEnabled) => set({ autosaveEnabled }),
@@ -90,6 +93,7 @@ export const useSettingsStore = create<SettingsState>((set) => ({
     applyFontSize(editorFontSize);
     set({ editorFontSize });
   },
+  setDailyWordGoal: (dailyWordGoal) => set({ dailyWordGoal }),
   setGitRemoteMode: (gitRemoteMode) => set({ gitRemoteMode }),
   setGitCustomServer: (gitCustomServer) => set({ gitCustomServer }),
 }));

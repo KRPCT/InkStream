@@ -156,6 +156,8 @@ export function EditorSection() {
   const setAutosave = useSettingsStore((s) => s.setAutosaveEnabled);
   const delay = useSettingsStore((s) => s.autosaveDelayMs);
   const setDelay = useSettingsStore((s) => s.setAutosaveDelayMs);
+  const goal = useSettingsStore((s) => s.dailyWordGoal);
+  const setGoal = useSettingsStore((s) => s.setDailyWordGoal);
   return (
     <div>
       <SettingRow
@@ -173,6 +175,9 @@ export function EditorSection() {
           suffix="ms"
           onChange={setDelay}
         />
+      </SettingRow>
+      <SettingRow label="今日字数目标" description="Creative 模式状态栏显示今日写作进度（0 = 关闭）。">
+        <NumberInput value={goal} min={0} max={100000} step={100} suffix="字" onChange={setGoal} />
       </SettingRow>
     </div>
   );

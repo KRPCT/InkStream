@@ -25,8 +25,15 @@ let unsubscribers: Array<() => void> = [];
 
 /** 当前内存态快照，写盘前经 validateSettings 再过一遍（防内存异常外溢）。 */
 function snapshot(): PersistedSettings {
-  const { theme, autosaveEnabled, autosaveDelayMs, editorFontSize, gitRemoteMode, gitCustomServer } =
-    useSettingsStore.getState();
+  const {
+    theme,
+    autosaveEnabled,
+    autosaveDelayMs,
+    editorFontSize,
+    dailyWordGoal,
+    gitRemoteMode,
+    gitCustomServer,
+  } = useSettingsStore.getState();
   const { mode, layouts } = useWorkbenchStore.getState();
   return validateSettings({
     version: 1,
@@ -37,6 +44,7 @@ function snapshot(): PersistedSettings {
     autosaveEnabled,
     autosaveDelayMs,
     editorFontSize,
+    dailyWordGoal,
     gitRemoteMode,
     gitCustomServer,
   });
@@ -58,6 +66,7 @@ function apply(s: PersistedSettings): void {
   useSettingsStore.setState({
     autosaveEnabled: s.autosaveEnabled,
     autosaveDelayMs: s.autosaveDelayMs,
+    dailyWordGoal: s.dailyWordGoal,
     gitRemoteMode: s.gitRemoteMode,
     gitCustomServer: s.gitCustomServer,
   });

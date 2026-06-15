@@ -25,6 +25,7 @@ function defaults(): PersistedSettings {
     autosaveEnabled: true,
     autosaveDelayMs: 500,
     editorFontSize: 16,
+    dailyWordGoal: 1000,
     gitRemoteMode: 'ssh',
     gitCustomServer: '',
   };
@@ -74,6 +75,7 @@ export function validateSettings(raw: unknown): PersistedSettings {
     autosaveEnabled: typeof raw.autosaveEnabled === 'boolean' ? raw.autosaveEnabled : true,
     autosaveDelayMs: clamp(raw.autosaveDelayMs, 200, 5000, 500),
     editorFontSize: clamp(raw.editorFontSize, 10, 28, 16),
+    dailyWordGoal: clamp(raw.dailyWordGoal, 0, 100000, 1000),
     gitRemoteMode: (GIT_MODES.includes(raw.gitRemoteMode as string)
       ? raw.gitRemoteMode
       : 'ssh') as GitRemoteMode,

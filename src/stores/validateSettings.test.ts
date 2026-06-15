@@ -15,6 +15,7 @@ const VALID = {
   autosaveEnabled: false,
   autosaveDelayMs: 1000,
   editorFontSize: 18,
+  dailyWordGoal: 2000,
   gitRemoteMode: 'oauth',
   gitCustomServer: 'git@example.com:u/r.git',
 };
@@ -109,6 +110,7 @@ describe('validateSettings', () => {
       autosaveEnabled: true,
       autosaveDelayMs: 500,
       editorFontSize: 16,
+      dailyWordGoal: 1000,
       gitRemoteMode: 'ssh',
       gitCustomServer: '',
     });

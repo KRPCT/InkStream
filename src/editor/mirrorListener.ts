@@ -6,6 +6,7 @@ import { syncCitations } from './citations';
 import { syncRichtext } from './editorState';
 import { reconfigureLanguageFromDoc } from './languages';
 import { syncOutline } from './outline';
+import { syncWordCount } from './wordCount';
 
 /**
  * store 单向镜像 listener（P0 修复，PROD-RELAY-DESIGN §0）。
@@ -41,6 +42,8 @@ export const mirrorListener = EditorView.updateListener.of((u) => {
     syncOutline(u.view);
     // 引用镜像（ZOT-03，RightPanel 引用 tab）：[@key] 随编辑增删，同纪律单向写入 store。
     syncCitations(u.view);
+    // 字数镜像（CREA-04）：编辑累加今日净写入（换日重置），单向写入 store。
+    syncWordCount(u.view);
   }
   if (u.selectionSet || u.docChanged) {
     useEditorStore.getState().setCursor(u.state.selection.main.head);

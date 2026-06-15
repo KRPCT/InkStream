@@ -2,6 +2,7 @@ import CitationIndicator from './CitationIndicator';
 import GitBranchIndicator from './GitBranchIndicator';
 import ModeIndicator from './ModeIndicator';
 import RenderModeIndicator from './RenderModeIndicator';
+import WordCountIndicator from './WordCountIndicator';
 
 /**
  * StatusBar 插槽：高 24px、顶部 1px 边框（UI-SPEC Layout Contract）。
@@ -17,6 +18,7 @@ export default function StatusBar() {
         <GitBranchIndicator />
       </div>
       <div data-testid="status-bar-right" className="flex h-full">
+        <WordCountIndicator />
         <CitationIndicator />
         <RenderModeIndicator />
         <ModeIndicator />
