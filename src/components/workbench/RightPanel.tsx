@@ -5,6 +5,7 @@ import BacklinksPanel from './BacklinksPanel';
 import CitationPanel from './CitationPanel';
 import CodexPanel from './CodexPanel';
 import OutlinePanel from './OutlinePanel';
+import SceneSummaryPanel from './SceneSummaryPanel';
 import EmptyState from '../common/EmptyState';
 import PanelTabs from './PanelTabs';
 
@@ -55,6 +56,8 @@ export default function RightPanel() {
               <CitationPanel />
             ) : id === 'codex' ? (
               <CodexPanel />
+            ) : id === 'sceneSummary' ? (
+              <SceneSummaryPanel />
             ) : (
               <EmptyState icon={TAB_ICONS[id]} heading={TAB_EMPTY[id].heading} body={TAB_EMPTY[id].body} />
             )}

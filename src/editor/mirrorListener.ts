@@ -6,6 +6,7 @@ import { syncCitations } from './citations';
 import { syncRichtext } from './editorState';
 import { reconfigureLanguageFromDoc } from './languages';
 import { syncOutline } from './outline';
+import { syncSceneSummary } from './sceneSummary';
 import { syncWordCount } from './wordCount';
 
 /**
@@ -44,6 +45,8 @@ export const mirrorListener = EditorView.updateListener.of((u) => {
     syncCitations(u.view);
     // 字数镜像（CREA-04）：编辑累加今日净写入（换日重置），单向写入 store。
     syncWordCount(u.view);
+    // 场景概要镜像（CREA-05）：frontmatter summary 随编辑更新，单向写入 store。
+    syncSceneSummary(u.view);
   }
   if (u.selectionSet || u.docChanged) {
     useEditorStore.getState().setCursor(u.state.selection.main.head);

@@ -10,6 +10,7 @@ import { languageFromDoc, markAppliedLanguage } from './languages';
 import { syncCitations } from './citations';
 import { getView, scrollContainer } from './viewHandle';
 import { syncOutline } from './outline';
+import { syncSceneSummary } from './sceneSummary';
 import { rebaseWordCount } from './wordCount';
 import { imageVaultFacet } from './livepreview/inlinePlugin';
 import { basename, isAbsolutePath, parentDir } from './pathUtil';
@@ -144,6 +145,7 @@ export function openFile(view: EditorView, path: string, doc: string, ext: Exten
     syncOutline(view);
     syncCitations(view); // 引用镜像（ZOT-03）同此显式同步
     rebaseWordCount(view); // 字数基线（CREA-04）：换装不触发 updateListener，此处重设基线、不计入今日写入
+    syncSceneSummary(view); // 场景概要镜像（CREA-05），同 syncOutline 在换装入口补位
   });
   // 焦点纪律：不程序化抢焦点。WebView2 只在「真实指针进入编辑器」时武装 OS IME/TSF，
   // 任何 programmatic 聚焦（view.focus / MoveFocus / EditContext）都不武装中文输入（真机 CDP 证）；
@@ -198,6 +200,7 @@ export function switchToTab(path: string): void {
     syncOutline(view);
     syncCitations(view); // 引用镜像（ZOT-03）
     rebaseWordCount(view); // 字数基线（CREA-04），同 openFile
+    syncSceneSummary(view); // 场景概要镜像（CREA-05），同 openFile
   });
   useEditorStore.getState().setActive(path);
 }

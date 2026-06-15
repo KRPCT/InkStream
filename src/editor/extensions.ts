@@ -7,6 +7,7 @@ import { insertCitation } from './academicActions';
 import { inkstreamHighlightStyle } from './highlightTheme';
 import { extensionsForLanguage, langCompartment } from './languages';
 import { livePreviewExtensions, renderModeCompartment } from './livepreview/livePreview';
+import { focusModeExtensions, toggleFocusMode } from './livepreview/focusMode';
 import { compositionGate } from './composition';
 import { mirrorListener } from './mirrorListener';
 
@@ -88,6 +89,15 @@ export function baseExtensions(lang: string = 'markdown'): Extension[] {
           return true;
         },
       },
+      // CREA-03：F11 切换 Focus Mode（preventDefault 必须——F11 默认触发 WebView2 全屏）。
+      {
+        key: 'F11',
+        preventDefault: true,
+        run: () => {
+          toggleFocusMode();
+          return true;
+        },
+      },
       ...defaultKeymap,
       ...historyKeymap,
       ...searchKeymap,
@@ -97,6 +107,7 @@ export function baseExtensions(lang: string = 'markdown'): Extension[] {
     syntaxHighlighting(inkstreamHighlightStyle),
     langCompartment.of(extensionsForLanguage(lang)),
     renderModeCompartment.of(livePreviewExtensions()),
+    focusModeExtensions, // CREA-03 Focus Mode（顶层，Source/Live 均生效；关闭时零装饰）
     mirrorListener,
   ];
 }
