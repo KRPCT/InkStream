@@ -114,7 +114,7 @@ describe('draftFlow', () => {
     mockPick.mockResolvedValue('D:\\docs\\草稿.md');
     await saveDraftAs('draft://1');
     expect(mockWrite).toHaveBeenCalledWith('D:\\docs\\草稿.md', 'x');
-    expect(switchVault).toHaveBeenCalledWith('D:/docs');
+    expect(switchVault).toHaveBeenCalledWith('D:/docs', { confirmLeave: false });
     expect(openFileByPath).toHaveBeenCalledWith('草稿.md');
     expect(useEditorStore.getState().tabs.some((t) => t.path === 'draft://1')).toBe(false);
   });

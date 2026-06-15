@@ -1,9 +1,9 @@
-import { EditorState, type Extension } from '@codemirror/state';
+import { Compartment, EditorState, type Extension } from '@codemirror/state';
 import type { EditorView } from '@codemirror/view';
 import { readFile } from '../ipc/files';
 import { useEditorStore } from '../stores/useEditorStore';
 import { useVaultStore } from '../stores/useVaultStore';
-import { isComposing, queueAfterComposition } from './composition';
+import { isComposing, queueAfterComposition, refreshLivePreview } from './composition';
 import { baseExtensions } from './extensions';
 import { readLanguage } from './frontmatter';
 import { languageFromDoc, markAppliedLanguage } from './languages';
@@ -11,10 +11,12 @@ import { syncCitations } from './citations';
 import { getView, scrollContainer } from './viewHandle';
 import { syncOutline } from './outline';
 import { imageVaultFacet } from './livepreview/inlinePlugin';
+import { basename, isAbsolutePath, parentDir } from './pathUtil';
 import {
   applyRenderMode,
   clearRenderModeCache,
   disposeRenderMode,
+  rekeyRenderMode,
   snapshotRenderMode,
 } from './editorState.renderMode';
 
@@ -81,6 +83,43 @@ function swapState(view: EditorView, key: string, doSwap: () => void): void {
 }
 
 /**
+ * 图片解析上下文：库外文件（绝对 path）按其所在目录解析相对图片；
+ * 库内文件按当前 vault 根 + 相对 path 解析。无 vault 且非绝对（不该发生）→ null。
+ */
+function imageContextForPath(path: string): { root: string; docPath: string } | null {
+  if (isAbsolutePath(path)) return { root: parentDir(path), docPath: basename(path) };
+  const root = useVaultStore.getState().vault?.root ?? null;
+  return root ? { root, docPath: path } : null;
+}
+
+/**
+ * 图片 vault 上下文经 Compartment 注入（而非直接 facet.of）：使切库重归位（rehome）后能按新 key
+ * 重导上下文——否则 re-key 的 EditorState 仍持旧 facet，相对图片按旧库根解析（甚至误判越界 vault 根）。
+ */
+const imageVaultCompartment = new Compartment();
+
+/**
+ * 重建某 path 的图片上下文（rehome 后调，按新 key 重导）：
+ * - 活动 tab：reconfigure 活动 view 的 compartment + refreshLivePreview 强刷一次（装饰立即按新库根解析图片），同步缓存；
+ * - 非活动 tab：只更其缓存 state 的 facet——切回该 tab 时 setState 重挂插件即按新 facet 构建装饰。
+ */
+export function reapplyImageContext(path: string): void {
+  const facet = imageVaultFacet.of(imageContextForPath(path));
+  const view = getView();
+  if (view && useEditorStore.getState().activePath === path) {
+    view.dispatch({
+      effects: [imageVaultCompartment.reconfigure(facet), refreshLivePreview.of(null)],
+    });
+    cache.set(path, view.state);
+    return;
+  }
+  const st = cache.get(path);
+  if (st !== undefined) {
+    cache.set(path, st.update({ effects: imageVaultCompartment.reconfigure(facet) }).state);
+  }
+}
+
+/**
  * 打开文件：命中缓存则恢复其完整 state（含光标/选区/undo 历史）；
  * 未命中则用 doc + ext 新建 EditorState 后整体换装。
  *
@@ -90,8 +129,7 @@ export function openFile(view: EditorView, path: string, doc: string, ext: Exten
   const cached = cache.get(path);
   // 图片 vault 上下文经 per-view facet 注入（WR-07）：装饰构建不读全局 store，绑定各自 EditorState；
   // 换装入口是 store 读取合法位（同 applyRenderMode/syncRichtext），root+docPath 一次取写入门生命周期恒定。
-  const root = useVaultStore.getState().vault?.root ?? null;
-  const vaultFacet = imageVaultFacet.of(root ? { root, docPath: path } : null);
+  const vaultFacet = imageVaultCompartment.of(imageVaultFacet.of(imageContextForPath(path)));
   const state = cached ?? EditorState.create({ doc, extensions: [ext, vaultFacet] });
   swapState(view, path, () => {
     view.setState(state);
@@ -191,6 +229,26 @@ export function disposeState(path: string): void {
   cache.delete(path);
   scrollCache.delete(path);
   disposeRenderMode(path);
+}
+
+/**
+ * 切库重归位：把某 path 的 EditorState / 滚动 / renderMode 缓存整体迁到新 key
+ * （保留未落盘编辑、撤销历史、光标/选区、滚动位置）。库内相对键 ↔ 库外绝对键互转时调用。
+ * 缓存缺失（活动文件尚未快照入缓存）时无操作——其内容仍在 live view，由调用方先快照。
+ */
+export function rekeyState(oldPath: string, newPath: string): void {
+  if (oldPath === newPath) return;
+  const st = cache.get(oldPath);
+  if (st !== undefined) {
+    cache.set(newPath, st);
+    cache.delete(oldPath);
+  }
+  const top = scrollCache.get(oldPath);
+  if (top !== undefined) {
+    scrollCache.set(newPath, top);
+    scrollCache.delete(oldPath);
+  }
+  rekeyRenderMode(oldPath, newPath);
 }
 
 /** 仅供测试：清空缓存以隔离用例。 */

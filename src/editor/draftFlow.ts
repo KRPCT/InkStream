@@ -66,7 +66,7 @@ export async function saveDraftAs(draftPath: string): Promise<void> {
     void refreshTree();
   } else {
     try {
-      await switchVault(parentDir(absPath));
+      await switchVault(parentDir(absPath), { confirmLeave: false }); // 另存为转正：不提示提交旧库
     } catch {
       return; // 切 vault 失败（已弹 toast）：内容已落盘，草稿保留供重试
     }

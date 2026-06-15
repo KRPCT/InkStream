@@ -2,13 +2,21 @@ import { pickFile, pickFolder } from '../ipc/dialog';
 import { startWatch, stopWatch } from '../ipc/events';
 import { indexRebuild } from '../ipc/indexService';
 import { listDir, listFiles, openVault } from '../ipc/vault';
+import { cancelPendingAutosave, resumeAutosave, suspendAutosave } from '../stores/autosave';
+import { chooseAction } from '../stores/useChoiceStore';
+import { useEditorStore } from '../stores/useEditorStore';
 import { showToast } from '../stores/useToastStore';
 import { useGitGuidanceStore } from '../stores/useGitGuidanceStore';
 import { useGitStore } from '../stores/useGitStore';
 import { useVaultStore } from '../stores/useVaultStore';
 import type { VaultInfo } from '../types/vault';
+import { isDraftPath } from './draftPath';
+import { snapshotBeforeSwitch } from './editorState';
 import { entriesToNodes } from './fileTreeData';
-import { openFileByPath } from './fileOpenFlow';
+import { openExternalFile } from './fileOpenFlow';
+import { commitChanges } from './gitActions';
+import { rehomeTabsForVaultSwitch } from './tabReconcile';
+import { getView } from './viewHandle';
 
 /**
  * vault 生命周期编排（非 React 模块，经 getState() 调用）：打开 / 切换 / 引导。
@@ -17,21 +25,8 @@ import { openFileByPath } from './fileOpenFlow';
  * 文件/文件夹选择对话框：R4 §2 反转旧自绘决策，改原生系统对话框（ipc/dialog，最小权限 allow-open）。
  */
 
-/** 路径分隔统一为 `/` 并剥除末尾分隔，取父目录（vault 外文件 → 其父目录作 vault）。 */
-export function parentDir(filePath: string): string {
-  const norm = filePath.replace(/\\/g, '/').replace(/\/+$/, '');
-  const i = norm.lastIndexOf('/');
-  return i <= 0 ? norm : norm.slice(0, i);
-}
-
-/** 判断文件是否落在当前已打开 vault 根内（同根 → 直接打开，无需切 vault）。 */
-export function relativeWithinVault(filePath: string, root: string): string | null {
-  const normFile = filePath.replace(/\\/g, '/');
-  const normRoot = root.replace(/\\/g, '/').replace(/\/+$/, '');
-  if (normFile === normRoot) return null;
-  const prefix = `${normRoot}/`;
-  return normFile.startsWith(prefix) ? normFile.slice(prefix.length) : null;
-}
+// 纯路径工具下沉 pathUtil（叶子，无环）；此处再导出保 draftFlow 等既有 import 兼容。
+export { parentDir, relativeWithin as relativeWithinVault } from './pathUtil';
 
 /** vault 语义引导（D-05/D-06）：非 git → 引导 git init 条；git 子目录 → 仓库根选择对话框。 */
 function applyGitGuidance(info: VaultInfo): void {
@@ -75,25 +70,67 @@ export async function openVaultByPath(path: string): Promise<void> {
 }
 
 /**
- * 切换 vault（同窗单 vault，D-07）：stop_watch 旧 → open_vault 新 → start_watch 新。
- *
- * 切 vault 时停旧 watcher、打开新 vault、为新根启动 watcher（FILE-02 外部变更监听）。
- * 打开失败回退（保留旧 vault），并提示。
+ * 切库前的「未提交提示」（#5.4）：当前工作区 git 有未提交改动时，提示「提交并切换 / 直接切换 / 取消」。
+ * external tab 模型下切库已非破坏操作（文件不丢），故这是版本卫生提示：取消则不切，其余均继续切。
+ * 非 git / 无改动 → 直接放行。
  */
-export async function switchVault(path: string): Promise<void> {
+async function confirmLeaveDirtyVault(): Promise<boolean> {
+  const git = useGitStore.getState();
+  const count = git.repoRoot !== null ? (git.status?.files.length ?? 0) : 0;
+  if (count === 0) return true;
+  const choice = await chooseAction({
+    title: '当前工作区有未提交更改',
+    body: `当前工作区有 ${count} 个文件的更改尚未提交。切换工作区后这些文件仍保留在磁盘、不会丢失，但不在当前仓库的 git 历史中。`,
+    options: [
+      { id: 'switch', label: '直接切换' },
+      { id: 'commit', label: '提交并切换', kind: 'primary' },
+    ],
+  });
+  if (choice === null) return false; // 取消 → 不切换
+  if (choice === 'commit') await commitChanges(); // 弹信息输入并提交；取消输入/失败仍继续切（文件已在盘、安全）
+  return true;
+}
+
+/**
+ * 切换 vault（同窗单 vault，D-07）：未提交提示 → 挂起 autosave → stop_watch 旧 → open_vault 新
+ * → 重归位旧 tab（#3/#5.5）→ start_watch 新。返回是否实际切换（用户取消提示 → false）。
+ *
+ * #3 数据丢失根治：切库全程挂起 autosave + 清防抖定时器，开新库后把旧 tab 按其**真实绝对路径**重归位
+ * （库内→相对、库外→external），杜绝旧 tab 落盘到「新库根 + 旧相对路径」覆盖新库文件。
+ * 打开失败抛出（保留旧 vault + 旧 tab，调用方兜底提示）。
+ * restoreLastVault / saveDraftAs 经 `{ confirmLeave: false }` 跳过提示。
+ */
+export async function switchVault(
+  path: string,
+  options?: { confirmLeave?: boolean },
+): Promise<boolean> {
+  if (options?.confirmLeave !== false && !(await confirmLeaveDirtyVault())) return false;
+  const oldRoot = useVaultStore.getState().vault?.root ?? null;
+  suspendAutosave();
+  cancelPendingAutosave();
   try {
-    await stopWatch();
-  } catch {
-    /* 停旧 watcher 失败不阻断切换 */
-  }
-  await openVaultByPath(path);
-  const root = useVaultStore.getState().vault?.root;
-  if (root) {
     try {
-      await startWatch(root);
+      await stopWatch();
     } catch {
-      /* watcher 启动失败：外部变更监听不可用，文件树仍可用 */
+      /* 停旧 watcher 失败不阻断切换 */
     }
+    // 活动 tab 内容尚在 live view、未入缓存——先快照，rehome 才能连内容一起重归位（数据零丢失）。
+    const view = getView();
+    const active = useEditorStore.getState().activePath;
+    if (view && active && !isDraftPath(active)) snapshotBeforeSwitch(view, active);
+    await openVaultByPath(path); // 翻 vault.root 到新库（失败抛出 → 不 rehome，旧 tab 不变）
+    const newRoot = useVaultStore.getState().vault?.root ?? null;
+    if (oldRoot && newRoot && oldRoot !== newRoot) rehomeTabsForVaultSwitch(oldRoot, newRoot);
+    if (newRoot) {
+      try {
+        await startWatch(newRoot);
+      } catch {
+        /* watcher 启动失败：外部变更监听不可用，文件树仍可用 */
+      }
+    }
+    return true;
+  } finally {
+    resumeAutosave();
   }
 }
 
@@ -133,29 +170,13 @@ export async function requestOpenFolder(): Promise<void> {
 /**
  * 「打开文件」命令入口（file.open-file，Ctrl+O 触发）。
  *
- * R4 §2：原生文件选择对话框（pickFile，过滤 Markdown/txt）。选中文件：
- * - 在当前 vault 内 → 直接以相对路径打开（openFileByPath，复用单内核换装链路）；
- * - 在 vault 外（或尚无 vault） → switchVault 到其父目录后，以文件名相对路径打开。
- * 取消静默 no-op；读文件失败的提示由 openFileInEditor 内 toast 兜底。
+ * R4 §2：原生文件选择对话框（pickFile，过滤 Markdown/txt）。选中文件经 openExternalFile：
+ * - 在当前 vault 内 → 相对路径打开（库内 tab）；
+ * - 在 vault 外 → external（非工作区）tab，**不切换工作区**（#5.1）。
+ * 取消静默 no-op；读文件失败的提示由 openExternalFile 内 toast 兜底。
  */
 export async function requestOpenFile(): Promise<void> {
   const path = await pickFile();
   if (path === null) return;
-  const root = useVaultStore.getState().vault?.root;
-  if (root) {
-    const rel = relativeWithinVault(path, root);
-    if (rel !== null) {
-      await openFileByPath(rel);
-      return;
-    }
-  }
-  // vault 外：切到父目录作 vault，再按文件名打开（switchVault 失败已弹 toast）。
-  const dir = parentDir(path);
-  const name = path.replace(/\\/g, '/').split('/').pop() ?? path;
-  try {
-    await switchVault(dir);
-  } catch {
-    return;
-  }
-  await openFileByPath(name);
+  await openExternalFile(path);
 }

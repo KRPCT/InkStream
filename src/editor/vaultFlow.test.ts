@@ -27,8 +27,10 @@ vi.mock('../ipc/events', () => ({
 }));
 
 const openFileByPath = vi.fn<(path: string) => Promise<void>>().mockResolvedValue(undefined);
+const openExternalFile = vi.fn<(path: string) => Promise<void>>().mockResolvedValue(undefined);
 vi.mock('./fileOpenFlow', () => ({
   openFileByPath: (path: string) => openFileByPath(path),
+  openExternalFile: (path: string) => openExternalFile(path),
 }));
 
 const showToast = vi.fn();
@@ -75,52 +77,20 @@ describe('requestOpenFolder（原生目录对话框）', () => {
 });
 
 describe('requestOpenFile（原生文件对话框）', () => {
-  it('vault 内文件：直接按相对路径打开，不切 vault', async () => {
-    openVault.mockResolvedValue(INFO);
-    useVaultStore.getState().openVault(INFO, []);
-    pickFile.mockResolvedValue('/v/notes/a.md');
-    await requestOpenFile();
-    expect(openVault).not.toHaveBeenCalled();
-    expect(stopWatch).not.toHaveBeenCalled();
-    expect(openFileByPath).toHaveBeenCalledWith('notes/a.md');
-  });
-
-  it('Windows 反斜杠路径在 vault 内：归一为正斜杠相对路径', async () => {
-    const winInfo: VaultInfo = { root: 'D:\\Notes', repoRoot: null, name: 'Notes' };
-    useVaultStore.getState().openVault(winInfo, []);
-    pickFile.mockResolvedValue('D:\\Notes\\sub\\b.md');
-    await requestOpenFile();
-    expect(openFileByPath).toHaveBeenCalledWith('sub/b.md');
-  });
-
-  it('vault 外文件：切到父目录作 vault，再按文件名打开', async () => {
+  it('选中文件 → openExternalFile（库内相对/库外 external 的分流在其内部，#5.1 不切工作区）', async () => {
     useVaultStore.getState().openVault(INFO, []);
     pickFile.mockResolvedValue('/other/c.md');
     await requestOpenFile();
-    expect(stopWatch).toHaveBeenCalledTimes(1);
-    expect(openVault).toHaveBeenCalledWith('/other');
-    expect(openFileByPath).toHaveBeenCalledWith('c.md');
-  });
-
-  it('无 vault：以选中文件父目录作 vault 并打开', async () => {
-    pickFile.mockResolvedValue('/fresh/d.md');
-    await requestOpenFile();
-    expect(openVault).toHaveBeenCalledWith('/fresh');
-    expect(openFileByPath).toHaveBeenCalledWith('d.md');
+    expect(openExternalFile).toHaveBeenCalledWith('/other/c.md');
+    // requestOpenFile 自身不再切 vault——库外文件由 openExternalFile 开成 external tab。
+    expect(openVault).not.toHaveBeenCalled();
+    expect(stopWatch).not.toHaveBeenCalled();
   });
 
   it('取消（null）：no-op', async () => {
     pickFile.mockResolvedValue(null);
     await requestOpenFile();
-    expect(openVault).not.toHaveBeenCalled();
-    expect(openFileByPath).not.toHaveBeenCalled();
-  });
-
-  it('切 vault 失败：不再尝试打开文件（避免对失败 vault 读文件）', async () => {
-    pickFile.mockResolvedValue('/other/e.md');
-    openVault.mockRejectedValue(new Error('boom'));
-    await expect(requestOpenFile()).resolves.toBeUndefined();
-    expect(openFileByPath).not.toHaveBeenCalled();
+    expect(openExternalFile).not.toHaveBeenCalled();
   });
 });
 

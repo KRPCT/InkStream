@@ -2,7 +2,7 @@ import { queueAfterComposition } from '../editor/composition';
 import { isDraftPath } from '../editor/draftPath';
 import { getDocForPath } from '../editor/editorState';
 import { getView } from '../editor/viewHandle';
-import { writeFileAtomic } from '../ipc/files';
+import { writeFileAtomic, writeFileToPath } from '../ipc/files';
 import { indexUpsertDoc, isIndexable } from '../ipc/indexService';
 import { useEditorStore } from './useEditorStore';
 import { useSettingsStore } from './useSettingsStore';
@@ -71,6 +71,24 @@ const suppressedUntil = new Map<string, number>();
  */
 const inflight = new Map<string, Promise<void>>();
 
+/**
+ * 切库挂起标志：suspendAutosave 后 writeOnce 一律早返回，杜绝旧 tab 的排队/在途写在切库瞬间
+ * 落到刚切入的新库（#3 数据丢失根因——旧相对路径 + 新库根 = 覆盖新库同名文件）。
+ * 配合 cancelPendingAutosave 清防抖定时器；rehome 重归位完成后 resumeAutosave。
+ */
+let suspended = false;
+export function suspendAutosave(): void {
+  suspended = true;
+}
+export function resumeAutosave(): void {
+  suspended = false;
+}
+/** 取消所有未落盘的防抖定时器（切库前调）。已在飞的写不动——它们已捕获旧库根、写对位置。 */
+export function cancelPendingAutosave(): void {
+  timers.forEach((t) => clearTimeout(t));
+  timers.clear();
+}
+
 /** 测试注入 getDoc/getRoot 桩。 */
 export function configureAutosave(next: Partial<AutosaveDeps>): void {
   deps = { ...deps, ...next };
@@ -96,24 +114,31 @@ function enqueueWrite(path: string): Promise<void> {
   return next;
 }
 
-/** 执行一次落盘（frozen 时跳过；成功才自激抑制；失败保留脏态 + toast + 清抑制）。 */
+/** 执行一次落盘（suspend/frozen 时跳过；成功才自激抑制；失败保留脏态 + toast + 清抑制）。 */
 async function writeOnce(path: string): Promise<void> {
-  const { frozen, clearDirty, markDirty } = useEditorStore.getState();
+  if (suspended) return; // 切库期间一律不落盘——防旧 tab 的排队/在途写落到新库（#3 数据丢失）。
+  const { frozen, clearDirty, markDirty, tabs } = useEditorStore.getState();
   if (frozen[path]) return; // 02-04 冲突期冻结，防误覆盖
-  const root = deps.getRoot();
-  if (root === null) return;
+  // 库外（非工作区）文件：path 即绝对路径，写其真实位置；库内文件：vault 根 + 相对 path。
+  const external = tabs.find((t) => t.path === path)?.external === true;
+  const root = external ? null : deps.getRoot();
+  if (!external && root === null) return; // 库内文件无 vault 根不落盘
   const content = deps.getDoc(path);
   // 落盘前开窗：原子写（temp+rename）紧随的多个 watcher 事件在窗口内一并被吞，不误报
   // "外部变更"（Layer 2 自激抑制）。写成功后续窗，覆盖 rename 的尾随事件抖动。
   suppressNextWatch(path);
   try {
-    await writeFileAtomic(root, path, content);
+    if (external) {
+      await writeFileToPath(path, content); // 库外：绝对原子写（不经 vault path_guard，同草稿另存为）。
+    } else {
+      await writeFileAtomic(root as string, path, content); // 库内：vault 根 + 相对 path。
+    }
     // 写成功：从落盘完成时刻起续窗，确保 rename 的尾随事件全落在窗口内被吞。
     suppressNextWatch(path);
     clearDirty(path);
-    // Phase 4 W1：写盘成功后增量更新 FTS5 索引（autosave 主路径，已有内存内容无需读盘）。
-    // fire-and-forget——索引投递失败绝不阻断/回滚保存（doc 真相源已落盘，可经 index_rebuild 恢复）。
-    if (isIndexable(path)) void indexUpsertDoc(path, content).catch(() => {});
+    // Phase 4 W1：库内 .md 写盘成功后增量更新 FTS5 索引（autosave 主路径，已有内存内容无需读盘）。
+    // 库外文件不属当前 vault、不入索引。fire-and-forget——索引投递失败绝不阻断/回滚保存。
+    if (!external && isIndexable(path)) void indexUpsertDoc(path, content).catch(() => {});
   } catch {
     // WR-01：写失败时无 watcher 事件落地，必须撤回抑制窗口，否则它会吞掉
     // 下一次该路径的真实外部变更（consumeSuppressedWatch 误返 true）。
@@ -188,5 +213,6 @@ export function resetAutosave(): void {
   timers.clear();
   suppressedUntil.clear();
   inflight.clear();
+  suspended = false;
   deps = defaultDeps();
 }

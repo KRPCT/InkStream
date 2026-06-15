@@ -3,10 +3,15 @@ import type { RenderMode } from '../types/editor';
 
 /** tab 元数据（可序列化；EditorState 实例不在此，缓存于 editor/editorState.ts）。 */
 export interface TabMeta {
-  /** 文件相对 vault 根路径，或草稿合成标识 `draft://N`（唯一键，editor/draftPath）。 */
+  /**
+   * 唯一键：库内文件=相对 vault 根路径；库外（非工作区）文件=绝对路径；草稿=`draft://N`。
+   * 三类 keyspace 互不撞键（相对路径无盘符/前导分隔，绝对路径必有，草稿有 `draft://` 前缀）。
+   */
   path: string;
   /** 显示名（文件名）。 */
   name: string;
+  /** 库外（非工作区）文件：path 为绝对路径，autosave 走绝对写、git 排除、tab 显「非工作区」标记。 */
+  external?: boolean;
 }
 
 interface EditorStoreState {
@@ -32,6 +37,12 @@ interface EditorStoreState {
   activeRenderMode: RenderMode | null;
   openTab: (tab: TabMeta) => void;
   closeTab: (path: string) => void;
+  /**
+   * 切库重归位：把 tab 的 key 由 oldPath 迁到 newPath 并设 external 标记，
+   * 同步迁移 dirty/frozen/externalChanged/activePath（保未落盘脏标记不丢、活动 tab 不变）。
+   * 仅在 key 变化时调用（库内相对 ↔ 库外绝对）。
+   */
+  rehomeTab: (oldPath: string, newPath: string, external: boolean) => void;
   setActive: (path: string) => void;
   markDirty: (path: string) => void;
   clearDirty: (path: string) => void;
@@ -73,6 +84,29 @@ export const useEditorStore = create<EditorStoreState>((set) => ({
       // 关掉的是活动 tab：活动切到剩余首个 tab，无则 null
       const activePath = s.activePath === path ? (tabs[0]?.path ?? null) : s.activePath;
       return { tabs, dirty, frozen, externalChanged, activePath };
+    }),
+  rehomeTab: (oldPath, newPath, external) =>
+    set((s) => {
+      if (oldPath === newPath) return s;
+      if (!s.tabs.some((t) => t.path === oldPath)) return s;
+      const tabs = s.tabs.map((t) =>
+        t.path === oldPath ? { ...t, path: newPath, external } : t,
+      );
+      // 迁移每文件布尔映射的键（保留旧值）。
+      const move = (m: Record<string, boolean>): Record<string, boolean> => {
+        if (!(oldPath in m)) return m;
+        const next = { ...m };
+        next[newPath] = next[oldPath];
+        delete next[oldPath];
+        return next;
+      };
+      return {
+        tabs,
+        dirty: move(s.dirty),
+        frozen: move(s.frozen),
+        externalChanged: move(s.externalChanged),
+        activePath: s.activePath === oldPath ? newPath : s.activePath,
+      };
     }),
   setActive: (activePath) => set({ activePath }),
   markDirty: (path) => set((s) => ({ dirty: { ...s.dirty, [path]: true } })),

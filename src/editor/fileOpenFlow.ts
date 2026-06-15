@@ -5,8 +5,9 @@ import { useEditorStore } from '../stores/useEditorStore';
 import { useVaultStore } from '../stores/useVaultStore';
 import type { TreeNode } from '../types/vault';
 import { baseExtensions } from './extensions';
-import { openFile, snapshotBeforeSwitch } from './editorState';
+import { openFile, snapshotBeforeSwitch, switchToTab } from './editorState';
 import { languageFromDoc, markAppliedLanguage } from './languages';
+import { basename, parentDir, relativeWithin, stripVerbatim } from './pathUtil';
 import { getView } from './viewHandle';
 
 /**
@@ -47,4 +48,46 @@ export async function openFileByPath(path: string): Promise<void> {
   const name = path.split('/').pop() ?? path;
   if (!view) return;
   await openFileInEditor(view, { id: path, name, isDir: false });
+}
+
+/**
+ * 打开一个绝对路径文件——**不切换工作区**（#5.1）。库外文件成为 external tab（绝对键 + 标记 + git 排除）。
+ *
+ * - 该绝对路径其实落在当前 vault 内 → 转相对路径走库内打开（openFileByPath），不产生 external tab；
+ * - 已打开同一 external tab → 直接切过去（不重读）；
+ * - 否则读盘（readFile(父目录, 文件名)：path_guard 对直接子文件天然通过）→ openFile 换装 → 开 external tab。
+ *
+ * 命令面板「打开文件」选中库外文件、拖拽/「打开方式」（#6）均经此或 vaultFlow.openAbsoluteFile 汇入。
+ */
+export async function openExternalFile(absPath: string): Promise<void> {
+  const view = getView();
+  if (!view) return;
+  const norm = stripVerbatim(absPath); // 干净形绝对键（去 Windows \\?\），与 readFile/写盘/relativeWithin 一致。
+  // 其实在当前 vault 内 → 库内相对打开（不产生 external tab）。
+  const root = useVaultStore.getState().vault?.root ?? null;
+  if (root) {
+    const rel = relativeWithin(norm, root);
+    if (rel !== null) {
+      await openFileByPath(rel);
+      return;
+    }
+  }
+  // 已开同一 external tab → 直接切过去。
+  if (useEditorStore.getState().tabs.some((t) => t.path === norm)) {
+    switchToTab(norm);
+    return;
+  }
+  const active = useEditorStore.getState().activePath;
+  if (active) snapshotBeforeSwitch(view, active);
+  const name = basename(norm);
+  try {
+    const doc = await readFile(parentDir(norm), name); // 绝对读：父目录作 root、文件名作 rel。
+    const lang = languageFromDoc(doc, norm);
+    openFile(view, norm, doc, baseExtensions(lang));
+    markAppliedLanguage(view, lang);
+    useEditorStore.getState().openTab({ path: norm, name, external: true });
+    useEditorStore.getState().setActive(norm);
+  } catch {
+    showToast('error', `无法打开「${name}」，文件可能不存在或没有访问权限。`);
+  }
 }

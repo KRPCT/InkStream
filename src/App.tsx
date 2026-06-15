@@ -1,5 +1,6 @@
 import { useEffect } from 'react';
 import AboutDialog from './components/common/AboutDialog';
+import ChoiceDialog from './components/common/ChoiceDialog';
 import ConfirmDialog from './components/common/ConfirmDialog';
 import PromptDialog from './components/common/PromptDialog';
 import Toast from './components/common/Toast';
@@ -54,6 +55,8 @@ export default function App() {
       <AboutDialog />
       {/* 破坏性确认模态：删除 / 覆盖磁盘二次确认（useConfirmStore，confirmDestructive 弹出） */}
       <ConfirmDialog />
+      {/* 多选确认模态：≥3 路出口（如切库提示提交并切换/直接切换/取消，useChoiceStore，chooseAction 弹出） */}
+      <ChoiceDialog />
       {/* 文本输入模态：git 分支/tag 名、提交信息（usePromptStore，promptInput 弹出） */}
       <PromptDialog />
       {/* Toast 通知宿主：错误/警告（useToastStore，持久化读写失败路径消费） */}

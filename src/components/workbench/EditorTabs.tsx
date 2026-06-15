@@ -1,4 +1,12 @@
-import { PanelLeft, PanelLeftClose, PanelRight, PanelRightClose, X, type LucideIcon } from 'lucide-react';
+import {
+  ExternalLink,
+  PanelLeft,
+  PanelLeftClose,
+  PanelRight,
+  PanelRightClose,
+  X,
+  type LucideIcon,
+} from 'lucide-react';
 import { execute } from '../../commands/registry';
 import { flushAutosave } from '../../stores/autosave';
 import { isDraftPath } from '../../editor/draftPath';
@@ -117,7 +125,21 @@ export default function EditorTabs() {
                 : 'border-transparent font-normal text-[var(--text-muted)] hover:bg-[var(--background-modifier-hover)] hover:text-[var(--text-normal)]')
             }
           >
-            <span className="whitespace-nowrap">{tab.name}</span>
+            {/* #5.2：库外（非工作区）文件标记——ExternalLink 图标 + 斜体名 + tooltip。 */}
+            {tab.external ? (
+              <ExternalLink
+                size={11}
+                strokeWidth={1.75}
+                aria-label="非工作区文件"
+                className="shrink-0 text-[var(--text-faint)]"
+              />
+            ) : null}
+            <span
+              className={'whitespace-nowrap' + (tab.external ? ' italic' : '')}
+              title={tab.external ? `非工作区文件：${tab.path}` : undefined}
+            >
+              {tab.name}
+            </span>
             {/* 脏态 6px 圆点 ↔ hover 变 x：圆点常显于脏态、hover 时让位关闭按钮 */}
             {isDirty ? (
               <span

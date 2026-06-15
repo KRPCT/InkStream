@@ -1,22 +1,27 @@
 import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
-import { writeFileAtomic } from '../ipc/files';
+import { writeFileAtomic, writeFileToPath } from '../ipc/files';
 import { useToastStore } from './useToastStore';
 import { useEditorStore } from './useEditorStore';
 import {
   AUTOSAVE_ERROR_PREFIX,
+  cancelPendingAutosave,
   configureAutosave,
   consumeSuppressedWatch,
   flushAutosave,
   resetAutosave,
+  resumeAutosave,
   scheduleAutosave,
   suppressNextWatch,
+  suspendAutosave,
 } from './autosave';
 
 vi.mock('../ipc/files', () => ({
   writeFileAtomic: vi.fn().mockResolvedValue(null),
+  writeFileToPath: vi.fn().mockResolvedValue(null),
 }));
 
 const mockWrite = writeFileAtomic as Mock;
+const mockWriteAbs = writeFileToPath as Mock;
 
 /** 当前文档内容桩（按 path 返回，模拟 CM view.state.doc）。 */
 let docs: Record<string, string>;
@@ -35,6 +40,7 @@ describe('autosave 防抖落盘管线', () => {
     vi.useFakeTimers();
     vi.clearAllMocks();
     mockWrite.mockResolvedValue(null);
+    mockWriteAbs.mockResolvedValue(null);
     docs = { 'a.md': '初始' };
     resetEditor();
     resetAutosave();
@@ -195,5 +201,37 @@ describe('autosave 防抖落盘管线', () => {
     await flushed;
     // 落盘顺序严格 v1→v2，最后存的是 v2（后写者赢，无旧覆盖新）。
     expect(ended).toEqual(['v1', 'v2']);
+  });
+
+  it('库外 tab：经 writeFileToPath 绝对写，不走 writeFileAtomic（#5 external）', async () => {
+    useEditorStore.getState().openTab({ path: 'D:/other/ext.md', name: 'ext.md', external: true });
+    useEditorStore.getState().setActive('D:/other/ext.md');
+    docs['D:/other/ext.md'] = '库外内容';
+    scheduleAutosave('D:/other/ext.md');
+    await vi.runAllTimersAsync();
+    expect(mockWriteAbs).toHaveBeenCalledWith('D:/other/ext.md', '库外内容');
+    // 绝不把库外 path 当相对路径拼到 vault 根（那正是 #3 覆盖新库文件的元凶）。
+    expect(mockWrite).not.toHaveBeenCalled();
+  });
+
+  it('suspendAutosave 期间一律不落盘（#3 切库防误写），resume 后恢复', async () => {
+    docs['a.md'] = '挂起期编辑';
+    suspendAutosave();
+    scheduleAutosave('a.md');
+    await vi.runAllTimersAsync();
+    expect(mockWrite).not.toHaveBeenCalled();
+    resumeAutosave();
+    docs['a.md'] = '恢复后';
+    scheduleAutosave('a.md');
+    await vi.runAllTimersAsync();
+    expect(mockWrite).toHaveBeenCalledWith('/vault', 'a.md', '恢复后');
+  });
+
+  it('cancelPendingAutosave 取消未落盘的防抖定时器（切库前清场）', async () => {
+    docs['a.md'] = '待写';
+    scheduleAutosave('a.md');
+    cancelPendingAutosave();
+    await vi.runAllTimersAsync();
+    expect(mockWrite).not.toHaveBeenCalled();
   });
 });

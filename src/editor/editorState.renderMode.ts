@@ -53,6 +53,16 @@ export function disposeRenderMode(path: string): void {
   renderModeCache.delete(path);
 }
 
+/** 切库重归位：把 renderMode 记忆从旧 key 迁到新 key（保留 source/live 选择）。 */
+export function rekeyRenderMode(oldPath: string, newPath: string): void {
+  if (oldPath === newPath) return;
+  const mode = renderModeCache.get(oldPath);
+  if (mode !== undefined) {
+    renderModeCache.set(newPath, mode);
+    renderModeCache.delete(oldPath);
+  }
+}
+
 /** 仅供测试：清空 renderMode 记忆以隔离用例。 */
 export function clearRenderModeCache(): void {
   renderModeCache.clear();

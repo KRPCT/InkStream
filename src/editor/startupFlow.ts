@@ -12,7 +12,7 @@ export async function restoreLastVault(): Promise<void> {
   const last = useVaultStore.getState().lastVaultPath;
   if (!last) return;
   try {
-    await switchVault(last);
+    await switchVault(last, { confirmLeave: false }); // 启动恢复：无当前工作区，不提示提交
   } catch {
     // openVaultByPath 已弹「无法打开这个文件夹」错误 toast；此处补回退语义提示
     showToast('warning', '无法打开上次的工作区，已回到空态，可从最近列表重新选择。');
