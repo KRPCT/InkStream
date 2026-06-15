@@ -8,6 +8,7 @@ import { useWorkbenchStore } from '../../stores/useWorkbenchStore';
 import FileTree from './FileTree';
 import GitGuidanceBar from './GitGuidanceBar';
 import RecentVaults from './RecentVaults';
+import ChapterSceneTree from './ChapterSceneTree';
 import SidebarGitPanel from './SidebarGitPanel';
 import { SearchResults, SidebarSearch } from './SidebarSearch';
 import ZoteroLibraryPanel from './ZoteroLibraryPanel';
@@ -82,6 +83,8 @@ export default function Sidebar() {
       <GitGuidanceBar />
       {/* ACAD-01：Academic 模式 Sidebar 上半 Zotero 文献库（其余模式不显），下半为文件树 */}
       {mode === 'academic' ? <ZoteroLibraryPanel /> : null}
+      {/* CREA-01：Creative 模式章节-场景树叠在文件树上方（其余模式不显） */}
+      {mode === 'creative' ? <ChapterSceneTree /> : null}
       {/* 有查询 → 扁平递归结果列表（R4 §4.2）；清空 → 恢复受控折叠树 */}
       <div className="min-h-0 flex-1 overflow-auto">
         {searching ? <SearchResults query={query} /> : <FileTree />}
