@@ -30,6 +30,13 @@ html[data-theme='light'] {
   --text-faint: hsl(230, 4%, 64%);
   --text-on-accent: hsl(0, 0%, 100%);
   --color-error: hsl(344, 84%, 43%);
+  /* Phase 9 Creative（亮）：场景状态色点 草稿/已修/定稿 + 字数进度 + Codex 提及。进度填充为独立 token，非 --accent。 */
+  --crea-status-draft: hsl(230, 6%, 58%);
+  --crea-status-revised: hsl(38, 90%, 46%);
+  --crea-status-final: hsl(150, 58%, 38%);
+  --crea-progress-fill: hsl(150, 55%, 40%);
+  --crea-progress-track: hsl(230, 8%, 24%, 0.1);
+  --cm-codex-mention: hsl(265, 42%, 50%);
   /* 弹出层阴影（UI-SPEC：阴影仅弹出层使用，禁止卡片化滥用） */
   --shadow-popup: 0 4px 16px hsl(230 8% 24% / 0.12);
   /* 模式身份静态色点（与各模式 accent 同源，Plan 05 模式菜单消费） */
@@ -85,6 +92,13 @@ html[data-theme='dark'] {
   --text-faint: hsl(220, 10%, 40%);
   --text-on-accent: hsl(220, 13%, 18%);
   --color-error: hsl(355, 65%, 65%);
+  /* Phase 9 Creative（暗）：场景状态色点 + 字数进度 + Codex 提及。进度填充为独立 token，非 --accent。 */
+  --crea-status-draft: hsl(220, 10%, 52%);
+  --crea-status-revised: hsl(38, 85%, 62%);
+  --crea-status-final: hsl(150, 50%, 56%);
+  --crea-progress-fill: hsl(150, 50%, 52%);
+  --crea-progress-track: hsl(220, 14%, 71%, 0.12);
+  --cm-codex-mention: hsl(265, 48%, 70%);
   --shadow-popup: 0 4px 16px hsl(0 0% 0% / 0.18);
   --mode-dot-standard: hsl(220, 14%, 71%);
   --mode-dot-academic: hsl(207, 82%, 66%);
@@ -139,6 +153,8 @@ html[data-mode='creative'][data-theme='dark'] { --accent-hsl: 355 65% 65%; }
   --accent: hsl(var(--accent-hsl));
   --interactive-accent: hsl(var(--accent-hsl));
   --interactive-accent-hover: var(--interactive-accent);
+  /* Phase 9 CREA-03 Focus Mode：非光标段落淡化透明度（mode/theme 无关，用 opacity 不违反颜色规则）。 */
+  --cm-focus-dim-opacity: 0.35;
   /* 定义但本阶段禁用（Phase 2 启用前逐模式复核对比度） */
   --text-accent: hsl(var(--accent-hsl));
   /* 文本选区（Phase 2 启用） */

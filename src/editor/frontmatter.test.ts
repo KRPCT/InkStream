@@ -1,5 +1,13 @@
 import { describe, expect, it } from 'vitest';
-import { LANGUAGE_CYCLE, nextLanguage, readLanguage, writeLanguage } from './frontmatter';
+import {
+  bodyStart,
+  LANGUAGE_CYCLE,
+  nextLanguage,
+  readFields,
+  readLanguage,
+  writeField,
+  writeLanguage,
+} from './frontmatter';
 
 describe('readLanguage', () => {
   it('无 frontmatter 返回 null', () => {
@@ -120,5 +128,62 @@ describe('nextLanguage / LANGUAGE_CYCLE', () => {
   it('未知/缺省语言起步进入 markdown 之后（latex）', () => {
     expect(nextLanguage(null)).toBe('latex');
     expect(nextLanguage('python')).toBe('latex');
+  });
+});
+
+describe('bodyStart（Phase 9：剔除 frontmatter 供字数统计）', () => {
+  it('无 frontmatter 返回 0', () => {
+    expect(bodyStart('# 标题\n正文')).toBe(0);
+    expect(bodyStart('')).toBe(0);
+  });
+
+  it('有 frontmatter 返回正文起点（slice 后不含 YAML）', () => {
+    const doc = '---\ntitle: 雨夜\nstatus: draft\n---\n正文一二三';
+    expect(doc.slice(bodyStart(doc))).toBe('正文一二三');
+  });
+});
+
+describe('readFields（Phase 9：多单行字段）', () => {
+  it('无 frontmatter 返回空对象', () => {
+    expect(readFields('# 标题\n正文', ['status', 'title'])).toEqual({});
+  });
+
+  it('读取多个字段；缺失/空值不出现', () => {
+    const doc = '---\ntitle: 雨夜的相遇\nstatus: revised\nsummary:   \n---\n正文';
+    expect(readFields(doc, ['title', 'status', 'summary'])).toEqual({
+      title: '雨夜的相遇',
+      status: 'revised',
+    });
+  });
+
+  it('值可含空格（英文标题/概要），取冒号后整行 trim', () => {
+    const doc = '---\nname: 林深\naliases: 小林, 深哥\nsummary: 主角在码头初遇反派\n---\n';
+    expect(readFields(doc, ['name', 'aliases', 'summary'])).toEqual({
+      name: '林深',
+      aliases: '小林, 深哥',
+      summary: '主角在码头初遇反派',
+    });
+  });
+});
+
+describe('writeField（Phase 9：单行字段写回，保留其他字段）', () => {
+  it('无 frontmatter 创建头部', () => {
+    const out = writeField('正文', 'status', 'final');
+    expect(readFields(out, ['status'])).toEqual({ status: 'final' });
+    expect(out.endsWith('\n正文')).toBe(true);
+  });
+
+  it('原地替换同名字段，保留其他字段与正文', () => {
+    const doc = '---\ntitle: 雨夜\nstatus: draft\n---\n正文\n---\n下段';
+    const out = writeField(doc, 'status', 'final');
+    expect(readFields(out, ['title', 'status'])).toEqual({ title: '雨夜', status: 'final' });
+    expect(out).toContain('正文\n---\n下段'); // 正文水平线不被误改
+    expect(out).not.toContain('status: draft');
+  });
+
+  it('无该字段时追加（保留既有字段）', () => {
+    const doc = '---\ntitle: 雨夜\n---\n正文';
+    const out = writeField(doc, 'summary', '初遇');
+    expect(readFields(out, ['title', 'summary'])).toEqual({ title: '雨夜', summary: '初遇' });
   });
 });

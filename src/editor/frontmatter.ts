@@ -80,3 +80,54 @@ export function nextLanguage(current: string | null): (typeof LANGUAGE_CYCLE)[nu
   const idx = found < 0 ? 0 : found;
   return LANGUAGE_CYCLE[(idx + 1) % LANGUAGE_CYCLE.length];
 }
+
+/**
+ * 正文起始偏移（frontmatter 之后）；无闭合 frontmatter 返回 0。
+ *
+ * 供字数统计剔除元数据（countWords 传 doc.slice(bodyStart(doc)) 才不把 YAML 计进字数，CREA-04/01）。
+ */
+export function bodyStart(doc: string): number {
+  return frontmatterBounds(doc)?.bodyStart ?? 0;
+}
+
+/**
+ * 读取头部多个单行 scalar 字段（Phase 9：场景 title/status/summary、Codex type/name/aliases/summary）。
+ *
+ * 与 readLanguage 同纪律：仅扫 `---\n...\n---` 头部、flat scalar（值取冒号后整行 trim，支持含空格的值，
+ * 如英文标题），不引 js-yaml。无 frontmatter / 某字段缺失 / 值为空 → 该键不出现在返回对象中。
+ */
+export function readFields(doc: string, keys: readonly string[]): Record<string, string> {
+  const out: Record<string, string> = {};
+  const bounds = frontmatterBounds(doc);
+  if (!bounds) return out;
+  for (const key of keys) {
+    const m = bounds.inner.match(new RegExp(`^${key}:[ \\t]*(.*)$`, 'm'));
+    if (m) {
+      const v = m[1].trim();
+      if (v !== '') out[key] = v;
+    }
+  }
+  return out;
+}
+
+/**
+ * 写入/修改头部单行 scalar 字段，保留其他字段（CREA-05 场景概要卡回写 summary 等）。
+ * 语义同 writeLanguage：无 frontmatter 则创建头部；有同名行原地替换；无则头部末尾追加。
+ */
+export function writeField(doc: string, key: string, val: string): string {
+  const bounds = frontmatterBounds(doc);
+  if (!bounds) {
+    return `${HEAD}${key}: ${val}${FENCE}\n${doc}`;
+  }
+  const { inner, bodyStart: bs } = bounds;
+  const body = doc.slice(bs);
+  const lineRe = new RegExp(`^${key}:.*$`, 'm');
+  let newInner: string;
+  if (lineRe.test(inner)) {
+    newInner = inner.replace(lineRe, `${key}: ${val}`);
+  } else {
+    const sep = inner.endsWith('\n') || inner === '' ? '' : '\n';
+    newInner = `${inner}${sep}${key}: ${val}`;
+  }
+  return `${HEAD}${newInner}${FENCE}\n${body}`;
+}
