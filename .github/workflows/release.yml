@@ -1,0 +1,93 @@
+# 三平台发行版构建：install → tauri build（前端构建 + 原生打包）→ 收集安装包 → 上传
+# 供应链约定同 ci.yml：仅 actions/* 官方 action 且按完整 commit SHA 锁定；
+# pnpm 经 corepack（与 packageManager 字段一致）、Rust 经 runner 自带 rustup、
+# 打包经本地 @tauri-apps/cli、Release 经 runner 预装 gh CLI——零第三方 action。
+#
+# 触发：
+#   - workflow_dispatch：手动构建三平台安装包，产物作为 run artifact 下载（不发布）
+#   - push tag v*：构建并发布到对应 GitHub Release
+#
+# 注意：macOS / Windows 产物未做代码签名（无证书 secret），属可分发但首次启动会有
+#       "未知开发者" 提示；正式发布前补 Apple Developer / Authenticode 证书。
+name: Release
+
+on:
+  workflow_dispatch:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  bundle:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            artifact: linux
+          - os: windows-latest
+            artifact: windows
+          - os: macos-latest
+            artifact: macos
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - name: Install Linux system dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev build-essential curl wget file libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev
+
+      - name: Setup Node 22
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+
+      - name: Activate pnpm via corepack
+        run: |
+          corepack enable
+          corepack prepare pnpm@11.5.2 --activate
+
+      - name: Setup Rust stable
+        run: |
+          rustup toolchain install stable --profile minimal
+          rustup default stable
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build bundles
+        run: pnpm tauri build
+
+      - name: Collect bundles
+        shell: bash
+        run: |
+          mkdir -p dist-bundles
+          find src-tauri/target/release/bundle -type f \
+            \( -name '*.msi' -o -name '*.exe' -o -name '*.dmg' \
+            -o -name '*.deb' -o -name '*.AppImage' -o -name '*.rpm' \) \
+            -exec cp {} dist-bundles/ \;
+          ls -la dist-bundles/
+
+      - name: Upload run artifacts
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: inkstream-${{ matrix.artifact }}
+          path: dist-bundles/*
+          if-no-files-found: error
+
+      - name: Publish to GitHub Release (tag push only)
+        if: startsWith(github.ref, 'refs/tags/')
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "${GITHUB_REF_NAME}" \
+            --title "InkStream ${GITHUB_REF_NAME}" \
+            --notes "InkStream ${GITHUB_REF_NAME} 三平台发行版（自动构建）。" \
+            --verify-tag || true
+          gh release upload "${GITHUB_REF_NAME}" dist-bundles/* --clobber

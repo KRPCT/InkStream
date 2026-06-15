@@ -30,7 +30,26 @@
     }
   },
   "bundle": {
-    "active": false,
-    "icon": ["icons/icon.png", "icons/icon.ico"]
+    "active": true,
+    "targets": ["deb", "appimage", "msi", "nsis", "app", "dmg"],
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ],
+    "category": "Productivity",
+    "shortDescription": "单内核三模式 git 原生桌面写作应用",
+    "longDescription": "InkStream（墨流）：基于 Tauri 2 的桌面写作应用，单一 CodeMirror 6 内核，Standard / Academic / Creative 三模式，内置 git 版本管理、Obsidian 式双向链接、Zotero 引用与 Typst/LaTeX/KaTeX 数学排版。",
+    "fileAssociations": [
+      {
+        "ext": ["md", "markdown"],
+        "name": "Markdown",
+        "description": "Markdown 文档",
+        "role": "Editor",
+        "mimeType": "text/markdown"
+      }
+    ]
   }
 }
