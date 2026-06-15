@@ -18,6 +18,7 @@ import { useVaultStore } from '../../stores/useVaultStore';
 import type { TreeNode } from '../../types/vault';
 import { setFileTreeApi } from './fileTreeController';
 import { createFileTreeOps, hasIllegalNameChars } from './fileTreeOps';
+import { useElementSize } from './useElementSize';
 
 /** 文件夹优先 + Intl.Collator locale 序（D-11，中文按拼音序）。 */
 const collator = new Intl.Collator(undefined, { numeric: true, sensitivity: 'base' });
@@ -125,6 +126,8 @@ export default function FileTree() {
   const tree = useVaultStore((s) => s.tree);
   const data = visibleSorted(tree);
   const ops = useMemo(() => createFileTreeOps(), []);
+  // 实测父容器高度喂给 Tree（修 #4：无 height 时 arborist 退 500px、裁掉超出/根级散文件）。
+  const [boxRef, { height }] = useElementSize<HTMLDivElement>();
 
   // 新建：返回临时占位节点。父目录与类型挂在 node.data.pending（WR-12），
   // 不再编码进 id 串——父目录路径含 ':' 时按 id 分割会错位。
@@ -169,24 +172,28 @@ export default function FileTree() {
   };
 
   return (
-    <Tree<TreeNode>
-      ref={(api) => setFileTreeApi(api ?? null)}
-      data={data}
-      idAccessor="id"
-      childrenAccessor={(d) => d.children ?? null}
-      indent={16}
-      rowHeight={28}
-      width="100%"
-      // 默认折叠（UAT 反馈：react-arborist openByDefault 默认 true 会全展开且懒加载未触发，
-      // 目录显示为空——一大堆空目录糊脸）。展开态仅会话内有效，开 vault 恒从全折叠开始。
-      openByDefault={false}
-      onToggle={(id) => void handleToggle(id)}
-      onCreate={onCreate}
-      onRename={onRename}
-      onMove={onMove}
-      onDelete={onDelete}
-    >
-      {Row}
-    </Tree>
+    <div ref={boxRef} className="h-full w-full">
+      <Tree<TreeNode>
+        ref={(api) => setFileTreeApi(api ?? null)}
+        data={data}
+        idAccessor="id"
+        childrenAccessor={(d) => d.children ?? null}
+        indent={16}
+        rowHeight={28}
+        width="100%"
+        // 实测高度填满面板；jsdom 测得 0 → 回退 500 保持既有测试行为。
+        height={height || 500}
+        // 默认折叠（UAT 反馈：react-arborist openByDefault 默认 true 会全展开且懒加载未触发，
+        // 目录显示为空——一大堆空目录糊脸）。展开态仅会话内有效，开 vault 恒从全折叠开始。
+        openByDefault={false}
+        onToggle={(id) => void handleToggle(id)}
+        onCreate={onCreate}
+        onRename={onRename}
+        onMove={onMove}
+        onDelete={onDelete}
+      >
+        {Row}
+      </Tree>
+    </div>
   );
 }
