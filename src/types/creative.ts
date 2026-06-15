@@ -22,3 +22,19 @@ export interface ChapterNode {
   path: string | null;
   scenes: SceneNode[];
 }
+
+/** Codex 条目类型（CREA-02；frontmatter `type:`）。 */
+export type CodexType = 'character' | 'location' | 'lore';
+
+/** Codex 条目（= `Codex/` 下一个 .md 文件）。触发词 = name + aliases。 */
+export interface CodexEntry {
+  /** 相对 vault 根路径（悬停卡跳转用，v1 暂存备用）。 */
+  path: string;
+  type: CodexType;
+  /** 规范显示名（提及触发词）。 */
+  name: string;
+  /** 别名触发词（frontmatter aliases 单行逗号分隔）。 */
+  aliases: string[];
+  /** 悬停卡正文（frontmatter summary 优先，否则正文首段）。 */
+  summary: string;
+}

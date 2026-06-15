@@ -22,8 +22,13 @@ describe('RightPanel 按模式渲染（消费 MODE_PRESETS）', () => {
     expect(screen.getByRole('tab', { name: 'Codex' })).toBeInTheDocument();
     expect(screen.getByRole('tab', { name: '场景概要' })).toBeInTheDocument();
     expect(screen.queryByRole('tab', { name: '大纲' })).not.toBeInTheDocument();
+    // codex tab 现渲染 CodexPanel（其自身空态），非通用 TAB_EMPTY 文案。
     expect(screen.getByText('Codex 还是空的')).toBeInTheDocument();
-    expect(screen.getByText('角色、地点与设定条目将在这里管理。')).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        '在 Codex/ 文件夹放角色/地点/设定条目（frontmatter 写 type 与 name），编辑器中的提及会自动高亮。',
+      ),
+    ).toBeInTheDocument();
     expect(screen.getByText('暂无场景概要')).toBeInTheDocument();
     expect(screen.getByText('打开场景后，这里会显示概要卡片。')).toBeInTheDocument();
   });

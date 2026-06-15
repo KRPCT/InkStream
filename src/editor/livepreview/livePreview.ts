@@ -1,6 +1,7 @@
 import { Compartment, type Extension } from '@codemirror/state';
 import { inlinePlugin } from './inlinePlugin';
 import { blockExtensions } from './blockField';
+import { codexMentionExtensions } from './codexMention';
 import { codeBlockDeco, codeBlockTheme } from './codeBlockDeco';
 import { formulaGesture } from './formulaGesture';
 import { linkGesture } from './linkGesture';
@@ -51,6 +52,7 @@ export function livePreviewExtensions(): Extension[] {
     tableGesture,
     formulaGesture, // 点双栏块外 → 退出公式编辑态（在 tableGesture 后，各判各编辑态互斥）
     wikiLinkCompletion,
+    codexMentionExtensions, // CREA-02 Codex 提及高亮 + 悬停卡（非 atomic mark，IME 安全；条目源 useCodexStore）
   ];
 }
 
