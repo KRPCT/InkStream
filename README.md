@@ -56,7 +56,7 @@
 
 ## 当前状态
 
-状态：alpha，正在进入跨平台打包发布。Phase 1-9 全部交付，Phase 10（Graph View / Standard 模式完善）进行中。已交付能力：
+状态：alpha。Phase 1-10 交付（核心编辑 / 知识网络 / 数学 / git / 学术 / 创作 / 图谱可视化），Phase 11-12（GitHub 集成 / prose 三向合并与发布工程）进行中。已交付能力：
 
 - 五插槽工作台：TitleBar / Sidebar / EditorArea / RightPanel / StatusBar，面板宽度可拖拽并按模式记忆
 - 三模式运行时切换：Standard / Academic / Creative 布局预设与强调色即时变化，不重建窗口、不丢内容
@@ -72,6 +72,7 @@
 - Git 与协作（Phase 6-7）：Rust libgit2 完整命令集（含远程 clone / fetch / push / pull，SSH 经 git CLI）、自绘 SVG 三栏 git-graph、右键菜单驱动、GitHub PR 流程；prose-aware 中英混合句级语义 diff
 - 学术模式（Phase 8）：Zotero CAYW 插入 `[@citekey]`、Web API 增量同步 + 离线缓存、Citation Panel（未解析标红）、参考文献编译期展开（GB/T 7714 / APA / Vancouver）、引用↔Typst/LaTeX 联动
 - 创作模式（Phase 9）：文件夹即章 / 文件即场景的导航树（状态色点 + 场景字数）、固定 `Codex/` 角色·地点·设定卡（别名提及高亮 + 悬停卡）、Focus Mode（F11 段落聚焦）、今日字数目标进度、场景概要卡
+- 知识可视化（Phase 10）：Ctrl+G 全库 Graph View（d3-force 力导 + Canvas2D 自绘 + 布局 Worker 化 + 缩放 / 点击打开 / 邻域高亮 / 大图降级）、RightPanel 局部图谱 tab；Standard 三 tab（大纲 / 反链 / 局部图谱）与 StatusBar 完整态（文件路径 / 光标行列 / git 分支 / 字数 / 渲染模式）补齐
 - 非工作区文件：以独立 tab 打开且 git 排外、切库不误覆盖且原文件不丢，支持拖拽到应用 / 系统"打开方式"启动
 - 自动保存：500ms 防抖原子写（temp 同目录 + fsync + rename），按路径串行写链，文件监听自激抑制
 - 持久化：主题 / 模式 / 各模式布局 / 最近 vault / 文件树展开态重启原样恢复，损坏配置自动回落默认并提示，用户仓库零写入
