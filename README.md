@@ -4,7 +4,7 @@
 [![React](https://img.shields.io/badge/React-19-61DAFB?logo=react&logoColor=white)](https://react.dev/)
 [![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178C6?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
 [![CodeMirror](https://img.shields.io/badge/CodeMirror-6-d30707)](https://codemirror.net/)
-[![Status](https://img.shields.io/badge/status-alpha-orange)](#当前状态)
+[![Version](https://img.shields.io/badge/version-1.0.0-blue)](#当前状态)
 
 **文本编辑器中的 IntelliJ** —— 单内核、三模式、git 原生的桌面写作应用。
 
@@ -56,7 +56,7 @@
 
 ## 当前状态
 
-状态：alpha。Phase 1-11 交付（核心编辑 / 知识网络 / 数学 / git / 学术 / 创作 / 图谱可视化 / GitHub 集成），Phase 12（prose 三向合并与发布工程）进行中。已交付能力：
+状态：v1.0.0（v1 范围功能完整）。Phase 1-12 全部交付：核心编辑 / 知识网络 / 数学 / git / 学术 / 创作 / 图谱可视化 / GitHub 集成 / prose 三向合并。已交付能力：
 
 - 五插槽工作台：TitleBar / Sidebar / EditorArea / RightPanel / StatusBar，面板宽度可拖拽并按模式记忆
 - 三模式运行时切换：Standard / Academic / Creative 布局预设与强调色即时变化，不重建窗口、不丢内容
@@ -74,6 +74,7 @@
 - 创作模式（Phase 9）：文件夹即章 / 文件即场景的导航树（状态色点 + 场景字数）、固定 `Codex/` 角色·地点·设定卡（别名提及高亮 + 悬停卡）、Focus Mode（F11 段落聚焦）、今日字数目标进度、场景概要卡
 - 知识可视化（Phase 10）：Ctrl+G 全库 Graph View（d3-force 力导 + Canvas2D 自绘 + 布局 Worker 化 + 缩放 / 点击打开 / 邻域高亮 / 大图降级）、RightPanel 局部图谱 tab；Standard 三 tab（大纲 / 反链 / 局部图谱）与 StatusBar 完整态（文件路径 / 光标行列 / git 分支 / 字数 / 渲染模式）补齐
 - GitHub 集成（Phase 11）：PAT / gh CLI 登录（token 留 OS 凭据库、绝不进前端）、Issue 浏览 / 评论 / 创建、PR 评论 / review（批准·请求修改·评论）/ 内嵌 diff 审阅；全经 Rust 直连 GitHub REST（绕 CORS、令牌不出 Rust）
+- 协作合并（Phase 12）：prose-aware 三向冲突解决器——对 git 合并产物逐冲突块用句级 diff 呈现本方↔对方、按块采纳 ours / theirs / both、原子写回 + 标记 resolved；三模式总装验收（任一模式编辑中切模式不丢数据、撤销历史与选区保留）
 - 非工作区文件：以独立 tab 打开且 git 排外、切库不误覆盖且原文件不丢，支持拖拽到应用 / 系统"打开方式"启动
 - 自动保存：500ms 防抖原子写（temp 同目录 + fsync + rename），按路径串行写链，文件监听自激抑制
 - 持久化：主题 / 模式 / 各模式布局 / 最近 vault / 文件树展开态重启原样恢复，损坏配置自动回落默认并提示，用户仓库零写入
