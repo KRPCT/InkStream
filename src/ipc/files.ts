@@ -39,6 +39,14 @@ export function writeBytesToPath(path: string, content: Uint8Array): Promise<nul
   return invoke('write_file_bytes', { path, content: Array.from(content) });
 }
 
+/**
+ * 阅读模式：读绝对路径文件为字节（DOCX/EPUB/PDF 二进制）。readFile 仅 UTF-8 文本，二进制经其会损坏。
+ * 大文件（>1MB）一次性过 IPC 有主线程成本（红线见本文件头）；阅读期一次读入可接受，超大文档后续可下沉 Channel。
+ */
+export async function readFileBytes(path: string): Promise<Uint8Array> {
+  return new Uint8Array(await invoke('read_file_bytes', { path }));
+}
+
 /** 新建空文件：同名已存在则 Rust 侧返回错误，绝不覆盖（D-12）。 */
 export function createFile(root: string, path: string): Promise<null> {
   return invoke('create_file', { root, path });

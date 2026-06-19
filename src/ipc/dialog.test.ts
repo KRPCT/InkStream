@@ -27,13 +27,15 @@ describe('dialog ipc 收口', () => {
     await expect(pickFolder()).resolves.toBeNull();
   });
 
-  it('pickFile：非目录 + 单选 + Markdown 过滤', async () => {
+  it('pickFile：非目录 + 单选 + 可打开文档过滤（含阅读格式）', async () => {
     mockedOpen.mockResolvedValue('/v/a.md');
     await expect(pickFile()).resolves.toBe('/v/a.md');
     expect(mockedOpen).toHaveBeenCalledWith({
       directory: false,
       multiple: false,
-      filters: [{ name: 'Markdown', extensions: ['md', 'markdown', 'txt'] }],
+      filters: [
+        { name: '可打开文档', extensions: ['md', 'markdown', 'txt', 'docx', 'epub', 'pdf'] },
+      ],
     });
   });
 

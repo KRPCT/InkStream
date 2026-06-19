@@ -119,6 +119,7 @@ export const MENUS: GroupConfig[] = [
       { commandId: 'go.quick-open', label: '快速打开文件' },
       { separator: true },
       { commandId: 'view.toggle-render-mode', label: '切换渲染模式' },
+      { commandId: 'view.open-reading', label: '阅读模式' },
       { commandId: 'view.toggle-sidebar', label: '切换侧边栏' },
       { commandId: 'view.toggle-right-panel', label: '切换右侧面板' },
       { commandId: 'view.collapse-tree', label: '折叠文件树' },

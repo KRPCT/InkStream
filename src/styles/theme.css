@@ -155,6 +155,11 @@ html[data-mode='creative'][data-theme='dark'] { --accent-hsl: 355 65% 65%; }
   --interactive-accent-hover: var(--interactive-accent);
   /* Phase 9 CREA-03 Focus Mode：非光标段落淡化透明度（mode/theme 无关，用 opacity 不违反颜色规则）。 */
   --cm-focus-dim-opacity: 0.35;
+  /* FEAT-READ 阅读模式护眼配色：sepia / 夜间为阅读专属表面色（独立于应用主题，集中于此非散落组件）。 */
+  --reading-sepia-bg: #f4ecd8;
+  --reading-sepia-text: #5b4636;
+  --reading-night-bg: #181a1b;
+  --reading-night-text: #c5c2bb;
   /* 定义但本阶段禁用（Phase 2 启用前逐模式复核对比度） */
   --text-accent: hsl(var(--accent-hsl));
   /* 文本选区（Phase 2 启用） */

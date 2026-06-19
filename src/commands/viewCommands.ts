@@ -1,6 +1,9 @@
 import { toggleFocusMode } from '../editor/livepreview/focusMode';
 import { toggleRenderMode } from '../editor/livepreview/renderMode';
 import { toggleTypewriter } from '../editor/livepreview/typewriter';
+import { openActiveInReading, readingFormatOf } from '../editor/reading/openReading';
+import { useEditorStore } from '../stores/useEditorStore';
+import { showToast } from '../stores/useToastStore';
 import { useWritingMetricsStore } from '../stores/useWritingMetricsStore';
 import { useWorkbenchStore } from '../stores/useWorkbenchStore';
 import type { Command } from '../types/commands';
@@ -42,5 +45,18 @@ export const VIEW_COMMANDS: Command[] = [
     id: 'writing.toggle-hud',
     title: '写作：写作 HUD（码字速度 / 时间 / 番茄钟）',
     run: () => useWritingMetricsStore.getState().toggleVisible(),
+  },
+  {
+    // 阅读模式：把当前文件在沉浸阅读覆盖层打开（docx/epub/pdf 打开时已自动进，此命令主要用于 txt）。
+    id: 'view.open-reading',
+    title: '视图：阅读模式',
+    run: () => {
+      const { activePath, tabs } = useEditorStore.getState();
+      if (!activePath || readingFormatOf(activePath) === null) {
+        showToast('warning', '当前文件不支持阅读模式（支持 txt / docx / epub / pdf）。');
+        return;
+      }
+      openActiveInReading(activePath, tabs.find((t) => t.path === activePath)?.name ?? activePath);
+    },
   },
 ];

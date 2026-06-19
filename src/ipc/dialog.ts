@@ -9,10 +9,16 @@ import { open, save } from '@tauri-apps/plugin-dialog';
  * 「保存」返回的绝对路径属用户显式授权边界（草稿另存为，走 write_file_to_path）。
  */
 
-/** 仅 Markdown / 纯文本文件过滤（打开/保存共用；无 `.` 前缀，跨平台 OS 原生过滤器）。 */
+/** 仅 Markdown / 纯文本文件过滤（保存用；无 `.` 前缀，跨平台 OS 原生过滤器）。 */
 const MARKDOWN_FILTER = {
   name: 'Markdown',
   extensions: ['md', 'markdown', 'txt'],
+};
+
+/** 打开过滤：可编辑（md/txt）+ 阅读模式（docx/epub/pdf），后者打开即进沉浸阅读覆盖层。 */
+const OPENABLE_FILTER = {
+  name: '可打开文档',
+  extensions: ['md', 'markdown', 'txt', 'docx', 'epub', 'pdf'],
 };
 
 /** 文件导出保存过滤器（按格式；PDF 走打印对话框无需此路）。 */
@@ -34,7 +40,7 @@ export function pickFolder(): Promise<string | null> {
  * `directory: false` + `multiple: false` 返回单一文件绝对路径。
  */
 export function pickFile(): Promise<string | null> {
-  return open({ directory: false, multiple: false, filters: [MARKDOWN_FILTER] });
+  return open({ directory: false, multiple: false, filters: [OPENABLE_FILTER] });
 }
 
 /**

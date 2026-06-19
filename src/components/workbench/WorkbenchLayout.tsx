@@ -12,6 +12,7 @@ import { useWorkbenchStore } from '../../stores/useWorkbenchStore';
 import { buildLayoutPatch } from './layoutPatch';
 import GitGraphView from '../git/GitGraphView';
 import MergeResolver from '../git/MergeResolver';
+import ReadingView from '../reading/ReadingView';
 import GraphView from './GraphView';
 import CentralArea from './CentralArea';
 import RightPanel from './RightPanel';
@@ -68,6 +69,8 @@ export default function WorkbenchLayout() {
   const gitGraphOpen = useWorkbenchStore((s) => s.centralView === 'gitGraph') && !simpleMode;
   const graphOpen = useWorkbenchStore((s) => s.centralView === 'graph') && !simpleMode;
   const mergeOpen = useWorkbenchStore((s) => s.centralView === 'mergeResolve') && !simpleMode;
+  // 阅读模式覆盖层（FEAT-READ）：基础功能，简易模式下也可用（不 !simpleMode 门控）。
+  const readingOpen = useWorkbenchStore((s) => s.centralView === 'reading');
   const groupRef = useGroupRef();
   const sidebarRef = usePanelRef();
   const rightRef = usePanelRef();
@@ -193,6 +196,11 @@ export default function WorkbenchLayout() {
         {mergeOpen ? (
           <div className="absolute inset-0 bg-[var(--background-primary)]">
             <MergeResolver />
+          </div>
+        ) : null}
+        {readingOpen ? (
+          <div className="absolute inset-0 bg-[var(--background-primary)]">
+            <ReadingView />
           </div>
         ) : null}
       </div>

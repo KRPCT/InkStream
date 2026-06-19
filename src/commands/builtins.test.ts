@@ -59,6 +59,7 @@ const TITLES: Record<string, string> = {
   'view.toggle-typewriter': '视图：打字机模式',
   'view.toggle-focus': '视图：专注模式',
   'writing.toggle-hud': '写作：写作 HUD（码字速度 / 时间 / 番茄钟）',
+  'view.open-reading': '视图：阅读模式',
   'file.export-html': '文件：导出为 HTML',
   'file.export-pdf': '文件：导出为 PDF',
   'file.export-docx': '文件：导出为 DOCX',
@@ -107,8 +108,8 @@ const TITLES: Record<string, string> = {
   'academic.biblio-vancouver': '学术：参考文献（Vancouver）',
 };
 
-/** 生产命令总数：…前略… + 打字机/专注/写作 HUD(写作模式升级 ×3) + 导出 HTML/PDF/DOCX(FEAT-EXPORT ×3) = 73。 */
-const COMMAND_COUNT = 73;
+/** 生产命令总数：…前略… + 导出 HTML/PDF/DOCX(FEAT-EXPORT ×3) + 阅读模式(FEAT-READ ×1) = 74。 */
+const COMMAND_COUNT = 74;
 
 /** 生产命令（剔除 dev.* DEV-only 命令，如 IME 探针 dev.ime-probe）。 */
 function prodCommands() {
@@ -139,7 +140,7 @@ describe('builtins', () => {
     disposeKeymap();
   });
 
-  it('注册 73 条生产命令，标题与 UI-SPEC / R4 字面逐字一致', () => {
+  it('注册 74 条生产命令，标题与 UI-SPEC / R4 字面逐字一致', () => {
     const all = prodCommands();
     expect(all).toHaveLength(COMMAND_COUNT);
     for (const [id, title] of Object.entries(TITLES)) {

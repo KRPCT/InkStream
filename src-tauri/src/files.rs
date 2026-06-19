@@ -126,6 +126,32 @@ pub fn write_file_bytes(path: String, content: Vec<u8>) -> Result<(), String> {
     write_atomic_bytes(&target, &content)
 }
 
+/// 阅读模式一次性读上限（100MB）：超大文档 number[] 过 IPC 会撑爆主线程，拒之并提示（红线见本文件头注释）。
+const READ_BYTES_MAX: u64 = 100 * 1024 * 1024;
+
+/// 阅读模式：读绝对路径文件为字节（DOCX/EPUB/PDF 二进制——read_file 的 read_to_string 会破坏二进制）。
+/// path 是用户已显式打开的文件（对话框 / 拖拽 / 库内），仅接受绝对路径；读不改盘，无 path_guard 语义。
+/// 信任边界（与 HtmlReader sandbox XSS 模型同一处收口）：仅放行阅读支持的扩展名 + 限大小，钝化任意机密读取。
+#[tauri::command]
+pub fn read_file_bytes(path: String) -> Result<Vec<u8>, String> {
+    let target = PathBuf::from(&path);
+    if !target.is_absolute() {
+        return Err("读取路径必须是绝对路径".to_string());
+    }
+    let ext = target
+        .extension()
+        .and_then(|e| e.to_str())
+        .map(|s| s.to_ascii_lowercase());
+    if !matches!(ext.as_deref(), Some("txt" | "docx" | "epub" | "pdf")) {
+        return Err("仅支持读取 txt / docx / epub / pdf".to_string());
+    }
+    let meta = std::fs::metadata(&target).map_err(|e| format!("无法读取文件: {e}"))?;
+    if meta.len() > READ_BYTES_MAX {
+        return Err("文件过大（超过 100MB），暂不支持在阅读模式打开".to_string());
+    }
+    std::fs::read(&target).map_err(|e| format!("无法读取文件: {e}"))
+}
+
 /// 新建空文件：已存在则 Err，绝不覆盖（D-12 同名拒绝）。
 ///
 /// WR-05：用 `create_new(true)` 原子创建——内核层保证「不存在才建、存在即 AlreadyExists」，
@@ -205,7 +231,8 @@ pub fn trash_path(root: String, path: String) -> Result<(), String> {
 mod tests {
     use super::{
         create_dir, create_file, move_path, read_file, rename_path, temp_sibling, trash_path,
-        write_file_atomic, write_file_bytes, write_file_to_path, READ_FILE_INLINE_LIMIT_BYTES,
+        read_file_bytes, write_file_atomic, write_file_bytes, write_file_to_path,
+        READ_FILE_INLINE_LIMIT_BYTES,
     };
     use std::fs;
     use std::path::Path;
@@ -335,6 +362,23 @@ mod tests {
     fn write_file_bytes_rejects_relative() {
         // 同 write_file_to_path：仅接受对话框返回的绝对路径。
         assert!(write_file_bytes("relative.docx".to_string(), vec![1, 2, 3]).is_err());
+    }
+
+    #[test]
+    fn read_file_bytes_round_trips_binary() {
+        // 阅读模式：二进制原样读回（与 write_file_bytes 对称）。
+        let root = temp_dir("read-bytes");
+        let target = root.join("doc.epub");
+        let target_str = target.to_string_lossy().into_owned();
+        let bytes = vec![0x50u8, 0x4B, 0x03, 0x04, 0x00, 0xFF, 0x80];
+        write_file_bytes(target_str.clone(), bytes.clone()).unwrap();
+        assert_eq!(read_file_bytes(target_str).unwrap(), bytes);
+        fs::remove_dir_all(&root).ok();
+    }
+
+    #[test]
+    fn read_file_bytes_rejects_relative() {
+        assert!(read_file_bytes("relative.pdf".to_string()).is_err());
     }
 
     #[test]

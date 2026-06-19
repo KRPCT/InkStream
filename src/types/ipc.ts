@@ -44,6 +44,8 @@ export interface IpcCommands {
   write_file_to_path: { args: { path: string; content: string }; result: null };
   // 文件导出二进制写（DOCX 等）：绝对路径 + 字节数组（Uint8Array→Vec<u8>），同 write_file_to_path 授权边界。
   write_file_bytes: { args: { path: string; content: number[] }; result: null };
+  // 阅读模式二进制读（DOCX/EPUB/PDF）：绝对路径 → 字节数组（Vec<u8>→Uint8Array）。read_file 仅 UTF-8 文本。
+  read_file_bytes: { args: { path: string }; result: number[] };
   create_file: { args: { root: string; path: string }; result: null };
   create_dir: { args: { root: string; path: string }; result: null };
   rename_path: { args: { root: string; from: string; to: string }; result: null };

@@ -16,6 +16,8 @@ import { isDraftPath } from './draftPath';
 import { snapshotBeforeSwitch } from './editorState';
 import { entriesToNodes } from './fileTreeData';
 import { openExternalFile } from './fileOpenFlow';
+import { basename, stripVerbatim } from './pathUtil';
+import { isAutoReadingFormat, openReading } from './reading/openReading';
 import { commitChanges } from './gitActions';
 import { rehomeTabsForVaultSwitch } from './tabReconcile';
 import { getView } from './viewHandle';
@@ -183,5 +185,11 @@ export async function requestOpenFolder(): Promise<void> {
 export async function requestOpenFile(): Promise<void> {
   const path = await pickFile();
   if (path === null) return;
+  // docx/epub/pdf → 阅读模式覆盖层（不可编辑）；md/markdown/txt → 编辑器。
+  if (isAutoReadingFormat(path)) {
+    const clean = stripVerbatim(path);
+    openReading(clean, basename(clean));
+    return;
+  }
   await openExternalFile(path);
 }

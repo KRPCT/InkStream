@@ -39,6 +39,7 @@ pub fn run() {
             files::write_file_atomic,
             files::write_file_to_path,
             files::write_file_bytes,
+            files::read_file_bytes,
             files::create_file,
             files::create_dir,
             files::rename_path,
