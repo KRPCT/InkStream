@@ -1,37 +1,77 @@
-# InkStream / 墨流
+<h1 align="center">InkStream / 墨流</h1>
 
-[![Tauri](https://img.shields.io/badge/Tauri-2-24C8DB?logo=tauri&logoColor=white)](https://tauri.app/)
-[![React](https://img.shields.io/badge/React-19-61DAFB?logo=react&logoColor=white)](https://react.dev/)
-[![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178C6?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
-[![CodeMirror](https://img.shields.io/badge/CodeMirror-6-d30707)](https://codemirror.net/)
-[![Version](https://img.shields.io/badge/version-1.0.0-blue)](#当前状态)
+<p align="center"><b>单内核 · 三模式 · git 原生的桌面写作应用 —— 文本编辑器中的 IntelliJ</b></p>
+<p align="center">一个 App 写论文、写小说、写文档：内置 Zotero 引用、Obsidian 式双向链接、Typst / LaTeX / KaTeX 数学排版、完整 git 图谱与句级 prose diff，无需拼装任何插件。</p>
 
-**文本编辑器中的 IntelliJ** —— 单内核、三模式、git 原生的桌面写作应用。
+<p align="center">
+  <a href="https://github.com/KRPCT/InkStream/releases/latest"><img alt="Release" src="https://img.shields.io/github/v/release/KRPCT/InkStream?style=flat-square&color=3b8774&label=release"></a>
+  <a href="https://github.com/KRPCT/InkStream/releases"><img alt="Downloads" src="https://img.shields.io/github/downloads/KRPCT/InkStream/total?style=flat-square&color=3b8774"></a>
+  <img alt="Tauri 2" src="https://img.shields.io/badge/Tauri-2-24C8DB?style=flat-square&logo=tauri&logoColor=white">
+  <img alt="React 19" src="https://img.shields.io/badge/React-19-149ECA?style=flat-square&logo=react&logoColor=white">
+  <img alt="TypeScript strict" src="https://img.shields.io/badge/TypeScript-strict-3178C6?style=flat-square&logo=typescript&logoColor=white">
+  <img alt="CodeMirror 6" src="https://img.shields.io/badge/CodeMirror-6-d30707?style=flat-square">
+  <a href="https://github.com/KRPCT/InkStream/stargazers"><img alt="Stars" src="https://img.shields.io/github/stars/KRPCT/InkStream?style=flat-square&color=f5c518"></a>
+</p>
 
-一个 App 写论文、写小说、写文档：内置 Zotero 引用、Obsidian 式双向链接、Typst/LaTeX/KaTeX 数学排版、完整 git 图谱与句级 prose diff，不需要拼装任何插件。
+<p align="center">
+  <a href="#特性">特性</a> ·
+  <a href="#下载安装">下载安装</a> ·
+  <a href="#三模式">三模式</a> ·
+  <a href="docs/index.md">功能文档</a> ·
+  <a href="#技术栈">技术栈</a> ·
+  <a href="#从源码构建">从源码构建</a> ·
+  <a href="#路线图">路线图</a> ·
+  <a href="#star-趋势">Star 趋势</a> ·
+  <a href="#赞助">赞助</a>
+</p>
+
+<p align="center">
+  <a href="https://github.com/KRPCT/InkStream/releases/latest"><b>↓ 下载最新版（Windows / macOS / Linux）</b></a>
+  &nbsp;&nbsp;·&nbsp;&nbsp;
+  <a href="docs/index.md"><b>功能文档 / 使用指南 →</b></a>
+</p>
 
 ---
 
+**InkStream（墨流）** 是一款基于 Tauri 2 的桌面写作应用，定位"文本编辑器中的 IntelliJ"。它在单一 CodeMirror 6 内核之上提供 Standard（通用）/ Academic（学术）/ Creative（长篇创作）三种模式，原生内置 git 版本管理、Obsidian 风格双向链接知识网络、Zotero 学术引用与 Typst / LaTeX / KaTeX 数学渲染——让研究者、创作者与知识工作者不必拼装插件，即可获得专业写作环境。
+
+> 核心价值：**单一 CodeMirror 6 内核 + git 原生**。任何时刻 `state.doc.toString()` 是文档唯一真相源，三种模式只是布局预设与功能集切换——永不绑定文件格式、永不丢数据。
+
 ## 目录
 
-- [它为谁而做](#它为谁而做)
+- [特性](#特性)
+- [下载安装](#下载安装)
 - [三模式](#三模式)
-- [核心特性](#核心特性)
-- [当前状态](#当前状态)
 - [技术栈](#技术栈)
-- [开发指引](#开发指引)
-- [开发标准](#开发标准)
+- [从源码构建](#从源码构建)
+- [路线图](#路线图)
+- [Star 趋势](#star-趋势)
+- [赞助](#赞助)
 
-## 它为谁而做
+## 特性
 
-| 用户群 | 当前痛点 | InkStream 提供 |
-|--------|----------|----------------|
-| 研究者 / 学者 | LaTeX 陡峭、Word 失控、Markdown 无引用 | 内置 Zotero 引用、Typst/LaTeX 块、git 多稿、Prose Diff |
-| 创作者（小说/剧本） | 章节靠新建文件、角色一致性靠回翻 | 章节导航、Codex 角色卡、Focus Mode、prose-aware 合并 |
-| 知识工作者 | Obsidian 插件越加越乱 | wiki-link + Graph View 原生内置，无插件市场负担 |
-| 写作开发者 | IDE 写文档体验劣 | CodeMirror 6 单内核，混合 Markdown 与多语言代码 |
+- **单一内核编辑器**：全 App 一个 CodeMirror 6 实例，纯文本恒为真相源；Source 与 Live Preview 运行时切换，光标所在行自动展开源码；11 种语言高亮，十万字文档装饰构建低于一帧。
+- **三类数学原语**：fenced 数学块 math（KaTeX）/ typst（typst.ts wasm 实时 SVG）/ latex（MathJax），全部懒加载，首屏不载入 wasm 与字体。
+- **Obsidian 式知识网络**：`[[wiki-link]]` 完整语法（`|alias` / `#heading` / `^block`）、SQLite FTS5 全库索引（中文 trigram 分词）、反链面板（含 unlinked mentions）。
+- **知识图谱可视化**：`Ctrl+G` 打开全库 Graph View（d3-force 力导 + Canvas2D 自绘 + 布局 Worker 化），拖拽缩放、点击跳转、邻域高亮、大图自动降级；右栏可看当前文件的局部图谱。
+- **git 原生**：Rust libgit2 完整命令集；自绘 SVG 三栏 git-graph（图谱 + 提交详情 + 文件 diff），右键菜单驱动；远程 clone / fetch / push / pull，SSH 签名提交。
+- **prose-aware diff 与三向合并**：中英混合句级语义 diff，看到的是"哪句话改了"而非"哪行变了"；合并冲突提供逐块采纳本方 / 对方的 prose 三向解决器。
+- **Zotero 学术集成**：CAYW 一键插入 `[@citekey]`、Web API 离线缓存、GB/T 7714 / APA / Vancouver 参考文献、引用与 Typst / LaTeX 自动联动。
+- **GitHub 集成**：PAT / gh CLI 登录（token 存 OS 凭据库、绝不进前端）、Issue 与 PR 浏览 / 评论 / 创建、PR review 与内嵌 diff 审阅。
+- **创作模式**：章节-场景导航树（状态色点 + 字数）、固定 `Codex/` 角色·地点·设定卡（别名提及高亮 + 悬停卡）、Focus Mode（F11 段落聚焦）、今日字数目标进度、场景概要卡。
+- **中文优先**：中文 IME 输入全程不被渲染打断、中英混合字数统计、中文模糊搜索。
 
-**非目标用户**：纯代码 IDE 用户、纯 WYSIWYG 用户、不用 git 的人。
+## 下载安装
+
+前往 **[Releases](https://github.com/KRPCT/InkStream/releases/latest)** 下载对应平台安装包：
+
+| 平台 | 安装包 |
+|------|--------|
+| Windows | `InkStream_*_x64-setup.exe`（NSIS 安装器） |
+| macOS（Apple Silicon） | `InkStream_*_aarch64.dmg` |
+| Linux | `InkStream_*_amd64.deb` / `InkStream_*_amd64.AppImage` |
+
+> **首次运行提示**：当前版本尚未做代码签名。Windows 在 SmartScreen 选「更多信息 → 仍要运行」；macOS 右键图标 →「打开」绕过 Gatekeeper；Linux 的 AppImage `chmod +x` 后双击运行。
 
 ## 三模式
 
@@ -39,99 +79,89 @@
 
 | 模式 | 定位 | 强调色 | 特色 |
 |------|------|--------|------|
-| Standard | 通用文本编辑 | 石墨灰 | 文件树、大纲/反链/Local Graph、Live Preview |
+| Standard | 通用文本编辑 | 石墨灰 | 文件树、大纲 / 反链 / 局部图谱、Live Preview |
 | Academic | 学术写作 | 学院深蓝 | Zotero 文献库、Citation Panel、Typst 预览、学术工具栏 |
 | Creative | 长篇创作 | 朱砂红 | 章节导航树、Codex、Focus Mode、字数目标进度 |
-
-## 核心特性
-
-- **单内核编辑器**：全 App 一个 CodeMirror 6 实例，任何时刻纯文本是文档真相源；Source 与 Live Preview 运行时切换，光标所在行自动展开源码
-- **三类数学原语**：```math (KaTeX) / ```typst (typst.ts wasm 实时 SVG) / ```latex (MathJax)，全部懒加载
-- **Obsidian 式知识网络**：`[[wiki-link]]` 完整语法（`|alias` / `#heading` / `^block-id`）、SQLite FTS5 全库索引（中文分词）、反链面板（含 unlinked mentions）、全库 Graph View
-- **git 原生**：Rust libgit2 完整命令集；三栏 git-graph（图谱 + 提交详情 + 文件 diff），右键菜单驱动全部操作
-- **prose-aware diff**：中英混合句级分词与段落对齐，看到"哪句话改了"而非"哪行变了"；合并冲突提供三向解决器
-- **Zotero 学术集成**：CAYW picker 一键插入 `[@citekey]`、离线文献缓存、GB/T 7714 / APA / Vancouver 参考文献
-- **GitHub 集成**：PAT / gh CLI 登录（token 存 OS 凭据库、不进前端）、Issue 与 PR 浏览 / 评论 / 创建、PR review 与内嵌 diff 审阅（经 Rust 直连 GitHub REST）
-- **中文优先**：中文 IME 输入全程不被渲染打断、中英混合字数统计、中文模糊搜索
-
-## 当前状态
-
-状态：v1.0.0（v1 范围功能完整）。Phase 1-12 全部交付：核心编辑 / 知识网络 / 数学 / git / 学术 / 创作 / 图谱可视化 / GitHub 集成 / prose 三向合并。已交付能力：
-
-- 五插槽工作台：TitleBar / Sidebar / EditorArea / RightPanel / StatusBar，面板宽度可拖拽并按模式记忆
-- 三模式运行时切换：Standard / Academic / Creative 布局预设与强调色即时变化，不重建窗口、不丢内容
-- 主题系统：亮色 / 暗色 / 跟随系统三态，CSS 变量分层（Obsidian 命名习惯，Atom one-dark/one-light 取值），6 组合 WCAG 对比度单测看护，启动无主题闪烁
-- 命令面板与命令注册表：Ctrl+Shift+P 打开，中文模糊搜索，MRU 置顶，中文 IME 组合输入防御（组合中快捷键与 Enter 不误触发）
-- Windows 自绘标题栏：拖拽 / 双击最大化还原 / 窗口控制按钮，嵌入式文字菜单
-- 工作区与文件：打开文件夹（按 git 仓库根）、文件树新建 / 重命名 / 删除 / 拖拽（删除走系统回收站）、外部修改提示重载绝不静默覆盖、Ctrl+P 中文模糊快速打开
-- 单一 CodeMirror 6 内核：全 App 唯一编辑器实例，任何时刻纯文本是文档真相源；Markdown / LaTeX / Typst / JS / TS / Python / Rust / JSON / YAML / HTML / CSS / Shell 语法高亮；frontmatter `language:` 整体切换；richtext 简化工具栏（物理保存仍为 Markdown）
-- Live Preview 装饰层：Source / Live Preview 运行时切换（命令 / Ctrl+E / 状态栏），标题 / 加粗 / 列表 / 链接 / 表格 / 图片 / 任务复选框渲染为最终样式，光标所在行自动展开源码；十万字文档装饰构建低于一帧
-- 统一 IME 冻结门：中文输入法组合期内换装 / 重载 / 落盘 / 装饰刷新单点排队收口，组合输入不被任何重算打断（全渲染模式、全语言在册）
-- 知识网络（Phase 4）：SQLite FTS5 全库索引（中文 trigram 分词，Rust 端单写队列）；`[[wiki-link]]` 完整语法（`|alias` / `#heading` / `^block`）自研解析与 Live Preview 渲染，`[[` 模糊补全 / Ctrl 点击跳转 / 不存在即建，反链面板含 unlinked mentions
-- 数学排版（Phase 5）：三类 fenced 原语就地渲染——```math（KaTeX）/ ```typst（typst.ts wasm Worker → SVG）/ ```latex（MathJax SVG），全部懒加载
-- Git 与协作（Phase 6-7）：Rust libgit2 完整命令集（含远程 clone / fetch / push / pull，SSH 经 git CLI）、自绘 SVG 三栏 git-graph、右键菜单驱动、GitHub PR 流程；prose-aware 中英混合句级语义 diff
-- 学术模式（Phase 8）：Zotero CAYW 插入 `[@citekey]`、Web API 增量同步 + 离线缓存、Citation Panel（未解析标红）、参考文献编译期展开（GB/T 7714 / APA / Vancouver）、引用↔Typst/LaTeX 联动
-- 创作模式（Phase 9）：文件夹即章 / 文件即场景的导航树（状态色点 + 场景字数）、固定 `Codex/` 角色·地点·设定卡（别名提及高亮 + 悬停卡）、Focus Mode（F11 段落聚焦）、今日字数目标进度、场景概要卡
-- 知识可视化（Phase 10）：Ctrl+G 全库 Graph View（d3-force 力导 + Canvas2D 自绘 + 布局 Worker 化 + 缩放 / 点击打开 / 邻域高亮 / 大图降级）、RightPanel 局部图谱 tab；Standard 三 tab（大纲 / 反链 / 局部图谱）与 StatusBar 完整态（文件路径 / 光标行列 / git 分支 / 字数 / 渲染模式）补齐
-- GitHub 集成（Phase 11）：PAT / gh CLI 登录（token 留 OS 凭据库、绝不进前端）、Issue 浏览 / 评论 / 创建、PR 评论 / review（批准·请求修改·评论）/ 内嵌 diff 审阅；全经 Rust 直连 GitHub REST（绕 CORS、令牌不出 Rust）
-- 协作合并（Phase 12）：prose-aware 三向冲突解决器——对 git 合并产物逐冲突块用句级 diff 呈现本方↔对方、按块采纳 ours / theirs / both、原子写回 + 标记 resolved；三模式总装验收（任一模式编辑中切模式不丢数据、撤销历史与选区保留）
-- 非工作区文件：以独立 tab 打开且 git 排外、切库不误覆盖且原文件不丢，支持拖拽到应用 / 系统"打开方式"启动
-- 自动保存：500ms 防抖原子写（temp 同目录 + fsync + rename），按路径串行写链，文件监听自激抑制
-- 持久化：主题 / 模式 / 各模式布局 / 最近 vault / 文件树展开态重启原样恢复，损坏配置自动回落默认并提示，用户仓库零写入
-- 三平台冒烟 CI：ubuntu / windows / macos 矩阵跑 typecheck / lint / test / build / cargo check；另有三平台发行版打包工作流（同时产出 Windows / macOS / Linux 安装包）
-- ATDD 验收规范：[specs/](./specs/)（含中文 IME 真机手测矩阵——所有装饰类变更的永久回归门）
-
-v1 范围外（明确不做）：实时多人协作、移动端、插件市场、内置 AI 写作、成为代码 IDE、复刻 Obsidian 插件 API。
 
 ## 技术栈
 
 | 层 | 选型 |
 |----|------|
 | 桌面壳 | Tauri 2（Rust + Web，体积优先） |
-| 前端 | React 19 + TypeScript strict |
-| 状态 | Zustand 5 |
+| 前端 | React 19 + TypeScript strict + Zustand 5 |
 | 样式 | Tailwind 4（布局）+ 原生 CSS 变量（主题，Obsidian 命名习惯） |
 | 编辑器内核 | CodeMirror 6 + @lezer/markdown（单实例单内核 + 三层装饰范式 + 统一 IME 冻结门） |
 | 数学排版 | KaTeX / @myriaddreamin/typst.ts (wasm) / MathJax |
-| Git | git2 (libgit2 Rust binding) |
-| GitHub | Rust reqwest 直连 REST + keyring（PAT / gh CLI 登录，token 不进前端） |
-| 全文索引 | SQLite FTS5（Rust 端单写入队列） |
+| 知识图谱 | d3-force 力导 + Canvas2D 自绘（布局 Worker 化） |
+| Git / GitHub | git2 (libgit2 Rust binding) / Rust reqwest 直连 GitHub REST + keyring |
+| 全文索引 | SQLite FTS5（Rust 端单写入队列，中文 trigram 分词） |
 
-## 开发指引
+> 依赖全部**精确锁版本**（无 `^` / `~` / `latest`），供应链零信任。
 
-环境要求：
+## 从源码构建
 
-- Node 22（LTS）
-- Rust stable 工具链（rustup）
-- pnpm 11.5.2（经 corepack 激活，与 package.json 的 packageManager 字段一致）
+环境要求：**Node 22（LTS）· Rust stable（rustup）· pnpm 11.5.2**（经 corepack 激活）。
 
 ```bash
 corepack enable
-pnpm install          # 安装依赖（精确版本锁定）
-pnpm tauri dev        # 启动桌面应用（开发模式）
-pnpm test             # Vitest 单元测试
-pnpm typecheck        # TypeScript 类型检查
-pnpm lint             # ESLint
-pnpm build            # 类型检查 + 前端构建
+pnpm install          # 精确版本锁定
+pnpm tauri dev        # 开发模式启动桌面应用
+pnpm tauri build      # 打包本平台安装包（产物在 src-tauri/target/release/bundle/）
 ```
 
-Linux 构建需先安装 webkit2gtk 等系统依赖，清单见 [.github/workflows/ci.yml](./.github/workflows/ci.yml)。
+三道门：`pnpm typecheck && pnpm lint && pnpm test`。Linux 构建需先安装 webkit2gtk 等系统依赖（清单见 [.github/workflows/ci.yml](./.github/workflows/ci.yml)）；三平台安装包经 [.github/workflows/release.yml](./.github/workflows/release.yml) 在 CI 同时构建。
 
-构建发行版：
+## 路线图
 
-```bash
-pnpm tauri build      # 打包本平台安装包，产物在 src-tauri/target/release/bundle/
-```
+v1 共 12 个阶段，已全部交付：
 
-三平台安装包（Windows `.msi` / `.exe`、macOS `.dmg`、Linux `.deb` / `.AppImage`）经 [.github/workflows/release.yml](./.github/workflows/release.yml) 在 CI 同时构建——手动 `workflow_dispatch` 产出可下载产物，推送 `v*` tag 则发布到对应 GitHub Release。当前 macOS / Windows 产物尚未代码签名。
+- [x] 应用骨架与三模式 Workbench · 命令面板 · 主题三态
+- [x] CM6 单内核 · 11 语言高亮 · 工作区文件 · 快速打开
+- [x] Live Preview 装饰层 · 中文 IME 冻结门
+- [x] FTS5 全库索引 · wiki-link 全语法 · 反链面板
+- [x] Fenced 三原语：math / typst / latex
+- [x] git 原生 · 自绘三栏 git-graph
+- [x] prose-aware 句级 diff
+- [x] Zotero 集成 · Academic 模式
+- [x] Creative 模式 · Codex · Focus Mode
+- [x] 知识 Graph View · Standard 模式完整
+- [x] GitHub 集成（Issue / PR / review / diff）
+- [x] prose 三向合并 · 三模式总装 · 跨平台打包发布
 
-## 开发标准
+后续计划：
 
-- TypeScript strict 强制；ESLint + Prettier；单文件不超过 200 行（编辑器扩展除外）
-- 每个 CodeMirror 扩展配对 Vitest 单元测试；ATDD 验收规范随阶段交付（specs/）；Playwright E2E 随桌面壳成熟引入
-- Conventional Commits；全部提交 SSH 签名（Verified）
-- pnpm 精确版本锁定，提交 lockfile；CI 中 actions 按 commit SHA 锁定
+- [ ] 应用内自动更新（updater，签名密钥就绪后）
+- [ ] 代码签名（Windows Authenticode / macOS 公证）
+- [ ] macOS Intel（x86_64）构建
+- [ ] Graph View WebGL 渲染（超大 vault）
+
+v1 范围外（明确不做）：实时多人协作、移动端、插件市场、内置 AI 写作、成为代码 IDE、复刻 Obsidian 插件 API。
+
+## Star 趋势
+
+如果 InkStream 对你有帮助，欢迎点一个 Star——这是对独立开发最直接的鼓励。
+
+<a href="https://star-history.com/#KRPCT/InkStream&Date">
+  <img alt="Star History Chart" src="https://api.star-history.com/svg?repos=KRPCT/InkStream&type=Date" width="640">
+</a>
+
+## 赞助
+
+InkStream 由个人利用业余时间开发与维护，**免费、开源、无订阅、无广告**。如果它替你省下了一份写作 / 笔记软件的订阅，或你希望它继续做下去，欢迎请作者喝杯咖啡——完全自愿，与功能访问无关。
+
+<table>
+  <tr>
+    <td align="center" width="320">
+      <img src="docs/assets/donate-wechat.jpg" alt="微信支付" width="260"><br>
+      <b>微信支付</b>
+    </td>
+    <td align="center" width="320">
+      <img src="docs/assets/donate-alipay.jpg" alt="支付宝" width="260"><br>
+      <b>支付宝</b>
+    </td>
+  </tr>
+</table>
 
 ---
 
-*用一条墨线，流过论文、小说与代码。*
+<p align="center"><i>用一条墨线，流过论文、小说与代码。</i></p>
