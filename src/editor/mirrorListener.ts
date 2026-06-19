@@ -7,6 +7,7 @@ import { syncRichtext } from './editorState';
 import { reconfigureLanguageFromDoc } from './languages';
 import { syncOutline } from './outline';
 import { syncSceneSummary } from './sceneSummary';
+import { syncTypingMetrics } from './writingMetrics';
 import { syncWordCount } from './wordCount';
 
 /**
@@ -45,6 +46,8 @@ export const mirrorListener = EditorView.updateListener.of((u) => {
     syncCitations(u.view);
     // 字数镜像（CREA-04）：编辑累加今日净写入（换日重置），单向写入 store。
     syncWordCount(u.view);
+    // 码字速度镜像（写作 HUD）：本次插入字符计入 60s 滑窗（组合期已被外层 !isComposing 排除）。
+    syncTypingMetrics(u);
     // 场景概要镜像（CREA-05）：frontmatter summary 随编辑更新，单向写入 store。
     syncSceneSummary(u.view);
   }

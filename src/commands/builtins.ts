@@ -6,6 +6,7 @@ import { GIT_COMMANDS } from './gitCommands';
 import { bind } from './keymap';
 import { register } from './registry';
 import { TEXT_COMMANDS } from './textCommands';
+import { VIEW_COMMANDS } from './viewCommands';
 
 /**
  * 内置命令注册入口（SHELL-04）。命令定义按职责分两处（D-02 同源，均经 registry.getAll() 消费）：
@@ -15,6 +16,7 @@ import { TEXT_COMMANDS } from './textCommands';
  */
 const BUILTINS: Command[] = [
   ...CORE_COMMANDS,
+  ...VIEW_COMMANDS,
   ...TEXT_COMMANDS,
   ...GIT_COMMANDS,
   ...ACADEMIC_COMMANDS,

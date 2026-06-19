@@ -8,6 +8,7 @@ import { inkstreamHighlightStyle } from './highlightTheme';
 import { extensionsForLanguage, langCompartment } from './languages';
 import { livePreviewExtensions, renderModeCompartment } from './livepreview/livePreview';
 import { focusModeExtensions, toggleFocusMode } from './livepreview/focusMode';
+import { typewriterExtensions } from './livepreview/typewriter';
 import { compositionGate } from './composition';
 import { mirrorListener } from './mirrorListener';
 import { useWorkbenchStore } from '../stores/useWorkbenchStore';
@@ -119,6 +120,7 @@ export function baseExtensions(lang: string = 'markdown'): Extension[] {
     langCompartment.of(extensionsForLanguage(lang)),
     renderModeCompartment.of(livePreviewExtensions()),
     focusModeExtensions, // CREA-03 Focus Mode（顶层，Source/Live 均生效；关闭时零装饰）
+    typewriterExtensions, // 打字机模式（顶层，光标行居中；关闭时零开销）
     mirrorListener,
   ];
 }

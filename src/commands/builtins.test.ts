@@ -56,6 +56,9 @@ const TITLES: Record<string, string> = {
   'go.quick-open': '转到：快速打开文件',
   'doc.toggle-language': '文档：切换文档语言',
   'view.toggle-render-mode': '视图：切换渲染模式',
+  'view.toggle-typewriter': '视图：打字机模式',
+  'view.toggle-focus': '视图：专注模式',
+  'writing.toggle-hud': '写作：写作 HUD（码字速度 / 时间 / 番茄钟）',
   'app.exit': '应用：退出',
   'mode.switch-standard': '模式：切换到 Standard（通用）',
   'mode.switch-academic': '模式：切换到 Academic（学术）',
@@ -101,8 +104,8 @@ const TITLES: Record<string, string> = {
   'academic.biblio-vancouver': '学术：参考文献（Vancouver）',
 };
 
-/** 生产命令总数：…前略… + 参考文献三式(Phase8 ZOT-04) + 知识图谱(Phase10 LINK-06) = 67。 */
-const COMMAND_COUNT = 67;
+/** 生产命令总数：…前略… + 知识图谱(Phase10 LINK-06) + 打字机/专注/写作 HUD(写作模式升级 ×3) = 70。 */
+const COMMAND_COUNT = 70;
 
 /** 生产命令（剔除 dev.* DEV-only 命令，如 IME 探针 dev.ime-probe）。 */
 function prodCommands() {
@@ -133,7 +136,7 @@ describe('builtins', () => {
     disposeKeymap();
   });
 
-  it('注册 55 条生产命令，标题与 UI-SPEC / R4 字面逐字一致', () => {
+  it('注册 70 条生产命令，标题与 UI-SPEC / R4 字面逐字一致', () => {
     const all = prodCommands();
     expect(all).toHaveLength(COMMAND_COUNT);
     for (const [id, title] of Object.entries(TITLES)) {

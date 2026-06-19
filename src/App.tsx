@@ -4,6 +4,7 @@ import ChoiceDialog from './components/common/ChoiceDialog';
 import ConfirmDialog from './components/common/ConfirmDialog';
 import PromptDialog from './components/common/PromptDialog';
 import Toast from './components/common/Toast';
+import WritingHud from './components/common/WritingHud';
 import ImeProbe from './components/dev/ImeProbe';
 import HelpModal from './components/help/HelpModal';
 import OnboardingOverlay from './components/onboarding/OnboardingOverlay';
@@ -65,6 +66,8 @@ export default function App() {
       <PromptDialog />
       {/* Toast 通知宿主：错误/警告（useToastStore，持久化读写失败路径消费） */}
       <Toast />
+      {/* 写作 HUD（写作模式升级）：码字速度/时间/番茄钟，默认关闭，writing.toggle-hud 开启 */}
+      <WritingHud />
       {/* DEV-only：IME 输入探针（R2 实验，dev.ime-probe 命令打开）。生产构建摇树移除。 */}
       {import.meta.env.DEV && <ImeProbe />}
     </>

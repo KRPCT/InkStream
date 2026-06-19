@@ -4,6 +4,7 @@ import CitationIndicator from './CitationIndicator';
 import CursorPositionIndicator from './CursorPositionIndicator';
 import FilePathIndicator from './FilePathIndicator';
 import GitBranchIndicator from './GitBranchIndicator';
+import HudHintIndicator from './HudHintIndicator';
 import ModeIndicator from './ModeIndicator';
 import RenderModeIndicator from './RenderModeIndicator';
 import WordCountIndicator from './WordCountIndicator';
@@ -27,6 +28,7 @@ export default function StatusBar() {
       <div data-testid="status-bar-right" className="flex h-full">
         <CursorPositionIndicator />
         {caps.showWordCount ? <WordCountIndicator /> : null}
+        <HudHintIndicator />
         {caps.showCitation ? <CitationIndicator /> : null}
         <RenderModeIndicator />
         {caps.showModeSwitch ? <ModeIndicator /> : null}

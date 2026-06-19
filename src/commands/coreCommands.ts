@@ -8,7 +8,6 @@ import { createFileTreeOps } from '../components/workbench/fileTreeOps';
 import { newDraftDocument } from '../editor/draftFlow';
 import { requestOpenFile, requestOpenFolder, requestOpenRecent } from '../editor/vaultFlow';
 import { cycleDocumentLanguage } from '../editor/richtext/switchLanguage';
-import { toggleRenderMode } from '../editor/livepreview/renderMode';
 import { flushActiveFile } from '../editor/saveFlow';
 import { windowControls } from '../ipc/window';
 import { useAboutStore } from '../stores/useAboutStore';
@@ -72,14 +71,6 @@ export const CORE_COMMANDS: Command[] = [
     id: 'view.reset-layout',
     title: '视图：重置当前模式布局',
     run: () => useWorkbenchStore.getState().resetCurrentLayout(),
-  },
-  {
-    id: 'view.open-graph',
-    title: '视图：知识图谱',
-    // 全库 Graph View 中央区覆盖层（LINK-06）；再按回编辑器。
-    shortcut: 'Ctrl+G',
-    advanced: true,
-    run: () => useWorkbenchStore.getState().toggleCentralView('graph'),
   },
   {
     id: 'view.command-palette',
@@ -176,13 +167,6 @@ export const CORE_COMMANDS: Command[] = [
     // 写入/修改 frontmatter `language` 字段，循环 markdown→latex→typst→richtext（D-13）。
     advanced: true,
     run: () => cycleDocumentLanguage(),
-  },
-  {
-    id: 'view.toggle-render-mode',
-    title: '视图：切换渲染模式',
-    shortcut: 'Ctrl+E',
-    // Source ↔ Live Preview 热切（Compartment.reconfigure）；非 markdown 文档静默 no-op（D-01）。
-    run: () => void toggleRenderMode(),
   },
   { id: 'app.exit', title: '应用：退出', run: () => void windowControls.close() },
   {
