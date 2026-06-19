@@ -46,6 +46,20 @@ export function ensureKatex(view: EditorView): void {
   });
 }
 
+/**
+ * 导出用：确保 KaTeX 已加载并返回实例（与编辑器共用同一单例；不派 refreshLivePreview——导出无 view）。
+ * 失败时由调用方 catch 降级（公式回退为源码代码块）。
+ */
+export async function loadKatex(): Promise<Katex> {
+  if (katex) return katex;
+  loading ??= Promise.all([import('katex'), import('katex/dist/katex.min.css')]).then(([mod]) => {
+    katex = mod.default;
+  });
+  await loading;
+  if (!katex) throw new Error('KaTeX 加载失败');
+  return katex;
+}
+
 /** 仅供测试：注入/重置 katex 实例，绕过 jsdom 下的真 import + CSS 拉取。 */
 export function __setKatexForTest(k: Katex | null): void {
   katex = k;

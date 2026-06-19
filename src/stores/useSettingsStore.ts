@@ -14,6 +14,7 @@ interface SettingsState {
   gitRemoteMode: GitRemoteMode;
   gitCustomServer: string;
   simpleMode: boolean;
+  exportBrandingFooter: boolean;
   setAutosaveEnabled: (enabled: boolean) => void;
   setAutosaveDelayMs: (ms: number) => void;
   setEditorFontSize: (px: number) => void;
@@ -21,6 +22,7 @@ interface SettingsState {
   setGitRemoteMode: (mode: GitRemoteMode) => void;
   setGitCustomServer: (server: string) => void;
   setSimpleMode: (on: boolean) => void;
+  setExportBrandingFooter: (on: boolean) => void;
 }
 
 /** 字体大小落到 CSS 变量（编辑器 .cm-editor 经 var(--editor-font-size) 消费，见 app.css）。 */
@@ -90,6 +92,7 @@ export const useSettingsStore = create<SettingsState>((set) => ({
   gitRemoteMode: 'ssh',
   gitCustomServer: '',
   simpleMode: false,
+  exportBrandingFooter: true,
   setAutosaveEnabled: (autosaveEnabled) => set({ autosaveEnabled }),
   setAutosaveDelayMs: (autosaveDelayMs) => set({ autosaveDelayMs }),
   setEditorFontSize: (editorFontSize) => {
@@ -100,6 +103,7 @@ export const useSettingsStore = create<SettingsState>((set) => ({
   setGitRemoteMode: (gitRemoteMode) => set({ gitRemoteMode }),
   setGitCustomServer: (gitCustomServer) => set({ gitCustomServer }),
   setSimpleMode: (simpleMode) => set({ simpleMode }),
+  setExportBrandingFooter: (exportBrandingFooter) => set({ exportBrandingFooter }),
 }));
 
 /**

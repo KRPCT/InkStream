@@ -31,6 +31,14 @@ export function writeFileToPath(path: string, content: string): Promise<null> {
   return invoke('write_file_to_path', { path, content });
 }
 
+/**
+ * 导出二进制文件到绝对路径（DOCX 等）：path 来自原生保存对话框（用户显式授权边界）。
+ * content 为字节，序列化为 number[] 过 IPC（Tauri → Rust Vec<u8>）。文本导出（HTML）仍走 writeFileToPath。
+ */
+export function writeBytesToPath(path: string, content: Uint8Array): Promise<null> {
+  return invoke('write_file_bytes', { path, content: Array.from(content) });
+}
+
 /** 新建空文件：同名已存在则 Rust 侧返回错误，绝不覆盖（D-12）。 */
 export function createFile(root: string, path: string): Promise<null> {
   return invoke('create_file', { root, path });

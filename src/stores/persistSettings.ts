@@ -34,6 +34,7 @@ function snapshot(): PersistedSettings {
     gitRemoteMode,
     gitCustomServer,
     simpleMode,
+    exportBrandingFooter,
   } = useSettingsStore.getState();
   const { mode, layouts } = useWorkbenchStore.getState();
   return validateSettings({
@@ -49,6 +50,7 @@ function snapshot(): PersistedSettings {
     gitRemoteMode,
     gitCustomServer,
     simpleMode,
+    exportBrandingFooter,
   });
 }
 
@@ -72,6 +74,7 @@ function apply(s: PersistedSettings): void {
     gitRemoteMode: s.gitRemoteMode,
     gitCustomServer: s.gitCustomServer,
     simpleMode: s.simpleMode,
+    exportBrandingFooter: s.exportBrandingFooter,
   });
   useSettingsStore.getState().setEditorFontSize(s.editorFontSize);
   useWorkbenchStore.getState().setMode(s.mode);

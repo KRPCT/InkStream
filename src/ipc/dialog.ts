@@ -15,6 +15,12 @@ const MARKDOWN_FILTER = {
   extensions: ['md', 'markdown', 'txt'],
 };
 
+/** 文件导出保存过滤器（按格式；PDF 走打印对话框无需此路）。 */
+const EXPORT_FILTERS: Record<'html' | 'docx', { name: string; extensions: string[] }> = {
+  html: { name: 'HTML', extensions: ['html'] },
+  docx: { name: 'Word 文档', extensions: ['docx'] },
+};
+
 /**
  * 打开目录选择对话框（资源管理器风格）。取消返回 null。
  * `multiple: false` 保证返回单一字符串（OpenDialogReturn 收窄为 `string | null`）。
@@ -37,4 +43,12 @@ export function pickFile(): Promise<string | null> {
  */
 export function pickSavePath(defaultName: string): Promise<string | null> {
   return save({ defaultPath: defaultName, filters: [MARKDOWN_FILTER] });
+}
+
+/**
+ * 文件导出保存对话框（HTML / DOCX）：defaultName 预填带扩展名的文件名，按格式过滤。取消返回 null。
+ * 返回绝对路径走 writeFileToPath（HTML 文本）/ writeBytesToPath（DOCX 二进制），不经 vault path_guard。
+ */
+export function pickExportPath(defaultName: string, format: 'html' | 'docx'): Promise<string | null> {
+  return save({ defaultPath: defaultName, filters: [EXPORT_FILTERS[format]] });
 }

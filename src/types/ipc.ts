@@ -42,6 +42,8 @@ export interface IpcCommands {
   write_file_atomic: { args: { root: string; path: string; content: string }; result: null };
   // 草稿另存为：原生保存对话框给出的绝对路径（用户显式授权边界，不经 path_guard）。
   write_file_to_path: { args: { path: string; content: string }; result: null };
+  // 文件导出二进制写（DOCX 等）：绝对路径 + 字节数组（Uint8Array→Vec<u8>），同 write_file_to_path 授权边界。
+  write_file_bytes: { args: { path: string; content: number[] }; result: null };
   create_file: { args: { root: string; path: string }; result: null };
   create_dir: { args: { root: string; path: string }; result: null };
   rename_path: { args: { root: string; from: string; to: string }; result: null };

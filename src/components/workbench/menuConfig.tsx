@@ -45,6 +45,15 @@ export const MENUS: GroupConfig[] = [
       { separator: true },
       { commandId: 'file.save', label: '保存' },
       { separator: true },
+      {
+        label: '导出为',
+        submenu: [
+          { commandId: 'file.export-html', label: 'HTML…' },
+          { commandId: 'file.export-pdf', label: 'PDF…' },
+          { commandId: 'file.export-docx', label: 'DOCX…' },
+        ],
+      },
+      { separator: true },
       { commandId: 'app.exit', label: '退出' },
     ],
   },

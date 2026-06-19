@@ -29,6 +29,7 @@ function defaults(): PersistedSettings {
     gitRemoteMode: 'ssh',
     gitCustomServer: '',
     simpleMode: false,
+    exportBrandingFooter: true,
   };
 }
 
@@ -83,5 +84,7 @@ export function validateSettings(raw: unknown): PersistedSettings {
     gitCustomServer:
       typeof raw.gitCustomServer === 'string' ? raw.gitCustomServer.slice(0, 500) : '',
     simpleMode: typeof raw.simpleMode === 'boolean' ? raw.simpleMode : false,
+    exportBrandingFooter:
+      typeof raw.exportBrandingFooter === 'boolean' ? raw.exportBrandingFooter : true,
   };
 }

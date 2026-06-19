@@ -135,6 +135,8 @@ function NumberInput({
 export function GeneralSection() {
   const simpleMode = useSettingsStore((s) => s.simpleMode);
   const setSimpleMode = useSettingsStore((s) => s.setSimpleMode);
+  const exportBrandingFooter = useSettingsStore((s) => s.exportBrandingFooter);
+  const setExportBrandingFooter = useSettingsStore((s) => s.setExportBrandingFooter);
   return (
     <div>
       <SettingRow
@@ -142,6 +144,12 @@ export function GeneralSection() {
         description="为轻度用户精简界面：关闭反链 / 知识图谱 / Git / Zotero / 搜索等全部高级功能，且不在工作区创建 .inkstream 索引文件夹，仅保留基础编辑、文件树与 Live Preview。随时可关，关闭后恢复全部功能（重开工作区自动重建索引）。"
       >
         <Toggle checked={simpleMode} onChange={setSimpleMode} />
+      </SettingRow>
+      <SettingRow
+        label="导出附带 InkStream 标识"
+        description="导出 HTML / PDF / DOCX 时在文末附「Made with InkStream」页脚。关闭仅去除页脚；生成器标识仍始终写入文件元数据。"
+      >
+        <Toggle checked={exportBrandingFooter} onChange={setExportBrandingFooter} />
       </SettingRow>
     </div>
   );

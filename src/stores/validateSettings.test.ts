@@ -19,6 +19,7 @@ const VALID = {
   gitRemoteMode: 'oauth',
   gitCustomServer: 'git@example.com:u/r.git',
   simpleMode: true,
+  exportBrandingFooter: false,
 };
 
 describe('validateSettings', () => {
@@ -115,6 +116,7 @@ describe('validateSettings', () => {
       gitRemoteMode: 'ssh',
       gitCustomServer: '',
       simpleMode: false,
+      exportBrandingFooter: true,
     });
   });
 

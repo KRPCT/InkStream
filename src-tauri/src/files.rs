@@ -53,12 +53,18 @@ fn temp_sibling(target: &Path) -> PathBuf {
 /// 这条目录项本身持久化；Windows 无等价父目录 fsync API，temp 的 sync_all 已足够
 /// （NTFS 元数据日志保证 rename 顺序），故平台差异化处理。
 pub(crate) fn write_atomic(target: &Path, content: &str) -> Result<(), String> {
+    write_atomic_bytes(target, content.as_bytes())
+}
+
+/// 二进制原子写：与 write_atomic 同核（temp + sync_all + rename + Unix 父目录 fsync），但写任意字节而非
+/// UTF-8 文本——导出 DOCX 等二进制产物经此（write_file_to_path 仅接 String，二进制经其会被 UTF-8 破坏）。
+pub(crate) fn write_atomic_bytes(target: &Path, content: &[u8]) -> Result<(), String> {
     let tmp = temp_sibling(target);
 
     // temp 写入 + 数据块刷盘（sync_all）。任一步失败清理 temp 再返回。
     let write_result = (|| -> std::io::Result<()> {
         let mut f = std::fs::File::create(&tmp)?;
-        f.write_all(content.as_bytes())?;
+        f.write_all(content)?;
         f.sync_all()?;
         Ok(())
     })();
@@ -107,6 +113,17 @@ pub fn write_file_to_path(path: String, content: String) -> Result<(), String> {
         return Err("另存为路径必须是绝对路径".to_string());
     }
     write_atomic(&target, &content)
+}
+
+/// 导出二进制文件到绝对路径（DOCX 等）：path 来自原生保存对话框（用户显式授权边界，不经 path_guard）。
+/// content 为字节数组（前端 Uint8Array → Vec<u8>）。仅接受绝对路径（同 write_file_to_path 纪律）。
+#[tauri::command]
+pub fn write_file_bytes(path: String, content: Vec<u8>) -> Result<(), String> {
+    let target = PathBuf::from(&path);
+    if !target.is_absolute() {
+        return Err("导出路径必须是绝对路径".to_string());
+    }
+    write_atomic_bytes(&target, &content)
 }
 
 /// 新建空文件：已存在则 Err，绝不覆盖（D-12 同名拒绝）。
@@ -188,7 +205,7 @@ pub fn trash_path(root: String, path: String) -> Result<(), String> {
 mod tests {
     use super::{
         create_dir, create_file, move_path, read_file, rename_path, temp_sibling, trash_path,
-        write_file_atomic, write_file_to_path, READ_FILE_INLINE_LIMIT_BYTES,
+        write_file_atomic, write_file_bytes, write_file_to_path, READ_FILE_INLINE_LIMIT_BYTES,
     };
     use std::fs;
     use std::path::Path;
@@ -295,6 +312,29 @@ mod tests {
     fn write_file_to_path_rejects_relative() {
         // 相对路径拒绝：另存为只接受对话框返回的绝对路径，杜绝 cwd 相对写入。
         assert!(write_file_to_path("relative.md".to_string(), "x".to_string()).is_err());
+    }
+
+    #[test]
+    fn write_file_bytes_round_trips_binary() {
+        // 文件导出（DOCX）：含 0x00/0xFF/0xFE/0x80 的二进制须精确落盘，绝不被 UTF-8 破坏。
+        let root = temp_dir("write-bytes");
+        let target = root.join("export.docx");
+        let target_str = target.to_string_lossy().into_owned();
+        let bytes = vec![0x00u8, 0xFF, 0xFE, 0x80, 0x50, 0x4B, 0x03, 0x04];
+        write_file_bytes(target_str, bytes.clone()).unwrap();
+        assert_eq!(fs::read(&target).unwrap(), bytes);
+        let leftover = fs::read_dir(&root)
+            .unwrap()
+            .filter_map(|e| e.ok())
+            .any(|e| e.file_name().to_string_lossy().starts_with(".inkstream-tmp-"));
+        assert!(!leftover, "二进制导出成功后不应残留 temp 文件");
+        fs::remove_dir_all(&root).ok();
+    }
+
+    #[test]
+    fn write_file_bytes_rejects_relative() {
+        // 同 write_file_to_path：仅接受对话框返回的绝对路径。
+        assert!(write_file_bytes("relative.docx".to_string(), vec![1, 2, 3]).is_err());
     }
 
     #[test]

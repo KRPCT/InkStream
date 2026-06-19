@@ -48,6 +48,7 @@ export async function saveSettings(s: PersistedSettings): Promise<void> {
   await store.set('gitRemoteMode', s.gitRemoteMode);
   await store.set('gitCustomServer', s.gitCustomServer);
   await store.set('simpleMode', s.simpleMode);
+  await store.set('exportBrandingFooter', s.exportBrandingFooter);
   await store.save();
 }
 

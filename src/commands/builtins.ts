@@ -2,6 +2,7 @@ import { registerImeProbeCommand } from '../components/dev/imeProbeCommand';
 import type { Command } from '../types/commands';
 import { ACADEMIC_COMMANDS } from './academicCommands';
 import { CORE_COMMANDS } from './coreCommands';
+import { EXPORT_COMMANDS } from './exportCommands';
 import { GIT_COMMANDS } from './gitCommands';
 import { bind } from './keymap';
 import { register } from './registry';
@@ -17,6 +18,7 @@ import { VIEW_COMMANDS } from './viewCommands';
 const BUILTINS: Command[] = [
   ...CORE_COMMANDS,
   ...VIEW_COMMANDS,
+  ...EXPORT_COMMANDS,
   ...TEXT_COMMANDS,
   ...GIT_COMMANDS,
   ...ACADEMIC_COMMANDS,
