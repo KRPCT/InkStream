@@ -279,3 +279,15 @@ export function ghCliStatus(): Promise<boolean> {
 export function gitLoginGithubGh(): Promise<null> {
   return invoke('git_login_github_gh', undefined);
 }
+
+// ── prose 三向合并冲突解决（Phase 12 DIFF-03）──────────────────────────────
+
+/** 读冲突文件工作区内容（含 git 合并标记）。 */
+export function gitReadConflict(repoRoot: string, path: string): Promise<string> {
+  return invoke('git_read_conflict', { repoRoot, path });
+}
+
+/** 写回解决后内容并 git add 标记 resolved。 */
+export function gitResolveConflict(repoRoot: string, path: string, content: string): Promise<null> {
+  return invoke('git_resolve_conflict', { repoRoot, path, content });
+}

@@ -88,6 +88,8 @@ pub fn run() {
             git::pr::gh_comment_create,
             git::auth::gh_cli_status,
             git::auth::git_login_github_gh,
+            git::conflict::git_read_conflict,
+            git::conflict::git_resolve_conflict,
             zotero::zotero_cayw,
             zotero::zotero_citekeys,
             zotero::zotero_items,

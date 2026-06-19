@@ -122,6 +122,9 @@ export interface IpcCommands {
   // Phase 11 GH-01：gh CLI 备用登录（探测 + 取 token 存 keyring）。
   gh_cli_status: { args: undefined; result: boolean };
   git_login_github_gh: { args: undefined; result: null };
+  // Phase 12 DIFF-03：prose 三向合并冲突读取/解决。
+  git_read_conflict: { args: { repoRoot: string; path: string }; result: string };
+  git_resolve_conflict: { args: { repoRoot: string; path: string; content: string }; result: null };
   // Phase 8 ZOT-01：Zotero Better BibTeX CAYW（Rust reqwest 代理 localhost:23119）。
   zotero_cayw: { args: undefined; result: string };
   // Phase 8 ZOT-03：Zotero 库全部 citekey（Citation Panel 未解析判定）。

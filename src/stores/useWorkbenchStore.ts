@@ -3,8 +3,8 @@ import { MODE_PRESETS } from '../modes/presets';
 import type { AppMode } from '../types/settings';
 import { DEFAULT_LAYOUT, type ModeLayout, type TabId } from '../types/workbench';
 
-/** 中央区视图：编辑器 / git-graph（GIT-02）/ 知识图谱（Phase 10 LINK-06）整页接管。 */
-export type CentralView = 'editor' | 'gitGraph' | 'graph';
+/** 中央区视图：编辑器 / git-graph / 知识图谱 / 合并冲突解决器（Phase 12 DIFF-03）整页接管。 */
+export type CentralView = 'editor' | 'gitGraph' | 'graph' | 'mergeResolve';
 
 interface WorkbenchState {
   mode: AppMode;

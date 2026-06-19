@@ -18,6 +18,7 @@
 pub(crate) mod auth;
 pub(crate) mod branch;
 pub(crate) mod commit;
+pub(crate) mod conflict;
 pub(crate) mod diff;
 pub(crate) mod log;
 pub(crate) mod pr;

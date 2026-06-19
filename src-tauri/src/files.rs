@@ -52,7 +52,7 @@ fn temp_sibling(target: &Path) -> PathBuf {
 /// rename 已记账而数据块未落致零长/截断。Unix 上额外 fsync 父目录 fd，确保 rename
 /// 这条目录项本身持久化；Windows 无等价父目录 fsync API，temp 的 sync_all 已足够
 /// （NTFS 元数据日志保证 rename 顺序），故平台差异化处理。
-fn write_atomic(target: &Path, content: &str) -> Result<(), String> {
+pub(crate) fn write_atomic(target: &Path, content: &str) -> Result<(), String> {
     let tmp = temp_sibling(target);
 
     // temp 写入 + 数据块刷盘（sync_all）。任一步失败清理 temp 再返回。

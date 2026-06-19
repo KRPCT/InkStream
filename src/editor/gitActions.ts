@@ -41,26 +41,28 @@ export async function refreshGitAll(repoRoot: string): Promise<void> {
   await useGitGraphStore.getState().loadLog(repoRoot);
 }
 
-/** 冲突结果 → 警告 + 「撤销」中止入口（merge/cherry-pick/revert 共用）。 */
+/** 冲突结果 → 警告 + 打开 prose 三向解决器（merge/cherry-pick/revert 共用；解决器内可中止）。 */
 function reportConflict(res: GitOpResult, label: string): void {
   if (res.conflicted) {
     showToast(
       'warning',
-      `${label}产生冲突：请在工作区解决冲突后提交，或点「撤销」中止本次${label}。`,
-      () => void abortOp(),
+      `${label}产生冲突：点此打开三向解决器逐处采纳本方/对方，或在解决器内中止本次${label}。`,
+      () => useWorkbenchStore.getState().setCentralView('mergeResolve'),
     );
   }
 }
 
-/** 中止进行中的 merge/cherry-pick/revert（冲突卡死时的安全出口）。 */
-export async function abortOp(): Promise<void> {
+/** 中止进行中的 merge/cherry-pick/revert（冲突卡死时的安全出口）。返回是否成功。 */
+export async function abortOp(): Promise<boolean> {
   const root = repo();
-  if (!root) return;
+  if (!root) return false;
   try {
     await git.gitAbortOp(root);
     await refreshAfter(root);
+    return true;
   } catch (e) {
     showToast('error', `中止失败：${errText(e)}`);
+    return false;
   }
 }
 
