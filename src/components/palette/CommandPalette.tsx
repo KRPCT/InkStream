@@ -3,6 +3,7 @@ import { rankCommands } from '../../commands/match';
 import * as mru from '../../commands/mru';
 import { execute, getAll, subscribe } from '../../commands/registry';
 import { usePaletteStore } from '../../stores/usePaletteStore';
+import { useSettingsStore } from '../../stores/useSettingsStore';
 import { useVaultStore } from '../../stores/useVaultStore';
 import type { PaletteProvider } from '../../types/commands';
 import { fileProvider } from './fileProvider';
@@ -17,12 +18,16 @@ const HINT_QUICK_OPEN_NO_RESULT = '没有匹配的文件';
 /** 「>」命令 provider：rankCommands 过滤 + MRU 置顶（D-07，无分组标题）。 */
 const commandProvider: PaletteProvider = {
   prefix: '>',
-  getItems: (query) =>
-    rankCommands(query.trim(), getAll(), mru.list()).map(({ id, title, shortcut }) => ({
+  getItems: (query) => {
+    // 简易模式隐藏高级命令（图谱/Git/模式/学术/切换语言），与菜单门控同源。
+    const all = getAll();
+    const available = useSettingsStore.getState().simpleMode ? all.filter((c) => !c.advanced) : all;
+    return rankCommands(query.trim(), available, mru.list()).map(({ id, title, shortcut }) => ({
       id,
       title,
       shortcut,
-    })),
+    }));
+  },
 };
 
 /** 前缀路由表（D-06）：Phase 2 追加无前缀快速打开 fileProvider，壳不改。 */

@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { useSettingsStore } from '../stores/useSettingsStore';
 import type { Command } from '../types/commands';
 import { hydrate, list } from './mru';
 import { execute, getAll, register, subscribe } from './registry';
@@ -16,6 +17,7 @@ describe('registry', () => {
 
   afterEach(() => {
     while (disposers.length) disposers.pop()!();
+    useSettingsStore.getState().setSimpleMode(false);
   });
 
   it('register 后 getAll 含该命令', () => {
@@ -50,6 +52,29 @@ describe('registry', () => {
   it('execute 未注册 id 静默忽略', async () => {
     await expect(execute('test.missing')).resolves.toBeUndefined();
     expect(list()).toEqual([]);
+  });
+
+  it('简易模式下 advanced 命令 execute 一律 no-op 且不记 MRU', async () => {
+    const run = vi.fn();
+    reg({ id: 'test.adv', advanced: true, run });
+    useSettingsStore.getState().setSimpleMode(true);
+    await execute('test.adv');
+    expect(run).not.toHaveBeenCalled();
+    expect(list()).toEqual([]);
+    // 关掉简易模式后恢复执行。
+    useSettingsStore.getState().setSimpleMode(false);
+    await execute('test.adv');
+    expect(run).toHaveBeenCalledTimes(1);
+    expect(list()[0]).toBe('test.adv');
+  });
+
+  it('简易模式不影响普通（非 advanced）命令', async () => {
+    const run = vi.fn();
+    reg({ id: 'test.basic', run });
+    useSettingsStore.getState().setSimpleMode(true);
+    await execute('test.basic');
+    expect(run).toHaveBeenCalledTimes(1);
+    expect(list()[0]).toBe('test.basic');
   });
 
   it('subscribe 在注册/注销时收到通知，退订后不再收', () => {

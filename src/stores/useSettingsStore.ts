@@ -13,12 +13,14 @@ interface SettingsState {
   dailyWordGoal: number;
   gitRemoteMode: GitRemoteMode;
   gitCustomServer: string;
+  simpleMode: boolean;
   setAutosaveEnabled: (enabled: boolean) => void;
   setAutosaveDelayMs: (ms: number) => void;
   setEditorFontSize: (px: number) => void;
   setDailyWordGoal: (goal: number) => void;
   setGitRemoteMode: (mode: GitRemoteMode) => void;
   setGitCustomServer: (server: string) => void;
+  setSimpleMode: (on: boolean) => void;
 }
 
 /** 字体大小落到 CSS 变量（编辑器 .cm-editor 经 var(--editor-font-size) 消费，见 app.css）。 */
@@ -87,6 +89,7 @@ export const useSettingsStore = create<SettingsState>((set) => ({
   dailyWordGoal: 1000,
   gitRemoteMode: 'ssh',
   gitCustomServer: '',
+  simpleMode: false,
   setAutosaveEnabled: (autosaveEnabled) => set({ autosaveEnabled }),
   setAutosaveDelayMs: (autosaveDelayMs) => set({ autosaveDelayMs }),
   setEditorFontSize: (editorFontSize) => {
@@ -96,6 +99,7 @@ export const useSettingsStore = create<SettingsState>((set) => ({
   setDailyWordGoal: (dailyWordGoal) => set({ dailyWordGoal }),
   setGitRemoteMode: (gitRemoteMode) => set({ gitRemoteMode }),
   setGitCustomServer: (gitCustomServer) => set({ gitCustomServer }),
+  setSimpleMode: (simpleMode) => set({ simpleMode }),
 }));
 
 /**

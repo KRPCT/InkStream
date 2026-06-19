@@ -5,6 +5,7 @@ import {
   AccountSection,
   AppearanceSection,
   EditorSection,
+  GeneralSection,
   GitSection,
   ZoteroSection,
 } from './settingsSections';
@@ -14,6 +15,7 @@ import {
  * 遮罩点击 / Esc / ✕ 关闭。设置值改动即写 useSettingsStore（自动防抖落盘），无显式「保存」。
  */
 const CATEGORIES: { id: SettingsCategory; label: string }[] = [
+  { id: 'general', label: '通用' },
   { id: 'appearance', label: '外观' },
   { id: 'editor', label: '编辑器' },
   { id: 'git', label: 'Git' },
@@ -96,6 +98,7 @@ function SettingsPanel() {
             </button>
           </div>
           <div className="min-h-0 flex-1 overflow-auto px-4 py-2">
+            {category === 'general' ? <GeneralSection /> : null}
             {category === 'appearance' ? <AppearanceSection /> : null}
             {category === 'editor' ? <EditorSection /> : null}
             {category === 'git' ? <GitSection /> : null}

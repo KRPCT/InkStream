@@ -10,6 +10,12 @@ export interface Command {
   title: string;
   /** 仅展示用（面板右侧 kbd 芯片）；分发由 keymap.ts 负责。 */
   shortcut?: string;
+  /**
+   * 高级功能命令：简易模式（useSettingsStore.simpleMode）下不在命令面板 / 菜单出现，
+   * 且经 registry.execute（含快捷键 Ctrl+G/Ctrl+Shift+G、菜单点击）触发一律 no-op。
+   * 覆盖知识图谱 / Git Graph / 模式切换 / 学术引用 / 切换文档语言等依赖高级子系统的命令。
+   */
+  advanced?: boolean;
   run: () => void | Promise<void>;
 }
 

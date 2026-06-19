@@ -28,6 +28,7 @@ function defaults(): PersistedSettings {
     dailyWordGoal: 1000,
     gitRemoteMode: 'ssh',
     gitCustomServer: '',
+    simpleMode: false,
   };
 }
 
@@ -81,5 +82,6 @@ export function validateSettings(raw: unknown): PersistedSettings {
       : 'ssh') as GitRemoteMode,
     gitCustomServer:
       typeof raw.gitCustomServer === 'string' ? raw.gitCustomServer.slice(0, 500) : '',
+    simpleMode: typeof raw.simpleMode === 'boolean' ? raw.simpleMode : false,
   };
 }

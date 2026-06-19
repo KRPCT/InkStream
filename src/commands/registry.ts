@@ -1,3 +1,4 @@
+import { useSettingsStore } from '../stores/useSettingsStore';
 import type { Command } from '../types/commands';
 import { record } from './mru';
 
@@ -39,6 +40,8 @@ export function getAll(): Command[] {
 export async function execute(id: string): Promise<void> {
   const command = commands.get(id);
   if (!command) return;
+  // 简易模式：高级命令一律 no-op（统一收口快捷键 / 命令面板 / 菜单点击三条触发路径）。
+  if (command.advanced && useSettingsStore.getState().simpleMode) return;
   record(id);
   await command.run();
 }

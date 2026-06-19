@@ -3,6 +3,7 @@ import { useState } from 'react';
 import EmptyState from '../common/EmptyState';
 import { requestOpenFolder } from '../../editor/vaultFlow';
 import { refreshTree } from '../../editor/fileTreeData';
+import { useSettingsStore } from '../../stores/useSettingsStore';
 import { useVaultStore } from '../../stores/useVaultStore';
 import { useWorkbenchStore } from '../../stores/useWorkbenchStore';
 import FileTree from './FileTree';
@@ -49,6 +50,7 @@ function HeaderAction({ icon: Icon, label, onClick }: { icon: LucideIcon; label:
 export default function Sidebar() {
   const vault = useVaultStore((s) => s.vault);
   const mode = useWorkbenchStore((s) => s.mode);
+  const simpleMode = useSettingsStore((s) => s.simpleMode);
   const [query, setQuery] = useState('');
   const searching = query.trim().length > 0;
 
@@ -79,18 +81,19 @@ export default function Sidebar() {
         <HeaderAction icon={ListCollapse} label="折叠全部" onClick={collapseAllInTree} />
         <HeaderAction icon={RefreshCw} label="刷新" onClick={() => void refreshTree()} />
       </div>
-      <SidebarSearch query={query} onQueryChange={setQuery} />
-      <GitGuidanceBar />
+      {/* 简易模式隐藏搜索/git/学术/创作高级面板，仅留文件树 */}
+      {!simpleMode ? <SidebarSearch query={query} onQueryChange={setQuery} /> : null}
+      {!simpleMode ? <GitGuidanceBar /> : null}
       {/* ACAD-01：Academic 模式 Sidebar 上半 Zotero 文献库（其余模式不显），下半为文件树 */}
-      {mode === 'academic' ? <ZoteroLibraryPanel /> : null}
+      {!simpleMode && mode === 'academic' ? <ZoteroLibraryPanel /> : null}
       {/* CREA-01：Creative 模式章节-场景树叠在文件树上方（其余模式不显） */}
-      {mode === 'creative' ? <ChapterSceneTree /> : null}
+      {!simpleMode && mode === 'creative' ? <ChapterSceneTree /> : null}
       {/* 有查询 → 扁平递归结果列表（R4 §4.2）；清空 → 恢复受控折叠树 */}
       <div className="min-h-0 flex-1 overflow-auto">
-        {searching ? <SearchResults query={query} /> : <FileTree />}
+        {!simpleMode && searching ? <SearchResults query={query} /> : <FileTree />}
       </div>
       {/* 簇①：侧栏简易源代码管理面板（git 仓库才显示，置底，可折叠） */}
-      <SidebarGitPanel />
+      {!simpleMode ? <SidebarGitPanel /> : null}
     </div>
   );
 }

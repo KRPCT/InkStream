@@ -12,6 +12,7 @@ export const GIT_COMMANDS: Command[] = [
     id: 'git.toggle-graph',
     title: 'Git Graph',
     shortcut: 'Ctrl+Shift+G',
+    advanced: true,
     run: () => {
       if (useGitStore.getState().repoRoot === null) {
         showToast('warning', '当前工作区不是 git 仓库，无法打开 Git Graph。');

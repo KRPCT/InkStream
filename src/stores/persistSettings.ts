@@ -33,6 +33,7 @@ function snapshot(): PersistedSettings {
     dailyWordGoal,
     gitRemoteMode,
     gitCustomServer,
+    simpleMode,
   } = useSettingsStore.getState();
   const { mode, layouts } = useWorkbenchStore.getState();
   return validateSettings({
@@ -47,6 +48,7 @@ function snapshot(): PersistedSettings {
     dailyWordGoal,
     gitRemoteMode,
     gitCustomServer,
+    simpleMode,
   });
 }
 
@@ -69,6 +71,7 @@ function apply(s: PersistedSettings): void {
     dailyWordGoal: s.dailyWordGoal,
     gitRemoteMode: s.gitRemoteMode,
     gitCustomServer: s.gitCustomServer,
+    simpleMode: s.simpleMode,
   });
   useSettingsStore.getState().setEditorFontSize(s.editorFontSize);
   useWorkbenchStore.getState().setMode(s.mode);

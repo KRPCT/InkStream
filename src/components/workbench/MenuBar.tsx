@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type KeyboardEvent } from 'react';
 import { getAll, subscribe } from '../../commands/registry';
+import { useSettingsStore } from '../../stores/useSettingsStore';
 import { useVaultStore } from '../../stores/useVaultStore';
 import Menu from '../common/Menu';
 import { MENUS, toEntries } from './menuConfig';
@@ -13,6 +14,7 @@ export default function MenuBar() {
   const [, setVersion] = useState(0);
   const anchors = useRef<(HTMLButtonElement | null)[]>([]);
   const recent = useVaultStore((s) => s.recentVaults);
+  const simpleMode = useSettingsStore((s) => s.simpleMode);
 
   useEffect(() => subscribe(() => setVersion((v) => v + 1)), []);
 
@@ -51,7 +53,7 @@ export default function MenuBar() {
           </button>
           {openIndex === index ? (
             <Menu
-              items={toEntries(group, commands, recent)}
+              items={toEntries(group, commands, recent, simpleMode)}
               label={group.label}
               onClose={() => setOpenIndex(null)}
               anchorRef={{ current: anchors.current[index] ?? null }}

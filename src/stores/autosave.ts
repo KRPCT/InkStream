@@ -138,7 +138,8 @@ async function writeOnce(path: string): Promise<void> {
     clearDirty(path);
     // Phase 4 W1：库内 .md 写盘成功后增量更新 FTS5 索引（autosave 主路径，已有内存内容无需读盘）。
     // 库外文件不属当前 vault、不入索引。fire-and-forget——索引投递失败绝不阻断/回滚保存。
-    if (!external && isIndexable(path)) void indexUpsertDoc(path, content).catch(() => {});
+    if (!external && isIndexable(path) && !useSettingsStore.getState().simpleMode)
+      void indexUpsertDoc(path, content).catch(() => {});
   } catch {
     // WR-01：写失败时无 watcher 事件落地，必须撤回抑制窗口，否则它会吞掉
     // 下一次该路径的真实外部变更（consumeSuppressedWatch 误返 true）。

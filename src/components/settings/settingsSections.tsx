@@ -132,6 +132,21 @@ function NumberInput({
 
 // ── 分区 ─────────────────────────────────────────────────────
 
+export function GeneralSection() {
+  const simpleMode = useSettingsStore((s) => s.simpleMode);
+  const setSimpleMode = useSettingsStore((s) => s.setSimpleMode);
+  return (
+    <div>
+      <SettingRow
+        label="简易模式"
+        description="为轻度用户精简界面：关闭反链 / 知识图谱 / Git / Zotero / 搜索等全部高级功能，且不在工作区创建 .inkstream 索引文件夹，仅保留基础编辑、文件树与 Live Preview。随时可关，关闭后恢复全部功能（重开工作区自动重建索引）。"
+      >
+        <Toggle checked={simpleMode} onChange={setSimpleMode} />
+      </SettingRow>
+    </div>
+  );
+}
+
 export function AppearanceSection() {
   const theme = useSettingsStore((s) => s.theme);
   const setTheme = useSettingsStore((s) => s.setTheme);

@@ -1,4 +1,7 @@
+import { useEffect } from 'react';
+import { SIMPLE_RIGHT_TABS } from '../../modes/capabilities';
 import { MODE_PRESETS, TAB_ICONS, TAB_LABELS } from '../../modes/presets';
+import { useSettingsStore } from '../../stores/useSettingsStore';
 import { useWorkbenchStore } from '../../stores/useWorkbenchStore';
 import type { TabId } from '../../types/workbench';
 import BacklinksPanel from './BacklinksPanel';
@@ -30,7 +33,13 @@ export default function RightPanel() {
   const mode = useWorkbenchStore((s) => s.mode);
   const activeTab = useWorkbenchStore((s) => s.activeTab);
   const setActiveTab = useWorkbenchStore((s) => s.setActiveTab);
-  const tabs = MODE_PRESETS[mode].rightPanelTabs;
+  const simpleMode = useSettingsStore((s) => s.simpleMode);
+  // 简易模式仅留大纲（反链/局部图谱依赖索引，已关）。
+  const tabs = simpleMode ? [...SIMPLE_RIGHT_TABS] : MODE_PRESETS[mode].rightPanelTabs;
+  // 开启简易模式（或启动即简易）时若 activeTab 停在已隐藏的 tab，收敛回 outline，避免右栏空白。
+  useEffect(() => {
+    if (simpleMode && activeTab !== 'outline') setActiveTab('outline');
+  }, [simpleMode, activeTab, setActiveTab]);
 
   return (
     <div className="flex h-full flex-col bg-[var(--background-secondary)]">

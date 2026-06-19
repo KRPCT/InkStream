@@ -78,6 +78,7 @@ export const CORE_COMMANDS: Command[] = [
     title: '视图：知识图谱',
     // 全库 Graph View 中央区覆盖层（LINK-06）；再按回编辑器。
     shortcut: 'Ctrl+G',
+    advanced: true,
     run: () => useWorkbenchStore.getState().toggleCentralView('graph'),
   },
   {
@@ -95,16 +96,19 @@ export const CORE_COMMANDS: Command[] = [
   {
     id: 'mode.switch-standard',
     title: '模式：切换到 Standard（通用）',
+    advanced: true,
     run: () => useWorkbenchStore.getState().setMode('standard'),
   },
   {
     id: 'mode.switch-academic',
     title: '模式：切换到 Academic（学术）',
+    advanced: true,
     run: () => useWorkbenchStore.getState().setMode('academic'),
   },
   {
     id: 'mode.switch-creative',
     title: '模式：切换到 Creative（长篇创作）',
+    advanced: true,
     run: () => useWorkbenchStore.getState().setMode('creative'),
   },
   {
@@ -170,6 +174,7 @@ export const CORE_COMMANDS: Command[] = [
     id: 'doc.toggle-language',
     title: '文档：切换文档语言',
     // 写入/修改 frontmatter `language` 字段，循环 markdown→latex→typst→richtext（D-13）。
+    advanced: true,
     run: () => cycleDocumentLanguage(),
   },
   {

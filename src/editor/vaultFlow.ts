@@ -5,6 +5,7 @@ import { listDir, listFiles, openVault } from '../ipc/vault';
 import { cancelPendingAutosave, resumeAutosave, suspendAutosave } from '../stores/autosave';
 import { chooseAction } from '../stores/useChoiceStore';
 import { useEditorStore } from '../stores/useEditorStore';
+import { useSettingsStore } from '../stores/useSettingsStore';
 import { showToast } from '../stores/useToastStore';
 import { useGitGuidanceStore } from '../stores/useGitGuidanceStore';
 import { useGitStore } from '../stores/useGitStore';
@@ -63,7 +64,8 @@ export async function openVaultByPath(path: string): Promise<void> {
     }
     // Phase 4 W1：打开 vault 即全量重建 FTS5 索引（worker 开 <root>/.inkstream/index.db + 扫 .md 重灌），
     // 保索引与当前磁盘一致；会话内增量由 autosave/外部变更钩子维护。fire-and-forget，不阻断打开。
-    void indexRebuild(info.root).catch(() => {});
+    // 简易模式不在工作区创建 .inkstream 索引库（wiki-link/反链/图谱/搜索随之降级为空）。
+    if (!useSettingsStore.getState().simpleMode) void indexRebuild(info.root).catch(() => {});
     // CREA-02：扫 Codex/ 文献条目供提及高亮（fire-and-forget，无 Codex/ 即空，不阻断打开）。
     void refreshCodex(info.root).catch(() => {});
   } catch (e) {

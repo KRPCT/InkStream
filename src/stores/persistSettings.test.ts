@@ -93,6 +93,7 @@ describe('persistSettings', () => {
       dailyWordGoal: 1000,
       gitRemoteMode: 'ssh',
       gitCustomServer: '',
+      simpleMode: false,
     });
   });
 

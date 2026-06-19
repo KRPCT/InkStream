@@ -18,6 +18,7 @@ const VALID = {
   dailyWordGoal: 2000,
   gitRemoteMode: 'oauth',
   gitCustomServer: 'git@example.com:u/r.git',
+  simpleMode: true,
 };
 
 describe('validateSettings', () => {
@@ -113,6 +114,7 @@ describe('validateSettings', () => {
       dailyWordGoal: 1000,
       gitRemoteMode: 'ssh',
       gitCustomServer: '',
+      simpleMode: false,
     });
   });
 

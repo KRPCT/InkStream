@@ -3,6 +3,7 @@ import { readFile } from '../ipc/files';
 import { indexRemoveDoc, indexUpsertDoc, isIndexable } from '../ipc/indexService';
 import { consumeSuppressedWatch, freezeAutosave } from '../stores/autosave';
 import { useGitStore } from '../stores/useGitStore';
+import { useSettingsStore } from '../stores/useSettingsStore';
 import { showToast } from '../stores/useToastStore';
 import { useEditorStore } from '../stores/useEditorStore';
 import { useVaultStore } from '../stores/useVaultStore';
@@ -45,6 +46,7 @@ function baseName(path: string): string {
  * remove → 删索引；create/modify → 读盘 upsert（仅 .md，与 rebuild 一致）。fire-and-forget 不阻断仲裁。
  */
 function reindexExternal(root: string, rel: string, kind: string): void {
+  if (useSettingsStore.getState().simpleMode) return; // 简易模式不建/不更新索引
   if (!isIndexable(rel)) return;
   try {
     if (kind === 'remove') {

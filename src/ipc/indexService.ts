@@ -1,4 +1,5 @@
 import Database from '@tauri-apps/plugin-sql';
+import { useSettingsStore } from '../stores/useSettingsStore';
 import { useVaultStore } from '../stores/useVaultStore';
 import { invoke } from './invoke';
 
@@ -66,6 +67,9 @@ let dbRoot: string | null = null;
 
 /** 当前 vault 的只读索引连接（懒开；切 vault 重连；无 vault 返 null）。 */
 function indexDb(): Promise<Database> | null {
+  // 简易模式：绝不打开索引连接——既避免 plugin-sql 在用户库创建 .inkstream/index.db（D-08 +
+  // 简易模式核心约束），又让反链 / 未链接提及 / 图谱查询一律降级空（不返回陈旧索引）。
+  if (useSettingsStore.getState().simpleMode) return null;
   const root = useVaultStore.getState().vault?.root ?? null;
   if (root === null) return null;
   if (dbRoot !== root) {

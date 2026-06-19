@@ -35,4 +35,6 @@ export interface PersistedSettings {
   gitRemoteMode: GitRemoteMode;
   /** 自定义 git 服务器地址（gitRemoteMode='custom' 时用）。 */
   gitCustomServer: string;
+  /** 简易模式（轻度用户）：关闭全部高级功能 + 不在工作区创建 .inkstream 索引库，仅留基础编辑。 */
+  simpleMode: boolean;
 }

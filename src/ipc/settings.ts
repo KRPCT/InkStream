@@ -33,7 +33,7 @@ export async function loadSettings(): Promise<unknown> {
   return Object.fromEntries(await store.entries());
 }
 
-/** 整体写入五个顶层键并显式 save()。 */
+/** 整体写入全部顶层键并显式 save()（含簇② 与 simpleMode——此前漏写致重启丢失，已修）。 */
 export async function saveSettings(s: PersistedSettings): Promise<void> {
   const store = await settingsStore();
   await store.set('version', s.version);
@@ -41,6 +41,13 @@ export async function saveSettings(s: PersistedSettings): Promise<void> {
   await store.set('mode', s.mode);
   await store.set('layouts', s.layouts);
   await store.set('commandMru', s.commandMru);
+  await store.set('autosaveEnabled', s.autosaveEnabled);
+  await store.set('autosaveDelayMs', s.autosaveDelayMs);
+  await store.set('editorFontSize', s.editorFontSize);
+  await store.set('dailyWordGoal', s.dailyWordGoal);
+  await store.set('gitRemoteMode', s.gitRemoteMode);
+  await store.set('gitCustomServer', s.gitCustomServer);
+  await store.set('simpleMode', s.simpleMode);
   await store.save();
 }
 

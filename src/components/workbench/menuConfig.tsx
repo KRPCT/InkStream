@@ -181,22 +181,46 @@ function recentEntry(cfg: RecentConfig, recent: string[]): MenuEntry {
   };
 }
 
-/** 把一组菜单配置转 MenuEntry[]（处理分隔线 / 最近 / 子菜单 / 普通命令）。 */
+/** 去掉首尾与连续分隔线（简易模式门控移除条目后可能留下悬空 / 相邻分隔线）。 */
+function collapseSeparators(entries: MenuEntry[]): MenuEntry[] {
+  const out: MenuEntry[] = [];
+  for (const e of entries) {
+    if (e.separator && (out.length === 0 || out[out.length - 1].separator)) continue;
+    out.push(e);
+  }
+  while (out.length > 0 && out[out.length - 1].separator) out.pop();
+  return out;
+}
+
+/**
+ * 把一组菜单配置转 MenuEntry[]（处理分隔线 / 最近 / 子菜单 / 普通命令）。
+ * 简易模式（simpleMode）下隐藏高级命令项（command.advanced）；整组皆高级的子菜单（如「模式」）
+ * 连同其入口一并隐藏；最后 collapseSeparators 清理因隐藏产生的悬空分隔线，与命令面板门控同源。
+ */
 export function toEntries(
   group: GroupConfig,
   commands: Map<string, Command>,
   recent: string[],
+  simpleMode = false,
 ): MenuEntry[] {
-  return group.items.map((item, i) => {
-    if ('separator' in item) return { id: `sep-${group.label}-${i}`, label: '', separator: true };
-    if ('recent' in item) return recentEntry(item, recent);
-    if ('submenu' in item) {
-      return {
+  const hidden = (id: string): boolean => simpleMode && commands.get(id)?.advanced === true;
+  const entries: MenuEntry[] = [];
+  for (const [i, item] of group.items.entries()) {
+    if ('separator' in item) {
+      entries.push({ id: `sep-${group.label}-${i}`, label: '', separator: true });
+    } else if ('recent' in item) {
+      entries.push(recentEntry(item, recent));
+    } else if ('submenu' in item) {
+      const subs = item.submenu.filter((sub) => !hidden(sub.commandId));
+      if (subs.length === 0) continue; // 整组高级（如「模式」）在简易模式整项隐藏
+      entries.push({
         id: `submenu-${item.label}`,
         label: item.label,
-        submenu: item.submenu.map((sub) => toEntry(sub, commands)),
-      };
+        submenu: subs.map((sub) => toEntry(sub, commands)),
+      });
+    } else if (!hidden(item.commandId)) {
+      entries.push(toEntry(item, commands));
     }
-    return toEntry(item, commands);
-  });
+  }
+  return collapseSeparators(entries);
 }
