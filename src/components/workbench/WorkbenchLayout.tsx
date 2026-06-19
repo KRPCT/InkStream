@@ -10,6 +10,7 @@ import {
 import { useWorkbenchStore } from '../../stores/useWorkbenchStore';
 import { buildLayoutPatch } from './layoutPatch';
 import GitGraphView from '../git/GitGraphView';
+import GraphView from './GraphView';
 import CentralArea from './CentralArea';
 import RightPanel from './RightPanel';
 import Sidebar from './Sidebar';
@@ -60,6 +61,7 @@ export default function WorkbenchLayout() {
   const setLayout = useWorkbenchStore((s) => s.setLayout);
   // git-graph 全宽：开图谱时作覆盖层盖住三栏（Group 不卸载保编辑器/CM 状态），故不动面板折叠机制（避 UAT #6）。
   const gitGraphOpen = useWorkbenchStore((s) => s.centralView === 'gitGraph');
+  const graphOpen = useWorkbenchStore((s) => s.centralView === 'graph');
   const groupRef = useGroupRef();
   const sidebarRef = usePanelRef();
   const rightRef = usePanelRef();
@@ -175,6 +177,11 @@ export default function WorkbenchLayout() {
         {gitGraphOpen ? (
           <div className="absolute inset-0 bg-[var(--background-primary)]">
             <GitGraphView />
+          </div>
+        ) : null}
+        {graphOpen ? (
+          <div className="absolute inset-0 bg-[var(--background-primary)]">
+            <GraphView />
           </div>
         ) : null}
       </div>

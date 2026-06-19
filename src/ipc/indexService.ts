@@ -128,3 +128,29 @@ export async function queryUnlinkedMentions(filePath: string): Promise<string[]>
     return [];
   }
 }
+
+/**
+ * 图谱数据源（Phase 10 / LINK-06）：全库 .md 文件（节点）+ 全部链接（边）。
+ * links 表当前仅 wikilink 行（embed `![[]]` 同存为 wikilink、citation `[@]` 不入表），与 queryBacklinks
+ * 同口径不按 kind 过滤。target_raw 的三形态解析交前端 graph/buildGraph.ts。失败返回空图（不阻断 UI）。
+ */
+export async function queryGraphData(): Promise<{
+  files: string[];
+  links: Array<{ source_path: string; target_raw: string }>;
+}> {
+  const conn = indexDb();
+  if (!conn) return { files: [], links: [] };
+  try {
+    const db = await conn;
+    const fileRows = await db.select<Array<{ path: string }>>(
+      'SELECT path FROM files ORDER BY path',
+    );
+    const linkRows = await db.select<Array<{ source_path: string; target_raw: string }>>(
+      'SELECT source_path, target_raw FROM links',
+    );
+    return { files: fileRows.map((r) => r.path), links: linkRows };
+  } catch {
+    resetConn();
+    return { files: [], links: [] };
+  }
+}

@@ -1,4 +1,6 @@
 import CitationIndicator from './CitationIndicator';
+import CursorPositionIndicator from './CursorPositionIndicator';
+import FilePathIndicator from './FilePathIndicator';
 import GitBranchIndicator from './GitBranchIndicator';
 import ModeIndicator from './ModeIndicator';
 import RenderModeIndicator from './RenderModeIndicator';
@@ -14,10 +16,12 @@ export default function StatusBar() {
       data-testid="status-bar"
       className="flex h-6 shrink-0 items-center justify-between border-t border-[var(--background-modifier-border)] bg-[var(--background-secondary)] pl-2 text-[12px] text-[var(--text-muted)]"
     >
-      <div data-testid="status-bar-left" className="flex h-full">
+      <div data-testid="status-bar-left" className="flex h-full min-w-0">
         <GitBranchIndicator />
+        <FilePathIndicator />
       </div>
       <div data-testid="status-bar-right" className="flex h-full">
+        <CursorPositionIndicator />
         <WordCountIndicator />
         <CitationIndicator />
         <RenderModeIndicator />

@@ -40,6 +40,7 @@ const TITLES: Record<string, string> = {
   'view.toggle-sidebar': '视图：切换侧边栏',
   'view.toggle-right-panel': '视图：切换右侧面板',
   'view.reset-layout': '视图：重置当前模式布局',
+  'view.open-graph': '视图：知识图谱',
   'view.command-palette': '视图：命令面板',
   'view.settings': '视图：设置',
   'file.open-file': '文件：打开文件',
@@ -100,8 +101,8 @@ const TITLES: Record<string, string> = {
   'academic.biblio-vancouver': '学术：参考文献（Vancouver）',
 };
 
-/** 生产命令总数：…前略… + 学术引用/脚注/参考文献 + 参考文献三式(Phase8 ZOT-04) = 66。 */
-const COMMAND_COUNT = 66;
+/** 生产命令总数：…前略… + 参考文献三式(Phase8 ZOT-04) + 知识图谱(Phase10 LINK-06) = 67。 */
+const COMMAND_COUNT = 67;
 
 /** 生产命令（剔除 dev.* DEV-only 命令，如 IME 探针 dev.ime-probe）。 */
 function prodCommands() {
@@ -278,6 +279,15 @@ describe('builtins', () => {
     expect(normalizeEvent(key({ key: 'e', ctrlKey: true }))).toBe('Ctrl+E');
     window.dispatchEvent(key({ key: 'e', ctrlKey: true }));
     expect(toggleRenderMode).toHaveBeenCalledTimes(1);
+  });
+
+  it('合成 Ctrl+G 打开知识图谱中央视图（LINK-06），再按回编辑器', () => {
+    initKeymap();
+    expect(normalizeEvent(key({ key: 'g', ctrlKey: true }))).toBe('Ctrl+G');
+    window.dispatchEvent(key({ key: 'g', ctrlKey: true }));
+    expect(useWorkbenchStore.getState().centralView).toBe('graph');
+    window.dispatchEvent(key({ key: 'g', ctrlKey: true }));
+    expect(useWorkbenchStore.getState().centralView).toBe('editor');
   });
 
   it('execute app.exit 经 ipc 收口调 close', async () => {

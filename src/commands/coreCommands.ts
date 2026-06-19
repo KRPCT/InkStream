@@ -74,6 +74,13 @@ export const CORE_COMMANDS: Command[] = [
     run: () => useWorkbenchStore.getState().resetCurrentLayout(),
   },
   {
+    id: 'view.open-graph',
+    title: '视图：知识图谱',
+    // 全库 Graph View 中央区覆盖层（LINK-06）；再按回编辑器。
+    shortcut: 'Ctrl+G',
+    run: () => useWorkbenchStore.getState().toggleCentralView('graph'),
+  },
+  {
     id: 'view.command-palette',
     title: '视图：命令面板',
     shortcut: 'Ctrl+Shift+P',

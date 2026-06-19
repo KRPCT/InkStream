@@ -4,6 +4,7 @@ import type { TabId } from '../../types/workbench';
 import BacklinksPanel from './BacklinksPanel';
 import CitationPanel from './CitationPanel';
 import CodexPanel from './CodexPanel';
+import LocalGraphPanel from './LocalGraphPanel';
 import OutlinePanel from './OutlinePanel';
 import SceneSummaryPanel from './SceneSummaryPanel';
 import EmptyState from '../common/EmptyState';
@@ -58,6 +59,8 @@ export default function RightPanel() {
               <CodexPanel />
             ) : id === 'sceneSummary' ? (
               <SceneSummaryPanel />
+            ) : id === 'localGraph' ? (
+              <LocalGraphPanel />
             ) : (
               <EmptyState icon={TAB_ICONS[id]} heading={TAB_EMPTY[id].heading} body={TAB_EMPTY[id].body} />
             )}

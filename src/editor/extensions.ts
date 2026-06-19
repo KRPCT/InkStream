@@ -10,6 +10,7 @@ import { livePreviewExtensions, renderModeCompartment } from './livepreview/live
 import { focusModeExtensions, toggleFocusMode } from './livepreview/focusMode';
 import { compositionGate } from './composition';
 import { mirrorListener } from './mirrorListener';
+import { useWorkbenchStore } from '../stores/useWorkbenchStore';
 
 /**
  * 编辑器正文排版基线 theme（R5-typography §3.3；F4 CDP 实机修正）。
@@ -95,6 +96,16 @@ export function baseExtensions(lang: string = 'markdown'): Extension[] {
         preventDefault: true,
         run: () => {
           toggleFocusMode();
+          return true;
+        },
+      },
+      // LINK-06：Ctrl+G 打开知识图谱，置于 searchKeymap 前覆盖其 Mod-g(findNext)，使编辑器聚焦时也生效
+      // （查找下一个改走查找面板内 Enter / F3；命令面板标注的 Ctrl+G 由此在编辑器内外行为一致）。
+      {
+        key: 'Mod-g',
+        preventDefault: true,
+        run: () => {
+          useWorkbenchStore.getState().toggleCentralView('graph');
           return true;
         },
       },
