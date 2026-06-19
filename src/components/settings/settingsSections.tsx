@@ -1,5 +1,11 @@
 import { type ReactNode, useEffect, useState } from 'react';
-import { gitGithubStatus, gitLoginGithub, gitLogoutGithub } from '../../ipc/git';
+import {
+  ghCliStatus,
+  gitGithubStatus,
+  gitLoginGithub,
+  gitLoginGithubGh,
+  gitLogoutGithub,
+} from '../../ipc/git';
 import {
   zoteroClearCredentials,
   zoteroCredentialsStatus,
@@ -235,11 +241,15 @@ export function AccountSection() {
   const [loggedIn, setLoggedIn] = useState<boolean | null>(null);
   const [token, setToken] = useState('');
   const [busy, setBusy] = useState(false);
+  const [ghAvailable, setGhAvailable] = useState(false);
 
   useEffect(() => {
     void gitGithubStatus()
       .then(setLoggedIn)
       .catch(() => setLoggedIn(false));
+    void ghCliStatus()
+      .then(setGhAvailable)
+      .catch(() => setGhAvailable(false));
   }, []);
 
   const login = async (): Promise<void> => {
@@ -252,6 +262,17 @@ export function AccountSection() {
       setLoggedIn(true);
     } catch (e) {
       showToast('error', `登录失败：${errText(e)}`);
+    } finally {
+      setBusy(false);
+    }
+  };
+  const loginGh = async (): Promise<void> => {
+    setBusy(true);
+    try {
+      await gitLoginGithubGh();
+      setLoggedIn(true);
+    } catch (e) {
+      showToast('error', `gh CLI 登录失败：${errText(e)}`);
     } finally {
       setBusy(false);
     }
@@ -306,6 +327,16 @@ export function AccountSection() {
               登录
             </button>
           </div>
+          {ghAvailable ? (
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => void loginGh()}
+              className="mt-2 rounded-[4px] border border-[var(--background-modifier-border)] px-3 py-1 text-[12px] text-[var(--text-normal)] hover:bg-[var(--background-modifier-hover)] disabled:opacity-50"
+            >
+              用本机 gh CLI 一键登录（已检测到登录态）
+            </button>
+          ) : null}
           <p className="mt-2 text-[12px] leading-snug text-[var(--text-faint)]">
             在 GitHub ▸ Settings ▸ Developer settings ▸ Personal access tokens 创建一个含 repo 权限的令牌。
           </p>

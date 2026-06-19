@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { ExternalLink, Plus, RefreshCw } from 'lucide-react';
 import { ghPrCreate, ghPrList, ghPrMerge } from '../../ipc/git';
 import { openExternal } from '../../ipc/opener';
+import { useGitGraphStore } from '../../stores/useGitGraphStore';
 import { useGitStore } from '../../stores/useGitStore';
 import { showToast } from '../../stores/useToastStore';
 import type { MergeMethod, PullRequest } from '../../types/git';
@@ -26,6 +27,7 @@ export default function PullRequestPanel() {
   const repoRoot = useGitStore((s) => s.repoRoot);
   const currentBranch = useGitStore((s) => s.status?.branch ?? null);
   const branches = useGitStore((s) => s.branches);
+  const selectPr = useGitGraphStore((s) => s.selectPr);
   const [prs, setPrs] = useState<PullRequest[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -179,7 +181,7 @@ export default function PullRequestPanel() {
                 <span className="shrink-0 text-[11px] text-[var(--text-faint)]">#{pr.number}</span>
                 <button
                   type="button"
-                  onClick={() => void openExternal(pr.url)}
+                  onClick={() => selectPr(pr)}
                   title={pr.title}
                   className="min-w-0 flex-1 truncate text-left text-[13px] text-[var(--text-normal)] hover:text-[var(--accent)]"
                 >

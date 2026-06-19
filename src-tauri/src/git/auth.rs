@@ -7,6 +7,7 @@
 
 use super::GitError;
 use keyring_core::Entry;
+use std::process::Command;
 use std::sync::Once;
 
 const SERVICE: &str = "inkstream";
@@ -63,4 +64,58 @@ pub async fn git_logout_github() -> Result<(), String> {
 #[tauri::command]
 pub async fn git_github_status() -> Result<bool, String> {
     super::blocking(move || Ok(github_token().is_some())).await
+}
+
+/// 从已登录的 gh CLI 取 token（stdout 捕获，不入 argv/日志）。未装/未登录 → 友好错误。
+fn gh_token_from_cli() -> Result<String, GitError> {
+    let out = Command::new("gh")
+        .args(["auth", "token", "--hostname", "github.com"])
+        .output()
+        .map_err(|e| {
+            if e.kind() == std::io::ErrorKind::NotFound {
+                GitError::Git("未检测到 gh CLI：请安装 GitHub CLI，或改用 Token 登录".into())
+            } else {
+                GitError::Internal(format!("调用 gh 失败: {e}"))
+            }
+        })?;
+    if !out.status.success() {
+        return Err(GitError::Git(
+            "gh 尚未登录：请先在终端运行 `gh auth login`，或改用 Token 登录".into(),
+        ));
+    }
+    let token = String::from_utf8_lossy(&out.stdout).trim().to_string();
+    if token.is_empty() {
+        return Err(GitError::Git("gh 未返回有效 token".into()));
+    }
+    Ok(token)
+}
+
+/// 是否检测到 gh CLI 且已在 github.com 登录（探测，token 不留存、不回传）。
+#[tauri::command]
+pub async fn gh_cli_status() -> Result<bool, String> {
+    super::blocking(|| {
+        match Command::new("gh")
+            .args(["auth", "token", "--hostname", "github.com"])
+            .output()
+        {
+            Ok(o) => {
+                Ok(o.status.success() && !String::from_utf8_lossy(&o.stdout).trim().is_empty())
+            }
+            Err(_) => Ok(false),
+        }
+    })
+    .await
+}
+
+/// 用 gh CLI 一键登录：取其 token 存入 keyring（token 全程不出 Rust、不回传前端）。
+#[tauri::command]
+pub async fn git_login_github_gh() -> Result<(), String> {
+    super::blocking(|| {
+        let token = gh_token_from_cli()?;
+        entry()?
+            .set_password(&token)
+            .map_err(|e| GitError::Internal(format!("保存 token 失败: {e}")))?;
+        Ok(())
+    })
+    .await
 }

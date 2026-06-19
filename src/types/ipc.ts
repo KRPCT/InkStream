@@ -1,16 +1,20 @@
 import type {
   BranchInfo,
+  Comment,
   CommitInfo,
   DiffTarget,
   FileDiff,
   GitOpResult,
   GitRef,
   GitStatus,
+  Issue,
   MergeMethod,
   MergeResult,
   PullOutcome,
   PullRequest,
   ResetMode,
+  Review,
+  ReviewEvent,
   StashEntry,
 } from './git';
 import type { FileEntry, TreeEntry, VaultInfo } from './vault';
@@ -104,6 +108,20 @@ export interface IpcCommands {
     args: { repoRoot: string; number: number; method: MergeMethod };
     result: MergeResult;
   };
+  // Phase 11 GH-02/03：Issue / 评论 / PR diff / PR review（全走 Rust reqwest，token 留 keyring）。
+  gh_pr_diff: { args: { repoRoot: string; number: number }; result: FileDiff[] };
+  gh_pr_reviews: { args: { repoRoot: string; number: number }; result: Review[] };
+  gh_pr_review_create: {
+    args: { repoRoot: string; number: number; event: ReviewEvent; body: string };
+    result: Review;
+  };
+  gh_issue_list: { args: { repoRoot: string; state: string }; result: Issue[] };
+  gh_issue_create: { args: { repoRoot: string; title: string; body: string }; result: Issue };
+  gh_comment_list: { args: { repoRoot: string; number: number }; result: Comment[] };
+  gh_comment_create: { args: { repoRoot: string; number: number; body: string }; result: Comment };
+  // Phase 11 GH-01：gh CLI 备用登录（探测 + 取 token 存 keyring）。
+  gh_cli_status: { args: undefined; result: boolean };
+  git_login_github_gh: { args: undefined; result: null };
   // Phase 8 ZOT-01：Zotero Better BibTeX CAYW（Rust reqwest 代理 localhost:23119）。
   zotero_cayw: { args: undefined; result: string };
   // Phase 8 ZOT-03：Zotero 库全部 citekey（Citation Panel 未解析判定）。

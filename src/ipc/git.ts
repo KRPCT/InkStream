@@ -1,6 +1,7 @@
 import { invoke, invokeStreamed } from './invoke';
 import type {
   BranchInfo,
+  Comment,
   CommitInfo,
   DiffTarget,
   FileDiff,
@@ -8,11 +9,14 @@ import type {
   GitProgress,
   GitRef,
   GitStatus,
+  Issue,
   MergeMethod,
   MergeResult,
   PullOutcome,
   PullRequest,
   ResetMode,
+  Review,
+  ReviewEvent,
   StashEntry,
 } from '../types/git';
 
@@ -220,4 +224,58 @@ export function ghPrMerge(
   method: MergeMethod,
 ): Promise<MergeResult> {
   return invoke('gh_pr_merge', { repoRoot, number: prNumber, method });
+}
+
+// ── GitHub Issue / 评论 / PR diff / review（Phase 11 GH-02/03，REST 走 Rust）────────────
+
+/** PR 逐文件结构化 diff（复用 FileDiff → DiffHunkView 渲染）。 */
+export function ghPrDiff(repoRoot: string, prNumber: number): Promise<FileDiff[]> {
+  return invoke('gh_pr_diff', { repoRoot, number: prNumber });
+}
+
+/** 列出 PR 的 review。 */
+export function ghPrReviews(repoRoot: string, prNumber: number): Promise<Review[]> {
+  return invoke('gh_pr_reviews', { repoRoot, number: prNumber });
+}
+
+/** 提交 PR review（approve / request-changes / comment）。 */
+export function ghPrReviewCreate(
+  repoRoot: string,
+  prNumber: number,
+  event: ReviewEvent,
+  body: string,
+): Promise<Review> {
+  return invoke('gh_pr_review_create', { repoRoot, number: prNumber, event, body });
+}
+
+/** 列出仓库 Issue（state ∈ open|closed|all）。 */
+export function ghIssueList(repoRoot: string, state: string): Promise<Issue[]> {
+  return invoke('gh_issue_list', { repoRoot, state });
+}
+
+/** 新建 Issue。 */
+export function ghIssueCreate(repoRoot: string, title: string, body: string): Promise<Issue> {
+  return invoke('gh_issue_create', { repoRoot, title, body });
+}
+
+/** 列出 issue/PR 评论（PR number 即 issue number）。 */
+export function ghCommentList(repoRoot: string, number: number): Promise<Comment[]> {
+  return invoke('gh_comment_list', { repoRoot, number });
+}
+
+/** 给 issue/PR 发表评论。 */
+export function ghCommentCreate(repoRoot: string, number: number, body: string): Promise<Comment> {
+  return invoke('gh_comment_create', { repoRoot, number, body });
+}
+
+// ── gh CLI 备用登录（Phase 11 GH-01，token 由 Rust 取并存 keyring，不出 Rust）──────────
+
+/** 是否检测到 gh CLI 且已在 github.com 登录。 */
+export function ghCliStatus(): Promise<boolean> {
+  return invoke('gh_cli_status', undefined);
+}
+
+/** 用 gh CLI 一键登录（取其 token 存入 keyring）。 */
+export function gitLoginGithubGh(): Promise<null> {
+  return invoke('git_login_github_gh', undefined);
 }

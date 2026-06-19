@@ -147,3 +147,40 @@ export interface MergeResult {
   merged: boolean;
   message: string;
 }
+
+/** GitHub Issue（GH-02，↔ Rust pr.rs Issue serde camelCase）。 */
+export interface Issue {
+  number: number;
+  title: string;
+  body: string;
+  /** open / closed。 */
+  state: string;
+  author: string;
+  createdAt: string;
+  updatedAt: string;
+  url: string;
+  comments: number;
+}
+
+/** issue / PR 评论（共用 /issues/{n}/comments）。 */
+export interface Comment {
+  id: number;
+  author: string;
+  body: string;
+  createdAt: string;
+  url: string;
+}
+
+/** 提交 PR review 的 event 类型。 */
+export type ReviewEvent = 'APPROVE' | 'REQUEST_CHANGES' | 'COMMENT';
+
+/** PR review（GH-03，↔ Rust pr.rs Review）。 */
+export interface Review {
+  id: number;
+  author: string;
+  body: string;
+  /** APPROVED | CHANGES_REQUESTED | COMMENTED | DISMISSED | PENDING。 */
+  state: string;
+  url: string;
+  submittedAt: string | null;
+}

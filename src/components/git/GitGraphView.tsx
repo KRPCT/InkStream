@@ -23,6 +23,8 @@ import { useGitStore } from '../../stores/useGitStore';
 import { useWorkbenchStore } from '../../stores/useWorkbenchStore';
 import BranchFilter from './BranchFilter';
 import BranchManager from './BranchManager';
+import IssuePanel from './IssuePanel';
+import PrDetailPanel from './PrDetailPanel';
 import PullRequestPanel from './PullRequestPanel';
 import RepoSettings from './RepoSettings';
 import CommitGraphList from './graph/CommitGraphList';
@@ -45,6 +47,7 @@ export default function GitGraphView() {
   // 左栏：提交图谱 ⇄ 分支管理（参考 GitButler 的清晰分支 UX；置于 store 便于侧栏「分支」入口直达）。
   const leftMode = useGitGraphStore((s) => s.leftMode);
   const setLeftMode = useGitGraphStore((s) => s.setLeftMode);
+  const selectedPr = useGitGraphStore((s) => s.selectedPr);
   // Find Widget（W5）：搜索栏在图谱栏内，工具条按钮切换并保证停在图谱视图。
   const findOpen = useGitGraphStore((s) => s.findOpen);
   const setFindOpen = useGitGraphStore((s) => s.setFindOpen);
@@ -62,7 +65,7 @@ export default function GitGraphView() {
             Git Graph · {remoteBusy ?? (loading ? '加载中…' : `${commitCount} 提交`)}
           </span>
           <div className="flex overflow-hidden rounded-[4px] border border-[var(--background-modifier-border)]">
-            {(['graph', 'branches', 'pr'] as const).map((m) => (
+            {(['graph', 'branches', 'pr', 'issues'] as const).map((m) => (
               <button
                 key={m}
                 type="button"
@@ -73,7 +76,7 @@ export default function GitGraphView() {
                     : 'text-[var(--text-muted)] hover:bg-[var(--background-modifier-hover)]'
                 }`}
               >
-                {m === 'graph' ? '图谱' : m === 'branches' ? '分支' : 'PR'}
+                {m === 'graph' ? '图谱' : m === 'branches' ? '分支' : m === 'pr' ? 'PR' : 'Issues'}
               </button>
             ))}
           </div>
@@ -165,13 +168,15 @@ export default function GitGraphView() {
             <BranchManager />
           ) : leftMode === 'pr' ? (
             <PullRequestPanel />
+          ) : leftMode === 'issues' ? (
+            <IssuePanel />
           ) : (
             <CommitGraphList />
           )}
         </Panel>
         <Separator className="workbench-separator" />
         <Panel id="graph-detail" minSize={240} defaultSize={340} className="h-full">
-          <CommitDetailPanel />
+          {leftMode === 'pr' && selectedPr ? <PrDetailPanel /> : <CommitDetailPanel />}
         </Panel>
         <Separator className="workbench-separator" />
         <Panel id="graph-diff" minSize={300} className="h-full">

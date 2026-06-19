@@ -1,6 +1,6 @@
 import { create } from 'zustand';
-import { gitDiff, gitLog, gitRefs } from '../ipc/git';
-import type { CommitInfo, FileDiff, GitRef } from '../types/git';
+import { ghPrDiff, gitDiff, gitLog, gitRefs } from '../ipc/git';
+import type { CommitInfo, FileDiff, GitRef, PullRequest } from '../types/git';
 
 /**
  * git-graph 视图状态（Phase 6 GIT-02/05）。commits/refs 仓库级（不随当前文档变）；
@@ -27,9 +27,12 @@ interface GitGraphState {
   selectedFile: string | null;
   /** 远程操作进行中的提示文案（W4，fetch/push/pull 期间显示；null=空闲）。 */
   remoteBusy: string | null;
-  /** git-graph 左栏视图：提交图谱 / 分支管理 / Pull Requests（侧栏入口可直接设再开 graph）。 */
-  leftMode: 'graph' | 'branches' | 'pr';
-  setLeftMode: (mode: 'graph' | 'branches' | 'pr') => void;
+  /** git-graph 左栏视图：提交图谱 / 分支管理 / Pull Requests / Issues。 */
+  leftMode: 'graph' | 'branches' | 'pr' | 'issues';
+  setLeftMode: (mode: 'graph' | 'branches' | 'pr' | 'issues') => void;
+  /** 选中的 PR（leftMode==='pr' 时中栏显详情、右栏复用 commitFiles 显其文件 diff）；null=未选。 */
+  selectedPr: PullRequest | null;
+  selectPr: (pr: PullRequest) => void;
   /** Find Widget 开关（W5）：提交搜索栏显隐。 */
   findOpen: boolean;
   setFindOpen: (open: boolean) => void;
@@ -53,12 +56,18 @@ export const useGitGraphStore = create<GitGraphState>((set, get) => ({
   refs: [],
   loading: false,
   selectedOid: null,
+  selectedPr: null,
   commitFiles: [],
   filesLoading: false,
   selectedFile: null,
   remoteBusy: null,
   leftMode: 'graph',
-  setLeftMode: (leftMode) => set({ leftMode }),
+  setLeftMode: (mode) =>
+    set((s) =>
+      s.leftMode === mode
+        ? s
+        : { leftMode: mode, selectedPr: null, selectedOid: null, commitFiles: [], selectedFile: null },
+    ),
   findOpen: false,
   setFindOpen: (findOpen) => set({ findOpen }),
   filterRefs: [],
@@ -94,7 +103,7 @@ export const useGitGraphStore = create<GitGraphState>((set, get) => ({
   selectCommit: (oid) => {
     const repoRoot = get().repoRoot;
     if (!repoRoot) return;
-    set({ selectedOid: oid, commitFiles: [], selectedFile: null, filesLoading: true });
+    set({ selectedOid: oid, selectedPr: null, commitFiles: [], selectedFile: null, filesLoading: true });
     void gitDiff(repoRoot, { commit: { oid } })
       .then((files) => {
         if (get().selectedOid !== oid) return; // 防竞态：期间又点了别的
@@ -106,6 +115,30 @@ export const useGitGraphStore = create<GitGraphState>((set, get) => ({
       })
       .catch(() => {
         if (get().selectedOid === oid) set({ filesLoading: false });
+      });
+  },
+
+  selectPr: (pr) => {
+    const repoRoot = get().repoRoot;
+    if (!repoRoot) return;
+    set({
+      selectedPr: pr,
+      selectedOid: null,
+      commitFiles: [],
+      selectedFile: null,
+      filesLoading: true,
+    });
+    void ghPrDiff(repoRoot, pr.number)
+      .then((files) => {
+        if (get().selectedPr?.number !== pr.number) return; // 防竞态：期间又点了别的
+        set({
+          commitFiles: files,
+          filesLoading: false,
+          selectedFile: files.length > 0 ? pathOf(files[0]) : null,
+        });
+      })
+      .catch(() => {
+        if (get().selectedPr?.number === pr.number) set({ filesLoading: false });
       });
   },
 
