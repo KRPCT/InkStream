@@ -7,6 +7,7 @@ import {
   usePanelRef,
   type PanelImperativeHandle,
 } from 'react-resizable-panels';
+import { useSettingsStore } from '../../stores/useSettingsStore';
 import { useWorkbenchStore } from '../../stores/useWorkbenchStore';
 import { buildLayoutPatch } from './layoutPatch';
 import GitGraphView from '../git/GitGraphView';
@@ -60,10 +61,13 @@ export default function WorkbenchLayout() {
   const mode = useWorkbenchStore((s) => s.mode);
   const layout = useWorkbenchStore((s) => s.layouts[s.mode]);
   const setLayout = useWorkbenchStore((s) => s.setLayout);
+  // 简易模式：图谱 / Git Graph / 合并均为高级覆盖层——纵深防御在渲染层兜底，挡住编辑器内 Ctrl+G
+  // 直连 toggleCentralView（绕过 registry.execute 门控）及任何残留 centralView 状态。
+  const simpleMode = useSettingsStore((s) => s.simpleMode);
   // git-graph 全宽：开图谱时作覆盖层盖住三栏（Group 不卸载保编辑器/CM 状态），故不动面板折叠机制（避 UAT #6）。
-  const gitGraphOpen = useWorkbenchStore((s) => s.centralView === 'gitGraph');
-  const graphOpen = useWorkbenchStore((s) => s.centralView === 'graph');
-  const mergeOpen = useWorkbenchStore((s) => s.centralView === 'mergeResolve');
+  const gitGraphOpen = useWorkbenchStore((s) => s.centralView === 'gitGraph') && !simpleMode;
+  const graphOpen = useWorkbenchStore((s) => s.centralView === 'graph') && !simpleMode;
+  const mergeOpen = useWorkbenchStore((s) => s.centralView === 'mergeResolve') && !simpleMode;
   const groupRef = useGroupRef();
   const sidebarRef = usePanelRef();
   const rightRef = usePanelRef();
