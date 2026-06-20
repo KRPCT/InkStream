@@ -4,6 +4,7 @@ import ChoiceDialog from './components/common/ChoiceDialog';
 import ConfirmDialog from './components/common/ConfirmDialog';
 import PromptDialog from './components/common/PromptDialog';
 import Toast from './components/common/Toast';
+import UpdateDialog from './components/common/UpdateDialog';
 import WritingHud from './components/common/WritingHud';
 import ImeProbe from './components/dev/ImeProbe';
 import HelpModal from './components/help/HelpModal';
@@ -18,6 +19,7 @@ import { restoreLastVault } from './editor/startupFlow';
 import { windowControls } from './ipc/window';
 import { initOnboarding } from './stores/useOnboardingStore';
 import { usePandocStore } from './stores/usePandocStore';
+import { useUpdaterStore } from './stores/useUpdaterStore';
 import { initPersistence } from './stores/persistSettings';
 import { initVaultPersistence } from './stores/persistVault';
 
@@ -36,6 +38,8 @@ export default function App() {
     initOsFileOpen();
     // 文件导出：探测一次系统是否装 pandoc，决定「导出为」是否显示 odt/rtf/latex/epub/typst/org。
     void usePandocStore.getState().detect();
+    // 自动更新：启动静默检查（dev / 无网 / 无更新一律静默；有更新弹非侵入对话框）。模块级 checking 守 StrictMode。
+    void useUpdaterStore.getState().checkSilent();
     // FOUC 契约第 1 步收尾：首帧渲染后显示窗口（show 幂等，StrictMode 双执行无害）
     void windowControls.show();
     // 首次引导（簇③）：延迟到布局渲染后再开，spotlight 才能命中侧栏/状态栏元素。seen 标记防重复弹。
@@ -71,6 +75,8 @@ export default function App() {
       <Toast />
       {/* 写作 HUD（写作模式升级）：码字速度/时间/番茄钟，默认关闭，writing.toggle-hud 开启 */}
       <WritingHud />
+      {/* 自动更新对话框（FEAT-UPDATER）：有更新 / 手动检查时弹出，useUpdaterStore.dialogOpen 控制 */}
+      <UpdateDialog />
       {/* DEV-only：IME 输入探针（R2 实验，dev.ime-probe 命令打开）。生产构建摇树移除。 */}
       {import.meta.env.DEV && <ImeProbe />}
     </>

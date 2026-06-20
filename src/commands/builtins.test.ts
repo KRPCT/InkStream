@@ -77,6 +77,7 @@ const TITLES: Record<string, string> = {
   'help.guide': '帮助：使用教程',
   'help.onboarding': '帮助：重新引导',
   'help.shortcuts': '帮助：快捷键参考',
+  'help.check-update': '帮助：检查更新',
   // 编辑组
   'edit.undo': '编辑：撤销',
   'edit.redo': '编辑：重做',
@@ -115,7 +116,7 @@ const TITLES: Record<string, string> = {
 };
 
 /** 生产命令总数：…前略… + 导出 HTML/PDF/DOCX(×3) + 阅读模式(×1) + pandoc 格式导出(odt/rtf/latex/epub/typst/org ×6) = 80。 */
-const COMMAND_COUNT = 80;
+const COMMAND_COUNT = 81;
 
 /** 生产命令（剔除 dev.* DEV-only 命令，如 IME 探针 dev.ime-probe）。 */
 function prodCommands() {
@@ -146,7 +147,7 @@ describe('builtins', () => {
     disposeKeymap();
   });
 
-  it('注册 80 条生产命令，标题与 UI-SPEC / R4 字面逐字一致', () => {
+  it('注册 81 条生产命令，标题与 UI-SPEC / R4 字面逐字一致', () => {
     const all = prodCommands();
     expect(all).toHaveLength(COMMAND_COUNT);
     for (const [id, title] of Object.entries(TITLES)) {

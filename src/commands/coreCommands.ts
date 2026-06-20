@@ -15,6 +15,7 @@ import { useEditorStore } from '../stores/useEditorStore';
 import { useHelpStore } from '../stores/useHelpStore';
 import { useOnboardingStore } from '../stores/useOnboardingStore';
 import { usePaletteStore } from '../stores/usePaletteStore';
+import { useUpdaterStore } from '../stores/useUpdaterStore';
 import { useSettingsStore } from '../stores/useSettingsStore';
 import { useSettingsUiStore } from '../stores/useSettingsUiStore';
 import { useWorkbenchStore } from '../stores/useWorkbenchStore';
@@ -190,5 +191,10 @@ export const CORE_COMMANDS: Command[] = [
     title: '帮助：快捷键参考',
     // 弹命令面板命令模式（预填 '>'，每行右侧显示 Kbd 快捷键芯片，即快捷键参考视图）。
     run: () => usePaletteStore.getState().openPalette(),
+  },
+  {
+    id: 'help.check-update',
+    title: '帮助：检查更新', // 手动检查；启动静默检查见 App.tsx
+    run: () => void useUpdaterStore.getState().checkManual(),
   },
 ];

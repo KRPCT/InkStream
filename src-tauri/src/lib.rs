@@ -30,6 +30,9 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         // 前端只读 SQL 查询通道（Phase 4 FTS5 索引；写全在 Rust index 模块，capability 仅授 sql:default 只读集）。
         .plugin(tauri_plugin_sql::Builder::default().build())
+        // 自动更新（GitHub Releases latest.json + minisign 验签，公钥在 tauri.conf.json）+ 更新后重启。
+        .plugin(tauri_plugin_updater::Builder::new().build())
+        .plugin(tauri_plugin_process::init())
         .invoke_handler(tauri::generate_handler![
             vault::open_vault,
             vault::list_dir,

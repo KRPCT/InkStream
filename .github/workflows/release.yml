@@ -1,14 +1,17 @@
-# 三平台发行版构建：install → tauri build（前端构建 + 原生打包）→ 收集安装包 → 上传
-# 供应链约定同 ci.yml：仅 actions/* 官方 action 且按完整 commit SHA 锁定；
-# pnpm 经 corepack（与 packageManager 字段一致）、Rust 经 runner 自带 rustup、
-# 打包经本地 @tauri-apps/cli、Release 经 runner 预装 gh CLI——零第三方 action。
+# 三平台发行版构建：create-release（先建草稿）→ bundle（build + 签名 updater 产物 + 上传 + 平台签名条目）→
+# latest-json（聚合 latest.json 后才取消草稿发布）。供应链约定同 ci.yml：仅 actions/* 官方 action 按完整 commit
+# SHA 锁定；pnpm 经 corepack、Rust 经 rustup、打包/发布经本地 @tauri-apps/cli + runner 预装 gh/jq——零第三方 action。
 #
 # 触发：
-#   - workflow_dispatch：手动构建三平台安装包，产物作为 run artifact 下载（不发布）
-#   - push tag v*：构建并发布到对应 GitHub Release
+#   - workflow_dispatch：手动构建三平台安装包，产物作为 run artifact 下载（不建 Release、不签名）
+#   - push tag v*：建草稿 Release → 构建（签名 updater 产物）→ 聚合 latest.json → 取消草稿（一次性公开）
 #
-# 注意：macOS / Windows 产物未做代码签名（无证书 secret），属可分发但首次启动会有
-#       "未知开发者" 提示；正式发布前补 Apple Developer / Authenticode 证书。
+# 自动更新（FEAT-UPDATER）：先建**草稿** Release（避免 3 个矩阵作业并发建 Release 的竞态）；每个矩阵作业用
+# TAURI_SIGNING_* secret 签名其平台的 updater 产物（NSIS -setup.exe / AppImage / macOS .app.tar.gz），把该平台的
+# {signature,url} 写成 platform-<target>.json 上传到草稿；latest-json 聚合三份合成 latest.json 上传后才
+# `--draft=false` 公开——保证「latest」一出现就带 latest.json（否则客户端 404 静默报无更新）。私钥仅存 secret。
+#
+# 注意：macOS / Windows 产物未做代码签名（无证书 secret），属可分发但首次启动会有"未知开发者"提示。
 name: Release
 
 on:
@@ -20,17 +23,39 @@ permissions:
   contents: write
 
 jobs:
+  # 草稿 Release 一次性创建（job 永远跑，建 Release 步骤仅 tag push）。bundle 依赖它，杜绝并发建 Release 竞态。
+  create-release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Create draft release (tag push only)
+        if: startsWith(github.ref, 'refs/tags/')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "${GITHUB_REF_NAME}" \
+            --repo "${GITHUB_REPOSITORY}" \
+            --title "InkStream ${GITHUB_REF_NAME}" \
+            --notes "InkStream ${GITHUB_REF_NAME} 三平台发行版（自动构建，支持应用内自动更新）。" \
+            --verify-tag --draft || true
+
   bundle:
+    needs: create-release
     strategy:
       fail-fast: false
       matrix:
         include:
           - os: ubuntu-latest
             artifact: linux
+            target: linux-x86_64
+            updater_glob: src-tauri/target/release/bundle/appimage/*.AppImage
           - os: windows-latest
             artifact: windows
+            target: windows-x86_64
+            updater_glob: src-tauri/target/release/bundle/nsis/*-setup.exe
           - os: macos-latest
             artifact: macos
+            target: darwin-aarch64
+            updater_glob: src-tauri/target/release/bundle/macos/*.app.tar.gz
     runs-on: ${{ matrix.os }}
     steps:
       - name: Checkout
@@ -62,14 +87,20 @@ jobs:
 
       - name: Build bundles
         run: pnpm tauri build
+        env:
+          # 自动更新签名：存在私钥即触发 tauri 对 updater 产物签名并产出同名 .sig（公钥在 tauri.conf.json）。
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
 
       - name: Collect bundles
         shell: bash
         run: |
           mkdir -p dist-bundles
+          # 安装包 + macOS updater 载荷（*.app.tar.gz；Win/Linux 的 updater 载荷即其安装包本身）。
           find src-tauri/target/release/bundle -type f \
             \( -name '*.msi' -o -name '*.exe' -o -name '*.dmg' \
-            -o -name '*.deb' -o -name '*.AppImage' -o -name '*.rpm' \) \
+            -o -name '*.deb' -o -name '*.AppImage' -o -name '*.rpm' \
+            -o -name '*.app.tar.gz' \) \
             -exec cp {} dist-bundles/ \;
           ls -la dist-bundles/
 
@@ -80,14 +111,61 @@ jobs:
           path: dist-bundles/*
           if-no-files-found: error
 
-      - name: Publish to GitHub Release (tag push only)
+      - name: Upload bundles to draft release (tag push only)
+        if: startsWith(github.ref, 'refs/tags/')
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release upload "${GITHUB_REF_NAME}" dist-bundles/* --clobber --repo "${GITHUB_REPOSITORY}"
+
+      - name: Emit + upload updater platform entry (tag push only)
         if: startsWith(github.ref, 'refs/tags/')
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create "${GITHUB_REF_NAME}" \
-            --title "InkStream ${GITHUB_REF_NAME}" \
-            --notes "InkStream ${GITHUB_REF_NAME} 三平台发行版（自动构建）。" \
-            --verify-tag || true
-          gh release upload "${GITHUB_REF_NAME}" dist-bundles/* --clobber
+          set -euo pipefail
+          shopt -s nullglob
+          files=(${{ matrix.updater_glob }})
+          [ ${#files[@]} -eq 1 ] || { echo "期望恰好 1 个 updater 产物，实得 ${#files[@]}: ${files[*]-（无）}"; exit 1; }
+          art="${files[0]}"
+          [ -f "${art}.sig" ] || { echo "缺少签名文件 ${art}.sig（TAURI_SIGNING_* secret 是否已配置？）"; exit 1; }
+          base=$(basename "$art")
+          sig=$(cat "${art}.sig")
+          url="https://github.com/${GITHUB_REPOSITORY}/releases/download/${GITHUB_REF_NAME}/${base}"
+          out="platform-${{ matrix.target }}.json"
+          jq -n --arg t "${{ matrix.target }}" --arg sig "$sig" --arg url "$url" \
+            '{($t): {signature: $sig, url: $url}}' > "$out"
+          cat "$out"
+          gh release upload "${GITHUB_REF_NAME}" "$out" --clobber --repo "${GITHUB_REPOSITORY}"
+
+  latest-json:
+    needs: bundle
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Compose latest.json + publish release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          version="${GITHUB_REF_NAME#v}"
+          pub_date=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+          mkdir -p entries
+          gh release download "${GITHUB_REF_NAME}" --repo "${GITHUB_REPOSITORY}" --pattern 'platform-*.json' --dir entries
+          n=$(ls entries/platform-*.json | wc -l)
+          [ "$n" -eq 3 ] || { echo "期望 3 份平台签名条目，实得 $n"; exit 1; }
+          platforms=$(jq -s 'add' entries/platform-*.json)
+          echo "$platforms" | jq -e 'has("darwin-aarch64") and has("linux-x86_64") and has("windows-x86_64")' > /dev/null \
+            || { echo "缺少某平台条目: $platforms"; exit 1; }
+          jq -n --arg v "$version" --arg d "$pub_date" --argjson p "$platforms" \
+            '{version: $v, notes: ("InkStream " + $v), pub_date: $d, platforms: $p}' > latest.json
+          cat latest.json
+          gh release upload "${GITHUB_REF_NAME}" latest.json --clobber --repo "${GITHUB_REPOSITORY}"
+          # 清理中间 platform-*.json 资产（latest.json 已内嵌签名），保持 Release 纯净。
+          for f in entries/platform-*.json; do
+            gh release delete-asset "${GITHUB_REF_NAME}" "$(basename "$f")" -y --repo "${GITHUB_REPOSITORY}" || true
+          done
+          # latest.json 就绪后才取消草稿——保证「latest」一出现就带更新清单（否则客户端 404 静默无更新）。
+          gh release edit "${GITHUB_REF_NAME}" --repo "${GITHUB_REPOSITORY}" --draft=false

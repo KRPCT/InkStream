@@ -22,6 +22,8 @@
     },
     "dialog:allow-open",
     "dialog:allow-save",
-    "sql:default"
+    "sql:default",
+    "updater:default",
+    "process:allow-restart"
   ]
 }

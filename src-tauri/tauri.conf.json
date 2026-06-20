@@ -50,6 +50,13 @@
         "role": "Editor",
         "mimeType": "text/markdown"
       }
-    ]
+    ],
+    "createUpdaterArtifacts": true
+  },
+  "plugins": {
+    "updater": {
+      "endpoints": ["https://github.com/KRPCT/InkStream/releases/latest/download/latest.json"],
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDM0REU0OTE2NDE5M0IwN0UKUldSK3NKTkJGa25lTkZnNEY0YVVIcUR1Q2xkN0N0eUNTRTdzVHZCM3VIK0FiaFE5emNwcW9ZT1AK"
+    }
   }
 }

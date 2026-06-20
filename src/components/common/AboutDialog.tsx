@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { getAppVersion } from '../../ipc/app';
 import { useAboutStore } from '../../stores/useAboutStore';
+import { useUpdaterStore } from '../../stores/useUpdaterStore';
 
 /**
  * 关于对话框——自绘模态（UI-SPEC 弹出层契约：--background-primary、8px 圆角、
@@ -56,6 +57,16 @@ function AboutPanel() {
         <p className="mt-2 text-[13px] leading-normal text-[var(--text-muted)]">
           版本 {version ?? '读取中'}
         </p>
+        <button
+          type="button"
+          onClick={() => {
+            closeAbout();
+            void useUpdaterStore.getState().checkManual();
+          }}
+          className="mt-4 rounded-[4px] border border-[var(--background-modifier-border)] px-3 py-1.5 text-[13px] text-[var(--interactive-accent)] hover:bg-[var(--background-modifier-hover)]"
+        >
+          检查更新
+        </button>
       </div>
     </div>
   );

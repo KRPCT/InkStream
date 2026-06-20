@@ -35,6 +35,11 @@ tauri-plugin-dialog = "=2.7.1"
 # 而非另起一个 app 进程。Tauri 官方 plugins-workspace 一方插件，与 fs/opener/dialog 同仓同维护。
 # 基础 init 无额外 feature（deep-link 集成本阶段不需）。精确 pin（供应链零信任）。
 tauri-plugin-single-instance = "=2.4.2"
+# 自动更新（GitHub Releases latest.json + minisign 验签）。Tauri 官方 plugins-workspace 一方插件。
+# updater 2.10.1 / process 2.3.1 为当前最高稳定（updater 要求 tauri ^2.10、process 要求 ^2.8.2，均由 2.11.2 满足，
+# 故意落后于 tauri 2.11.2 是正常的）；私钥仅存 CI secret，公钥在 tauri.conf.json。process 提供 relaunch() 供更新后重启。
+tauri-plugin-updater = "=2.10.1"
+tauri-plugin-process = "=2.3.1"
 serde = { version = "=1.0.228", features = ["derive"] }
 serde_json = "=1.0.150"
 # 结构化错误类型派生（git 模块 GitError 等）。纯 proc-macro，零运行时依赖。
