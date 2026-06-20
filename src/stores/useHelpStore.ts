@@ -1,7 +1,16 @@
 import { create } from 'zustand';
 
 /** 帮助/教程主题（簇③）。 */
-export type HelpTopic = 'start' | 'versioning' | 'branching' | 'sync' | 'shortcuts';
+export type HelpTopic =
+  | 'start'
+  | 'writing'
+  | 'reading'
+  | 'bookshelf'
+  | 'export'
+  | 'versioning'
+  | 'branching'
+  | 'sync'
+  | 'shortcuts';
 
 interface HelpState {
   open: boolean;

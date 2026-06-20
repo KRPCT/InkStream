@@ -1,45 +1,15 @@
-import type { ReactNode } from 'react';
+import { H, K, P, Steps, Tip } from './helpPrimitives';
 
 /**
- * 帮助/教程内容（簇③）。文案非拟人化、贴合 InkStream 实际 UI（侧栏源代码管理面板 / 状态栏分支 / Git Graph 右键）。
- * 纯展示组件，无状态。版式元素色全走 CSS 变量。
+ * 帮助/教程内容（簇③）：快速上手 + git 版本管理 / 分支 / 多设备同步 / 快捷键。
+ * 写作辅助、阅读、书架、导出等功能分区见 helpFeatures.tsx。文案非拟人化、贴合 InkStream 实际 UI。
  */
-
-function H({ children }: { children: ReactNode }) {
-  return <h3 className="mt-5 mb-2 text-[15px] font-semibold text-[var(--text-normal)]">{children}</h3>;
-}
-function P({ children }: { children: ReactNode }) {
-  return <p className="mb-2 text-[13px] leading-relaxed text-[var(--text-muted)]">{children}</p>;
-}
-function Steps({ items }: { items: ReactNode[] }) {
-  return (
-    <ol className="mb-2 ml-4 list-decimal space-y-1 text-[13px] leading-relaxed text-[var(--text-muted)]">
-      {items.map((it, i) => (
-        <li key={i}>{it}</li>
-      ))}
-    </ol>
-  );
-}
-function K({ children }: { children: ReactNode }) {
-  return (
-    <kbd className="rounded border border-[var(--background-modifier-border)] bg-[var(--background-secondary)] px-1 text-[11px] text-[var(--text-normal)]">
-      {children}
-    </kbd>
-  );
-}
-function Tip({ children }: { children: ReactNode }) {
-  return (
-    <p className="mb-2 rounded-[4px] border-l-2 border-[var(--accent)] bg-[var(--background-secondary)] px-3 py-1.5 text-[12px] leading-relaxed text-[var(--text-muted)]">
-      {children}
-    </p>
-  );
-}
 
 export function StartSection() {
   return (
     <div>
       <H>打开工作区</H>
-      <P>InkStream 以「文件夹」为工作区。点侧栏或编辑区的「打开文件夹」选择一个目录，里面的 Markdown 文件即出现在文件树。</P>
+      <P>InkStream 以「文件夹」为工作区。点侧栏或编辑区的「打开文件夹」选择一个目录，里面的 Markdown 文件即出现在文件树。也可直接「打开文件」，或把文件拖进窗口。</P>
       <H>三种模式</H>
       <P>顶部菜单「视图 ▸ 模式」在 Standard（通用）、Academic（学术）、Creative（长篇创作）间切换。模式只改变布局预设与功能集，文档内容与格式不变。</P>
       <H>写作与保存</H>
@@ -50,7 +20,9 @@ export function StartSection() {
           <>任意时刻文档磁盘内容就是真相源，不绑定专有格式。</>,
         ]}
       />
-      <Tip>把工作区初始化为 git 仓库，即可获得版本历史、回滚、分支与多设备同步——见左侧「版本管理」与「多设备同步」。</Tip>
+      <H>轻装上阵：简易模式</H>
+      <P>只想要一个干净的纯文本编辑器？在 设置 ▸ 通用 ▸「简易模式」一键收起反链 / 知识图谱 / Git / Zotero / 搜索等全部高级功能，也不在工作区建索引文件夹。随时可关，关闭即恢复全部功能。</P>
+      <Tip>左侧主题里还有：写作辅助（打字机 / 专注 / 写作 HUD）、阅读模式、书架、文件导出，以及 git 版本管理与多设备同步。把工作区初始化为 git 仓库即可获得版本历史、回滚、分支与多设备同步。</Tip>
     </div>
   );
 }
@@ -135,7 +107,7 @@ export function SyncSection() {
         ]}
       />
       <H>方式二：GitHub 账号登录</H>
-      <P>设置 ▸ Git ▸ 远程方式选「GitHub 登录」，按提示用账号授权后经 HTTPS 同步（在账户设置中登录）。</P>
+      <P>设置 ▸ Git ▸ 远程方式选「GitHub 登录」，再到 设置 ▸ 账户 填入个人访问令牌（PAT）授权后经 HTTPS 同步。</P>
       <H>自定义服务器</H>
       <P>使用自建或第三方 git 服务器时，设置 ▸ Git ▸ 远程方式选「自定义服务器」并填地址。</P>
       <H>日常同步</H>
@@ -158,10 +130,12 @@ export function ShortcutsSection() {
     ['Ctrl+Shift+P', '命令面板'],
     ['Ctrl+,', '设置'],
     ['Ctrl+E', '切换源码 / 实时预览'],
+    ['Ctrl+G', '知识图谱'],
     ['Ctrl+Shift+G', '打开 / 关闭 Git Graph'],
     ['Ctrl+O', '打开文件'],
     ['Ctrl+Shift+O', '打开文件夹'],
     ['Ctrl+\\', '切换侧边栏'],
+    ['F11', '专注模式'],
   ];
   return (
     <div>
@@ -178,7 +152,7 @@ export function ShortcutsSection() {
           ))}
         </tbody>
       </table>
-      <Tip>完整命令与快捷键可在命令面板（<K>Ctrl+Shift+P</K>）中查看与搜索。</Tip>
+      <Tip>完整命令与快捷键可在命令面板（<K>Ctrl+Shift+P</K>）中查看与搜索。打字机模式、写作 HUD、阅读模式、文件导出等也都能在命令面板里直接搜到。</Tip>
     </div>
   );
 }

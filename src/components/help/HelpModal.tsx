@@ -8,6 +8,7 @@ import {
   SyncSection,
   VersioningSection,
 } from './helpContent';
+import { BookshelfSection, ExportSection, ReadingSection, WritingSection } from './helpFeatures';
 
 /**
  * 帮助/教程模态（簇③）：左主题侧栏 + 右图文教学。自绘覆盖层（同 SettingsModal 范式）。
@@ -15,6 +16,10 @@ import {
  */
 const TOPICS: { id: HelpTopic; label: string }[] = [
   { id: 'start', label: '快速上手' },
+  { id: 'writing', label: '写作辅助' },
+  { id: 'reading', label: '阅读模式' },
+  { id: 'bookshelf', label: '书架' },
+  { id: 'export', label: '导出文档' },
   { id: 'versioning', label: '版本管理' },
   { id: 'branching', label: '分支与合并' },
   { id: 'sync', label: '多设备同步' },
@@ -97,6 +102,10 @@ function HelpPanel() {
           </div>
           <div className="min-h-0 flex-1 overflow-auto px-5 py-2">
             {topic === 'start' ? <StartSection /> : null}
+            {topic === 'writing' ? <WritingSection /> : null}
+            {topic === 'reading' ? <ReadingSection /> : null}
+            {topic === 'bookshelf' ? <BookshelfSection /> : null}
+            {topic === 'export' ? <ExportSection /> : null}
             {topic === 'versioning' ? <VersioningSection /> : null}
             {topic === 'branching' ? <BranchingSection /> : null}
             {topic === 'sync' ? <SyncSection /> : null}
