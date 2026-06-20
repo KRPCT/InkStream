@@ -17,6 +17,7 @@ import type {
   ReviewEvent,
   StashEntry,
 } from './git';
+import type { DirTreeEntry } from './bookshelf';
 import type { FileEntry, TreeEntry, VaultInfo } from './vault';
 import type { CslItem, ZoteroCredStatus, ZoteroItem, ZoteroSyncResult } from './zotero';
 
@@ -46,6 +47,8 @@ export interface IpcCommands {
   write_file_bytes: { args: { path: string; content: number[] }; result: null };
   // 阅读模式二进制读（DOCX/EPUB/PDF）：绝对路径 → 字节数组（Vec<u8>→Uint8Array）。read_file 仅 UTF-8 文本。
   read_file_bytes: { args: { path: string }; result: number[] };
+  // 书架文件夹导入：读绝对路径文件夹的书籍目录树（书→卷→章，深度封顶，只读）。
+  list_dir_tree: { args: { path: string }; result: DirTreeEntry };
   // 文件导出：检测系统 pandoc + 经其把 gfm markdown 转更多格式（odt/rtf/latex/epub/typst/org）。
   pandoc_available: { args: undefined; result: boolean };
   pandoc_convert: { args: { markdown: string; outPath: string; toFormat: string }; result: null };

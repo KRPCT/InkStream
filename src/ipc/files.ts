@@ -1,3 +1,4 @@
+import type { DirTreeEntry } from '../types/bookshelf';
 import { invoke } from './invoke';
 
 /**
@@ -70,4 +71,9 @@ export function movePath(root: string, from: string, to: string): Promise<null> 
 /** 删除到系统回收站（D-09）。 */
 export function trashPath(root: string, path: string): Promise<null> {
   return invoke('trash_path', { root, path });
+}
+
+/** 书架文件夹导入：读绝对路径文件夹的书籍目录树（书→卷→章，只读，深度封顶）。 */
+export function listDirTree(path: string): Promise<DirTreeEntry> {
+  return invoke('list_dir_tree', { path });
 }

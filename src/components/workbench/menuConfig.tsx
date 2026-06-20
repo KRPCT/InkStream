@@ -156,6 +156,16 @@ export const MENUS: GroupConfig[] = [
     ],
   },
   {
+    label: '书架',
+    items: [
+      { commandId: 'bookshelf.open', label: '打开书架' },
+      { commandId: 'bookshelf.add-current', label: '把当前阅读文档加入书架' },
+      { separator: true },
+      { commandId: 'bookshelf.import-files', label: '导入书籍文件…' },
+      { commandId: 'bookshelf.import-folder', label: '导入书籍文件夹…' },
+    ],
+  },
+  {
     label: '帮助',
     items: [
       { commandId: 'help.guide', label: '使用教程' },
@@ -223,11 +233,16 @@ export function toEntries(
   recent: string[],
   simpleMode = false,
   pandocAvailable = false,
+  bookshelfEnabled = false,
 ): MenuEntry[] {
-  // 隐藏：简易模式下的 advanced 命令；以及系统未装 pandoc 时的 pandocOnly 命令（如 ODT/LaTeX/EPUB 导出）。
+  // 隐藏：简易模式下的 advanced 命令；未装 pandoc 时的 pandocOnly 命令；书架未开时的 bookshelfOnly 命令。
   const hidden = (id: string): boolean => {
     const cmd = commands.get(id);
-    return (simpleMode && cmd?.advanced === true) || (!pandocAvailable && cmd?.pandocOnly === true);
+    return (
+      (simpleMode && cmd?.advanced === true) ||
+      (!pandocAvailable && cmd?.pandocOnly === true) ||
+      (!bookshelfEnabled && cmd?.bookshelfOnly === true)
+    );
   };
   const entries: MenuEntry[] = [];
   for (const [i, item] of group.items.entries()) {

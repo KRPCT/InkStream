@@ -41,4 +41,6 @@ export interface PersistedSettings {
   exportBrandingFooter: boolean;
   /** 导出水印文字（exportBrandingFooter 开时用）；默认「Made with InkStream」，可自定义；空白则不附页脚。 */
   exportBrandingText: string;
+  /** 书架功能开关（默认关，opt-in）：关闭仅隐藏菜单入口 / 门控命令，绝不删除 bookshelf.json 索引（req 6）。 */
+  bookshelfEnabled: boolean;
 }

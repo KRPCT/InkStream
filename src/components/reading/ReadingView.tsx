@@ -1,6 +1,11 @@
-import { BookOpen, Minus, Plus, X } from 'lucide-react';
-import { closeReading } from '../../editor/reading/openReading';
+import { BookOpen, ChevronLeft, ChevronRight, Library, Minus, Plus, X } from 'lucide-react';
+import { exitReading } from '../../bookshelf/exitReading';
+import { addFileToShelf } from '../../bookshelf/importBooks';
+import { goChapter } from '../../bookshelf/openBook';
+import { useBookshelfStore } from '../../stores/useBookshelfStore';
 import { useReadingStore } from '../../stores/useReadingStore';
+import { useSettingsStore } from '../../stores/useSettingsStore';
+import { showToast } from '../../stores/useToastStore';
 import type { ReadingGenre, ReadingTheme } from '../../types/reading';
 import HtmlReader from './HtmlReader';
 import PdfReader from './PdfReader';
@@ -21,6 +26,7 @@ const THEMES: { id: ReadingTheme; label: string }[] = [
 ];
 const ICON_BTN =
   'rounded p-1 text-[var(--text-muted)] hover:bg-[var(--background-modifier-hover)] hover:text-[var(--text-normal)]';
+const NAV_BTN = `${ICON_BTN} disabled:opacity-30 disabled:cursor-default disabled:hover:bg-transparent`;
 
 /** 分段控件：一组互斥选项，当前项高亮（落地页阅读演示同款）。 */
 function Segmented<T extends string>({
@@ -68,7 +74,18 @@ export default function ReadingView() {
   const setGenre = useReadingStore((s) => s.setGenre);
   const setTheme = useReadingStore((s) => s.setTheme);
   const bump = useReadingStore((s) => s.bumpFontSize);
+  const ctx = useReadingStore((s) => s.bookContext);
+  const bookshelfEnabled = useSettingsStore((s) => s.bookshelfEnabled);
+  // 响应式订阅在架态：加入书架后即时隐藏「加入书架」按钮（doc 可能为 null，守卫后再判）。
+  const shelved = useBookshelfStore((s) =>
+    doc ? s.books.some((b) => b.rootPath === doc.path || b.volumes.some((v) => v.chapters.some((c) => c.path === doc.path))) : false,
+  );
   if (!doc) return null;
+  const canShelve = bookshelfEnabled && !ctx && !shelved;
+
+  const shelveCurrent = async (): Promise<void> => {
+    if (await addFileToShelf(doc.path)) showToast('warning', '已加入书架。');
+  };
 
   return (
     <div className="flex h-full flex-col bg-[var(--background-primary)]">
@@ -77,9 +94,25 @@ export default function ReadingView() {
           <BookOpen size={14} aria-hidden="true" className="shrink-0" />
           <span className="truncate">{doc.name}</span>
         </div>
+        {ctx ? (
+          <div className="flex shrink-0 items-center gap-1 text-[12px] text-[var(--text-muted)]">
+            <button type="button" className={NAV_BTN} title="上一章" aria-label="上一章" disabled={ctx.index <= 0} onClick={() => goChapter(-1)}>
+              <ChevronLeft size={15} aria-hidden="true" />
+            </button>
+            <span className="tabular-nums">第 {ctx.index + 1}/{ctx.chapters.length} 章</span>
+            <button type="button" className={NAV_BTN} title="下一章" aria-label="下一章" disabled={ctx.index >= ctx.chapters.length - 1} onClick={() => goChapter(1)}>
+              <ChevronRight size={15} aria-hidden="true" />
+            </button>
+          </div>
+        ) : null}
         <Segmented label="文体" value={genre} options={GENRES} onPick={setGenre} />
         <Segmented label="配色" value={theme} options={THEMES} onPick={setTheme} />
         <div className="flex shrink-0 items-center">
+          {canShelve ? (
+            <button type="button" className={ICON_BTN} title="加入书架" aria-label="加入书架" onClick={() => void shelveCurrent()}>
+              <Library size={15} aria-hidden="true" />
+            </button>
+          ) : null}
           <button type="button" className={ICON_BTN} title="缩小字号" aria-label="缩小字号" onClick={() => bump(-1)}>
             <Minus size={14} aria-hidden="true" />
           </button>
@@ -87,13 +120,7 @@ export default function ReadingView() {
             <Plus size={14} aria-hidden="true" />
           </button>
         </div>
-        <button
-          type="button"
-          className={ICON_BTN}
-          title="关闭（回编辑器）"
-          aria-label="关闭阅读"
-          onClick={closeReading}
-        >
+        <button type="button" className={ICON_BTN} title="关闭（回编辑器）" aria-label="关闭阅读" onClick={() => void exitReading()}>
           <X size={14} aria-hidden="true" />
         </button>
       </div>

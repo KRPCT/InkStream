@@ -1,6 +1,7 @@
 import { hydrate as hydrateMru, list as listMru, subscribe as subscribeMru } from '../commands/mru';
 import { loadSettings, saveSettings } from '../ipc/settings';
 import type { PersistedSettings } from '../types/settings';
+import { initBookshelf } from './persistBookshelf';
 import { useSettingsStore } from './useSettingsStore';
 import { useToastStore } from './useToastStore';
 import { useWorkbenchStore } from './useWorkbenchStore';
@@ -36,6 +37,7 @@ function snapshot(): PersistedSettings {
     simpleMode,
     exportBrandingFooter,
     exportBrandingText,
+    bookshelfEnabled,
   } = useSettingsStore.getState();
   const { mode, layouts } = useWorkbenchStore.getState();
   return validateSettings({
@@ -53,6 +55,7 @@ function snapshot(): PersistedSettings {
     simpleMode,
     exportBrandingFooter,
     exportBrandingText,
+    bookshelfEnabled,
   });
 }
 
@@ -78,11 +81,14 @@ function apply(s: PersistedSettings): void {
     simpleMode: s.simpleMode,
     exportBrandingFooter: s.exportBrandingFooter,
     exportBrandingText: s.exportBrandingText,
+    bookshelfEnabled: s.bookshelfEnabled,
   });
   useSettingsStore.getState().setEditorFontSize(s.editorFontSize);
   useWorkbenchStore.getState().setMode(s.mode);
   useWorkbenchStore.setState({ layouts: s.layouts });
   hydrateMru(s.commandMru);
+  // 书架已开启 → 启动其持久化（hydrate 书架索引 + 订阅）。关闭则不启动、不清盘（req 6）。
+  if (s.bookshelfEnabled) void initBookshelf();
 }
 
 /** 文件读入后整体覆写镜像：不一致以文件为准（FOUC 契约第 3 步）。 */

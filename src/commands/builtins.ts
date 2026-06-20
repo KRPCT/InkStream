@@ -1,6 +1,7 @@
 import { registerImeProbeCommand } from '../components/dev/imeProbeCommand';
 import type { Command } from '../types/commands';
 import { ACADEMIC_COMMANDS } from './academicCommands';
+import { BOOKSHELF_COMMANDS } from './bookshelfCommands';
 import { CORE_COMMANDS } from './coreCommands';
 import { EXPORT_COMMANDS } from './exportCommands';
 import { GIT_COMMANDS } from './gitCommands';
@@ -22,6 +23,7 @@ const BUILTINS: Command[] = [
   ...TEXT_COMMANDS,
   ...GIT_COMMANDS,
   ...ACADEMIC_COMMANDS,
+  ...BOOKSHELF_COMMANDS,
 ];
 
 let activeDispose: (() => void) | null = null;

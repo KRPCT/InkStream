@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { subscribeSystemTheme, type Unsubscribe } from '../ipc/theme';
+import { initBookshelf } from './persistBookshelf';
 import type { GitRemoteMode, ResolvedTheme, ThemeSetting } from '../types/settings';
 
 interface SettingsState {
@@ -16,6 +17,7 @@ interface SettingsState {
   simpleMode: boolean;
   exportBrandingFooter: boolean;
   exportBrandingText: string;
+  bookshelfEnabled: boolean;
   setAutosaveEnabled: (enabled: boolean) => void;
   setAutosaveDelayMs: (ms: number) => void;
   setEditorFontSize: (px: number) => void;
@@ -25,6 +27,7 @@ interface SettingsState {
   setSimpleMode: (on: boolean) => void;
   setExportBrandingFooter: (on: boolean) => void;
   setExportBrandingText: (text: string) => void;
+  setBookshelfEnabled: (on: boolean) => void;
 }
 
 /** 字体大小落到 CSS 变量（编辑器 .cm-editor 经 var(--editor-font-size) 消费，见 app.css）。 */
@@ -96,6 +99,7 @@ export const useSettingsStore = create<SettingsState>((set) => ({
   simpleMode: false,
   exportBrandingFooter: false,
   exportBrandingText: 'Made with InkStream',
+  bookshelfEnabled: false,
   setAutosaveEnabled: (autosaveEnabled) => set({ autosaveEnabled }),
   setAutosaveDelayMs: (autosaveDelayMs) => set({ autosaveDelayMs }),
   setEditorFontSize: (editorFontSize) => {
@@ -108,6 +112,11 @@ export const useSettingsStore = create<SettingsState>((set) => ({
   setSimpleMode: (simpleMode) => set({ simpleMode }),
   setExportBrandingFooter: (exportBrandingFooter) => set({ exportBrandingFooter }),
   setExportBrandingText: (exportBrandingText) => set({ exportBrandingText }),
+  // 开启时即时启动书架持久化（hydrate + 订阅）；关闭只置标志、不清盘（req 6）。
+  setBookshelfEnabled: (bookshelfEnabled) => {
+    if (bookshelfEnabled) void initBookshelf();
+    set({ bookshelfEnabled });
+  },
 }));
 
 /**

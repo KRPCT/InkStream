@@ -1,4 +1,5 @@
 import { load, type Store } from '@tauri-apps/plugin-store';
+import type { PersistedBookshelf } from '../types/bookshelf';
 import type { PersistedSettings } from '../types/settings';
 import type { PersistedVault } from '../types/vault';
 
@@ -13,9 +14,11 @@ import type { PersistedVault } from '../types/vault';
 
 const FILE = 'settings.json';
 const VAULT_FILE = 'vault-state.json';
+const BOOKSHELF_FILE = 'bookshelf.json';
 
 let storePromise: Promise<Store> | null = null;
 let vaultStorePromise: Promise<Store> | null = null;
+let bookshelfStorePromise: Promise<Store> | null = null;
 
 function settingsStore(): Promise<Store> {
   storePromise ??= load(FILE, { defaults: {}, autoSave: false });
@@ -50,6 +53,7 @@ export async function saveSettings(s: PersistedSettings): Promise<void> {
   await store.set('simpleMode', s.simpleMode);
   await store.set('exportBrandingFooter', s.exportBrandingFooter);
   await store.set('exportBrandingText', s.exportBrandingText);
+  await store.set('bookshelfEnabled', s.bookshelfEnabled);
   await store.save();
 }
 
@@ -66,5 +70,25 @@ export async function saveVaultState(v: PersistedVault): Promise<void> {
   await store.set('lastVaultPath', v.lastVaultPath);
   await store.set('recentVaults', v.recentVaults);
   await store.set('expanded', v.expanded);
+  await store.save();
+}
+
+function bookshelfStore(): Promise<Store> {
+  bookshelfStorePromise ??= load(BOOKSHELF_FILE, { defaults: {}, autoSave: false });
+  return bookshelfStorePromise;
+}
+
+/** 读书架索引（应用数据目录，索引 only，绝不动源文件）；形状校验交给 validateBookshelf。 */
+export async function loadBookshelf(): Promise<unknown> {
+  const store = await bookshelfStore();
+  return Object.fromEntries(await store.entries());
+}
+
+/** 整体写入书架索引顶层键并显式 save()。关闭书架功能不走此（无删除路径，数据保留）。 */
+export async function saveBookshelf(b: PersistedBookshelf): Promise<void> {
+  const store = await bookshelfStore();
+  await store.set('version', b.version);
+  await store.set('books', b.books);
+  await store.set('progress', b.progress);
   await store.save();
 }

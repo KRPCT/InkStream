@@ -13,6 +13,7 @@ import { buildLayoutPatch } from './layoutPatch';
 import GitGraphView from '../git/GitGraphView';
 import MergeResolver from '../git/MergeResolver';
 import ReadingView from '../reading/ReadingView';
+import BookshelfView from '../bookshelf/BookshelfView';
 import GraphView from './GraphView';
 import CentralArea from './CentralArea';
 import RightPanel from './RightPanel';
@@ -71,6 +72,9 @@ export default function WorkbenchLayout() {
   const mergeOpen = useWorkbenchStore((s) => s.centralView === 'mergeResolve') && !simpleMode;
   // 阅读模式覆盖层（FEAT-READ）：基础功能，简易模式下也可用（不 !simpleMode 门控）。
   const readingOpen = useWorkbenchStore((s) => s.centralView === 'reading');
+  // 书架覆盖层（FEAT-SHELF）：由 bookshelfEnabled 设置门控（与简易模式正交）。
+  const bookshelfEnabled = useSettingsStore((s) => s.bookshelfEnabled);
+  const bookshelfOpen = useWorkbenchStore((s) => s.centralView === 'bookshelf') && bookshelfEnabled;
   const groupRef = useGroupRef();
   const sidebarRef = usePanelRef();
   const rightRef = usePanelRef();
@@ -201,6 +205,11 @@ export default function WorkbenchLayout() {
         {readingOpen ? (
           <div className="absolute inset-0 bg-[var(--background-primary)]">
             <ReadingView />
+          </div>
+        ) : null}
+        {bookshelfOpen ? (
+          <div className="absolute inset-0 bg-[var(--background-primary)]">
+            <BookshelfView />
           </div>
         ) : null}
       </div>

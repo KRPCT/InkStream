@@ -21,6 +21,7 @@ const VALID = {
   simpleMode: true,
   exportBrandingFooter: false,
   exportBrandingText: '自定义水印',
+  bookshelfEnabled: true,
 };
 
 describe('validateSettings', () => {
@@ -119,6 +120,7 @@ describe('validateSettings', () => {
       simpleMode: false,
       exportBrandingFooter: false,
       exportBrandingText: 'Made with InkStream',
+      bookshelfEnabled: false,
     });
   });
 

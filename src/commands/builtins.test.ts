@@ -113,10 +113,15 @@ const TITLES: Record<string, string> = {
   'academic.biblio-gbt7714': '学术：参考文献（GB/T 7714）',
   'academic.biblio-apa': '学术：参考文献（APA）',
   'academic.biblio-vancouver': '学术：参考文献（Vancouver）',
+  // 书架（FEAT-SHELF ×4）
+  'bookshelf.open': '书架：打开书架',
+  'bookshelf.add-current': '书架：把当前阅读文档加入书架',
+  'bookshelf.import-files': '书架：导入书籍文件',
+  'bookshelf.import-folder': '书架：导入书籍文件夹',
 };
 
-/** 生产命令总数：…前略… + 导出 HTML/PDF/DOCX(×3) + 阅读模式(×1) + pandoc 格式导出(odt/rtf/latex/epub/typst/org ×6) = 80。 */
-const COMMAND_COUNT = 81;
+/** 生产命令总数：…前略… + pandoc 格式导出(×6) + 检查更新(×1) + 书架(open/add/import-files/import-folder ×4) = 85。 */
+const COMMAND_COUNT = 85;
 
 /** 生产命令（剔除 dev.* DEV-only 命令，如 IME 探针 dev.ime-probe）。 */
 function prodCommands() {
@@ -147,7 +152,7 @@ describe('builtins', () => {
     disposeKeymap();
   });
 
-  it('注册 81 条生产命令，标题与 UI-SPEC / R4 字面逐字一致', () => {
+  it('注册 85 条生产命令，标题与 UI-SPEC / R4 字面逐字一致', () => {
     const all = prodCommands();
     expect(all).toHaveLength(COMMAND_COUNT);
     for (const [id, title] of Object.entries(TITLES)) {

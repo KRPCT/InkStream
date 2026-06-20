@@ -42,6 +42,8 @@ export async function execute(id: string): Promise<void> {
   if (!command) return;
   // 简易模式：高级命令一律 no-op（统一收口快捷键 / 命令面板 / 菜单点击三条触发路径）。
   if (command.advanced && useSettingsStore.getState().simpleMode) return;
+  // 书架未开启：书架命令一律 no-op（同 pandocOnly 门控）。
+  if (command.bookshelfOnly && !useSettingsStore.getState().bookshelfEnabled) return;
   record(id);
   await command.run();
 }

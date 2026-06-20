@@ -3,6 +3,7 @@ import type { PDFDocumentLoadingTask, PDFDocumentProxy } from 'pdfjs-dist';
 import { detectGenre } from '../../editor/reading/detectGenre';
 import { READING_THEMES } from '../../editor/reading/readingPresets';
 import { readFileBytes } from '../../ipc/files';
+import { useBookshelfStore } from '../../stores/useBookshelfStore';
 import { useReadingStore } from '../../stores/useReadingStore';
 import type { ReadingDoc } from '../../types/reading';
 
@@ -25,6 +26,7 @@ export default function PdfReader({ doc }: { doc: ReadingDoc }) {
     let alive = true;
     let task: PDFDocumentLoadingTask | null = null;
     let observer: IntersectionObserver | null = null;
+    let reportObs: IntersectionObserver | null = null;
     const canvases = new Map<number, HTMLCanvasElement>();
     setStatus('loading');
 
@@ -86,6 +88,40 @@ export default function PdfReader({ doc }: { doc: ReadingDoc }) {
         { root: scrollRef.current, rootMargin: '150% 0px' },
       );
 
+      // 阅读进度：真正进入视口的最靠前页 → setProgress（书架进度提示；与渲染观察器分开，rootMargin 0 取实际视口页）。
+      // 书架书（bookContext 在架）：进度记到书的 rootPath，分数 = 章位置 + 章内页贡献，故文件夹书的页进度不被孤立。
+      const ctx = useReadingStore.getState().bookContext;
+      const visible = new Set<number>();
+      reportObs = new IntersectionObserver(
+        (entries) => {
+          for (const e of entries) {
+            const n = Number((e.target as HTMLElement).dataset.page);
+            if (e.isIntersecting) visible.add(n);
+            else visible.delete(n);
+          }
+          if (visible.size === 0) return;
+          const page = Math.min(...visible);
+          const intra = (page - 1) / pdf.numPages;
+          if (ctx) {
+            const total = ctx.chapters.length;
+            useBookshelfStore.getState().setProgress(ctx.rootPath, {
+              fraction: total > 1 ? (ctx.index + intra) / total : intra,
+              index: ctx.index,
+              total,
+              updatedAt: Date.now(),
+            });
+          } else {
+            useBookshelfStore.getState().setProgress(doc.path, {
+              fraction: page / pdf.numPages,
+              index: page - 1,
+              total: pdf.numPages,
+              updatedAt: Date.now(),
+            });
+          }
+        },
+        { root: scrollRef.current, rootMargin: '0px', threshold: 0.1 },
+      );
+
       for (let n = 1; n <= pdf.numPages; n += 1) {
         const slot = document.createElement('div');
         slot.dataset.page = String(n);
@@ -94,6 +130,7 @@ export default function PdfReader({ doc }: { doc: ReadingDoc }) {
         slot.className = 'mx-auto my-3 max-w-full [box-shadow:var(--shadow-popup)]';
         host.appendChild(slot);
         observer.observe(slot);
+        reportObs.observe(slot);
       }
       if (alive) setStatus('ready');
     })().catch(() => {
@@ -103,6 +140,7 @@ export default function PdfReader({ doc }: { doc: ReadingDoc }) {
     return () => {
       alive = false;
       observer?.disconnect();
+      reportObs?.disconnect();
       canvases.forEach((c) => {
         c.width = 0;
         c.height = 0;

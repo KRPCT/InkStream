@@ -22,6 +22,12 @@ const OPENABLE_FILTER = {
   extensions: ['md', 'markdown', 'txt', 'docx', 'epub', 'pdf'],
 };
 
+/** 书架导入过滤：阅读支持的书籍格式（不含 md——md 属编辑文档，非「书」）。 */
+const BOOK_FILTER = {
+  name: '书籍',
+  extensions: ['txt', 'docx', 'epub', 'pdf'],
+};
+
 /** 文件导出保存过滤器（按格式；PDF 走打印对话框无需此路）。pandoc 格式仅在系统装有 pandoc 时被调用。 */
 const EXPORT_FILTERS: Record<'html' | 'docx' | PandocFormat, { name: string; extensions: string[] }> = {
   html: { name: 'HTML', extensions: ['html'] },
@@ -48,6 +54,11 @@ export function pickFolder(): Promise<string | null> {
  */
 export function pickFile(): Promise<string | null> {
   return open({ directory: false, multiple: false, filters: [OPENABLE_FILTER] });
+}
+
+/** 书架导入：多选书籍文件，返回绝对路径数组（取消返回 null）。`multiple: true` → `string[] | null`。 */
+export function pickBookFiles(): Promise<string[] | null> {
+  return open({ directory: false, multiple: true, filters: [BOOK_FILTER] }) as Promise<string[] | null>;
 }
 
 /**

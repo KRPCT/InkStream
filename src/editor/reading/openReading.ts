@@ -24,18 +24,20 @@ export function isAutoReadingFormat(path: string): boolean {
   return f === 'docx' || f === 'epub' || f === 'pdf';
 }
 
-/** 打开绝对路径文件进入阅读模式覆盖层。 */
+/** 打开绝对路径文件进入阅读模式覆盖层。直接打开（非书架）清空章节上下文。 */
 export function openReading(absPath: string, name: string): void {
   const format = readingFormatOf(absPath);
   if (!format) return;
+  useReadingStore.getState().setBookContext(null);
   useReadingStore.getState().setDoc({ path: absPath, name, format });
   useWorkbenchStore.getState().setCentralView('reading');
 }
 
-/** 关闭阅读模式回编辑器。 */
+/** 关闭阅读模式回编辑器（裸拆卸；书架「加入书架」提示见 bookshelf/exitReading）。 */
 export function closeReading(): void {
   useWorkbenchStore.getState().setCentralView('editor');
   useReadingStore.getState().setDoc(null);
+  useReadingStore.getState().setBookContext(null);
 }
 
 /**

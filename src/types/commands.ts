@@ -21,6 +21,11 @@ export interface Command {
    * 与 advanced 正交——pandoc 格式导出在简易模式下也可用，只取决于系统是否装 pandoc。
    */
   pandocOnly?: boolean;
+  /**
+   * 书架专属命令：bookshelfEnabled 关闭时在命令面板 / 菜单隐藏，且经 registry.execute 触发一律 no-op。
+   * 与 advanced 正交——书架在简易模式下也可用，只取决于 bookshelfEnabled 设置（默认关，用户在设置里开）。
+   */
+  bookshelfOnly?: boolean;
   run: () => void | Promise<void>;
 }
 

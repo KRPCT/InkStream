@@ -17,23 +17,29 @@ export default function MenuBar() {
   const recent = useVaultStore((s) => s.recentVaults);
   const simpleMode = useSettingsStore((s) => s.simpleMode);
   const pandocAvailable = usePandocStore((s) => s.available);
+  const bookshelfEnabled = useSettingsStore((s) => s.bookshelfEnabled);
 
   useEffect(() => subscribe(() => setVersion((v) => v + 1)), []);
 
   const commands = new Map(getAll().map((c) => [c.id, c]));
+  // 整组门控后为空的菜单（如书架未开时的「书架」组）不渲染顶层按钮；索引随之收紧。
+  const visible = MENUS.map((group) => ({
+    group,
+    entries: toEntries(group, commands, recent, simpleMode, pandocAvailable, bookshelfEnabled),
+  })).filter((g) => g.entries.length > 0);
 
   // 顶层左右切换：Menu 未消费的 ArrowLeft/ArrowRight 冒泡到此
   const onKeyDown = (e: KeyboardEvent<HTMLDivElement>): void => {
-    if (openIndex === null) return;
+    if (openIndex === null || visible.length === 0) return;
     if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
     e.preventDefault();
     const delta = e.key === 'ArrowRight' ? 1 : -1;
-    setOpenIndex((openIndex + delta + MENUS.length) % MENUS.length);
+    setOpenIndex((openIndex + delta + visible.length) % visible.length);
   };
 
   return (
     <div data-testid="menu-bar" role="menubar" className="flex h-full" onKeyDown={onKeyDown}>
-      {MENUS.map((group, index) => (
+      {visible.map(({ group, entries }, index) => (
         <div key={group.label} className="relative h-full">
           <button
             ref={(el) => {
@@ -55,7 +61,7 @@ export default function MenuBar() {
           </button>
           {openIndex === index ? (
             <Menu
-              items={toEntries(group, commands, recent, simpleMode, pandocAvailable)}
+              items={entries}
               label={group.label}
               onClose={() => setOpenIndex(null)}
               anchorRef={{ current: anchors.current[index] ?? null }}

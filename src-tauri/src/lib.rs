@@ -1,3 +1,4 @@
+mod bookshelf;
 mod files;
 mod git;
 mod index;
@@ -44,6 +45,7 @@ pub fn run() {
             files::write_file_to_path,
             files::write_file_bytes,
             files::read_file_bytes,
+            bookshelf::list_dir_tree,
             pandoc::pandoc_available,
             pandoc::pandoc_convert,
             files::create_file,

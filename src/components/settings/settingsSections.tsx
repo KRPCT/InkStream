@@ -139,8 +139,16 @@ export function GeneralSection() {
   const setExportBrandingFooter = useSettingsStore((s) => s.setExportBrandingFooter);
   const exportBrandingText = useSettingsStore((s) => s.exportBrandingText);
   const setExportBrandingText = useSettingsStore((s) => s.setExportBrandingText);
+  const bookshelfEnabled = useSettingsStore((s) => s.bookshelfEnabled);
+  const setBookshelfEnabled = useSettingsStore((s) => s.setBookshelfEnabled);
   return (
     <div>
+      <SettingRow
+        label="书架"
+        description="在菜单栏显示「书架」入口：保存阅读进度、管理导入的书籍（支持单文件与「书→卷→章」文件夹），以画廊形式浏览。关闭后仅隐藏入口，已保存的书架数据不会删除，重新开启即恢复。"
+      >
+        <Toggle checked={bookshelfEnabled} onChange={setBookshelfEnabled} />
+      </SettingRow>
       <SettingRow
         label="简易模式"
         description="为轻度用户精简界面：关闭反链 / 知识图谱 / Git / Zotero / 搜索等全部高级功能，且不在工作区创建 .inkstream 索引文件夹，仅保留基础编辑、文件树与 Live Preview。随时可关，关闭后恢复全部功能（重开工作区自动重建索引）。"
