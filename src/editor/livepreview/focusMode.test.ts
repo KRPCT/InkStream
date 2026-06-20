@@ -51,6 +51,14 @@ describe('focusMode（CREA-03）', () => {
     expect(dimmedLines(v)).toEqual([]);
     v.destroy();
   });
+
+  it('全文无空行分段时退化为只淡化光标行以外的行（否则淡化不可见）', () => {
+    const v = makeView('行一\n行二\n行三\n行四', 4); // 光标第二行，全文无空行
+    const dim = dimmedLines(v);
+    expect(dim).not.toContain(2); // 光标行不淡化
+    expect(dim.slice().sort()).toEqual([1, 3, 4]); // 其余行全部淡化
+    v.destroy();
+  });
 });
 
 describe('focusMode IME 契约（逐字复制 inlinePlugin 冻结门）', () => {

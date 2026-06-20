@@ -27,6 +27,9 @@ function cursorParagraph(view: EditorView): { first: number; last: number } {
   let last = cur;
   while (first > 1 && doc.line(first - 1).text.trim() !== '') first -= 1;
   while (last < doc.lines && doc.line(last + 1).text.trim() !== '') last += 1;
+  // 全文无空行分段（整篇被当成一段）时，淡化范围为空、效果不可见——退化为只高亮光标行。
+  // 这覆盖「连续大段不空行」「软换行散文」等写法，让专注模式始终有可见的淡化。
+  if (first === 1 && last === doc.lines && doc.lines > 1) return { first: cur, last: cur };
   return { first, last };
 }
 
@@ -70,7 +73,8 @@ export const focusModePlugin = ViewPlugin.fromClass(FocusModePluginValue, {
   decorations: (v) => v.decorations,
 });
 
-export const focusModeTheme = EditorView.baseTheme({
+// 用 EditorView.theme（高于 baseTheme 优先级），确保淡化 opacity 不被其它 .cm-line 规则盖过。
+export const focusModeTheme = EditorView.theme({
   '.cm-ink-focus-dim': {
     opacity: 'var(--cm-focus-dim-opacity)',
     transition: 'opacity var(--duration-base)',
