@@ -1,15 +1,17 @@
 import { getAppVersion } from '../../ipc/app';
 import { pickExportPath } from '../../ipc/dialog';
 import { writeBytesToPath, writeFileToPath } from '../../ipc/files';
+import { pandocConvert } from '../../ipc/pandoc';
 import { useEditorStore } from '../../stores/useEditorStore';
 import { useSettingsStore } from '../../stores/useSettingsStore';
 import { showToast } from '../../stores/useToastStore';
-import type { ExportFormat, ExportMeta } from '../../types/export';
+import type { ExportFormat, ExportMeta, PandocFormat } from '../../types/export';
 import { readFields } from '../frontmatter';
 import { loadKatex } from '../livepreview/mathLoader';
 import { getView } from '../viewHandle';
 import { htmlToDocxBlob } from './exportDocx';
 import { buildHtmlDocument } from './htmlDocument';
+import { PANDOC_FORMATS } from './pandocFormats';
 import { printHtml } from './exportPdf';
 import { markdownToHtml, type MathRenderer } from './markdownToHtml';
 
@@ -50,6 +52,7 @@ export async function exportDocument(format: ExportFormat): Promise<void> {
   const meta: ExportMeta = {
     title: readFields(markdown, ['title']).title || name,
     brandingFooter: useSettingsStore.getState().exportBrandingFooter,
+    brandingText: useSettingsStore.getState().exportBrandingText,
     generator: `InkStream ${await getAppVersion()}`,
   };
   const renderMath = await buildMathRenderer();
@@ -72,5 +75,36 @@ export async function exportDocument(format: ExportFormat): Promise<void> {
     await writeBytesToPath(path, new Uint8Array(await blob.arrayBuffer()));
   } catch {
     showToast('error', `导出 ${LABELS[format]} 失败，请重试。`);
+  }
+}
+
+/**
+ * pandoc 通道无 buildHtmlDocument/DOCX Footer，故把水印作为 markdown 末尾追加（pandoc 转入目标格式）。
+ * 水印文字去换行 + 转义 markdown 元字符 → 作为字面文本而非标记（与 HTML/DOCX 的 esc 同纪律，防 `# x`/`---` 改变文档结构）。
+ */
+export function withWatermark(markdown: string): string {
+  const { exportBrandingFooter, exportBrandingText } = useSettingsStore.getState();
+  const text = exportBrandingText.trim();
+  if (!exportBrandingFooter || !text) return markdown;
+  const safe = text.replace(/[\r\n]+/g, ' ').replace(/([\\`*_{}[\]()#+\-.!>~|])/g, '\\$1');
+  return `${markdown}\n\n---\n\n*${safe}*\n`;
+}
+
+/** pandoc 导出（odt/rtf/latex/epub/typst/org）：当前文档 gfm markdown → pandoc → 保存对话框选定路径。 */
+export async function exportViaPandoc(format: PandocFormat): Promise<void> {
+  const view = getView();
+  if (!view) {
+    showToast('warning', '请先打开一个文档再导出。');
+    return;
+  }
+  const spec = PANDOC_FORMATS.find((f) => f.id === format);
+  if (!spec) return;
+  const name = baseName(useEditorStore.getState().activePath);
+  const path = await pickExportPath(`${name}.${spec.ext}`, format);
+  if (!path) return;
+  try {
+    await pandocConvert(withWatermark(view.state.doc.toString()), path, format);
+  } catch (e) {
+    showToast('error', typeof e === 'string' ? e : `导出 ${spec.label} 失败（pandoc）。`);
   }
 }

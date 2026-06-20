@@ -63,6 +63,12 @@ const TITLES: Record<string, string> = {
   'file.export-html': '文件：导出为 HTML',
   'file.export-pdf': '文件：导出为 PDF',
   'file.export-docx': '文件：导出为 DOCX',
+  'file.export-odt': '文件：导出为 ODT（pandoc）',
+  'file.export-rtf': '文件：导出为 RTF（pandoc）',
+  'file.export-latex': '文件：导出为 LaTeX（pandoc）',
+  'file.export-epub': '文件：导出为 EPUB（pandoc）',
+  'file.export-typst': '文件：导出为 Typst（pandoc）',
+  'file.export-org': '文件：导出为 Org（pandoc）',
   'app.exit': '应用：退出',
   'mode.switch-standard': '模式：切换到 Standard（通用）',
   'mode.switch-academic': '模式：切换到 Academic（学术）',
@@ -108,8 +114,8 @@ const TITLES: Record<string, string> = {
   'academic.biblio-vancouver': '学术：参考文献（Vancouver）',
 };
 
-/** 生产命令总数：…前略… + 导出 HTML/PDF/DOCX(FEAT-EXPORT ×3) + 阅读模式(FEAT-READ ×1) = 74。 */
-const COMMAND_COUNT = 74;
+/** 生产命令总数：…前略… + 导出 HTML/PDF/DOCX(×3) + 阅读模式(×1) + pandoc 格式导出(odt/rtf/latex/epub/typst/org ×6) = 80。 */
+const COMMAND_COUNT = 80;
 
 /** 生产命令（剔除 dev.* DEV-only 命令，如 IME 探针 dev.ime-probe）。 */
 function prodCommands() {
@@ -140,7 +146,7 @@ describe('builtins', () => {
     disposeKeymap();
   });
 
-  it('注册 74 条生产命令，标题与 UI-SPEC / R4 字面逐字一致', () => {
+  it('注册 80 条生产命令，标题与 UI-SPEC / R4 字面逐字一致', () => {
     const all = prodCommands();
     expect(all).toHaveLength(COMMAND_COUNT);
     for (const [id, title] of Object.entries(TITLES)) {

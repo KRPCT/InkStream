@@ -37,6 +37,8 @@ export interface PersistedSettings {
   gitCustomServer: string;
   /** 简易模式（轻度用户）：关闭全部高级功能 + 不在工作区创建 .inkstream 索引库，仅留基础编辑。 */
   simpleMode: boolean;
-  /** 文件导出时在产物末尾附「Made with InkStream」页脚（默认开；元数据/生成器标识始终写入，不受此开关影响）。 */
+  /** 文件导出时在产物末尾附水印页脚（默认关；元数据/生成器标识始终写入，不受此开关影响）。 */
   exportBrandingFooter: boolean;
+  /** 导出水印文字（exportBrandingFooter 开时用）；默认「Made with InkStream」，可自定义；空白则不附页脚。 */
+  exportBrandingText: string;
 }

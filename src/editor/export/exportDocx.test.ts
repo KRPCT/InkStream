@@ -1,7 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import { htmlToDocxBlob } from './exportDocx';
 
-const META = { title: 'D', brandingFooter: true, generator: 'InkStream 1.0.0' };
+const META = {
+  title: 'D',
+  brandingFooter: true,
+  brandingText: 'Made with InkStream',
+  generator: 'InkStream 1.0.0',
+};
 
 describe('htmlToDocxBlob', () => {
   it('从正文 HTML 产出非空 DOCX Blob', async () => {

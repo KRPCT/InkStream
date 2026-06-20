@@ -129,18 +129,20 @@ export async function htmlToDocxBlob(bodyHtml: string, meta: ExportMeta): Promis
   const blocks: Block[] = [];
   if (container) Array.from(container.children).forEach((el) => blockOf(el, d, blocks));
 
-  const footers = meta.brandingFooter
-    ? {
-        default: new d.Footer({
-          children: [
-            new d.Paragraph({
-              alignment: d.AlignmentType.CENTER,
-              children: [new d.TextRun({ text: 'Made with InkStream', color: '8C959F', size: 16 })],
-            }),
-          ],
-        }),
-      }
-    : undefined;
+  const brand = meta.brandingText.trim();
+  const footers =
+    meta.brandingFooter && brand
+      ? {
+          default: new d.Footer({
+            children: [
+              new d.Paragraph({
+                alignment: d.AlignmentType.CENTER,
+                children: [new d.TextRun({ text: brand, color: '8C959F', size: 16 })],
+              }),
+            ],
+          }),
+        }
+      : undefined;
 
   const doc = new d.Document({
     creator: 'InkStream',

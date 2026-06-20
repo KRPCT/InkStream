@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type KeyboardEvent } from 'react';
 import { getAll, subscribe } from '../../commands/registry';
+import { usePandocStore } from '../../stores/usePandocStore';
 import { useSettingsStore } from '../../stores/useSettingsStore';
 import { useVaultStore } from '../../stores/useVaultStore';
 import Menu from '../common/Menu';
@@ -15,6 +16,7 @@ export default function MenuBar() {
   const anchors = useRef<(HTMLButtonElement | null)[]>([]);
   const recent = useVaultStore((s) => s.recentVaults);
   const simpleMode = useSettingsStore((s) => s.simpleMode);
+  const pandocAvailable = usePandocStore((s) => s.available);
 
   useEffect(() => subscribe(() => setVersion((v) => v + 1)), []);
 
@@ -53,7 +55,7 @@ export default function MenuBar() {
           </button>
           {openIndex === index ? (
             <Menu
-              items={toEntries(group, commands, recent, simpleMode)}
+              items={toEntries(group, commands, recent, simpleMode, pandocAvailable)}
               label={group.label}
               onClose={() => setOpenIndex(null)}
               anchorRef={{ current: anchors.current[index] ?? null }}

@@ -137,6 +137,8 @@ export function GeneralSection() {
   const setSimpleMode = useSettingsStore((s) => s.setSimpleMode);
   const exportBrandingFooter = useSettingsStore((s) => s.exportBrandingFooter);
   const setExportBrandingFooter = useSettingsStore((s) => s.setExportBrandingFooter);
+  const exportBrandingText = useSettingsStore((s) => s.exportBrandingText);
+  const setExportBrandingText = useSettingsStore((s) => s.setExportBrandingText);
   return (
     <div>
       <SettingRow
@@ -146,11 +148,23 @@ export function GeneralSection() {
         <Toggle checked={simpleMode} onChange={setSimpleMode} />
       </SettingRow>
       <SettingRow
-        label="导出附带 InkStream 标识"
-        description="导出 HTML / PDF / DOCX 时在文末附「Made with InkStream」页脚。关闭仅去除页脚；生成器标识仍始终写入文件元数据。"
+        label="导出水印页脚"
+        description="导出 HTML / PDF / DOCX 时在文末附一行自定义水印（默认关闭）。生成器标识始终写入文件元数据，不受此开关影响。"
       >
         <Toggle checked={exportBrandingFooter} onChange={setExportBrandingFooter} />
       </SettingRow>
+      {exportBrandingFooter ? (
+        <SettingRow label="水印文字" description="导出页脚显示的文字，可自定义；留空则不附页脚。">
+          <input
+            type="text"
+            value={exportBrandingText}
+            placeholder="Made with InkStream"
+            maxLength={200}
+            onChange={(e) => setExportBrandingText(e.target.value)}
+            className="w-56 rounded-[4px] border border-[var(--background-modifier-border)] bg-[var(--background-primary)] px-2 py-1 text-[12px] text-[var(--text-normal)] outline-none focus:border-[var(--accent)]"
+          />
+        </SettingRow>
+      ) : null}
     </div>
   );
 }

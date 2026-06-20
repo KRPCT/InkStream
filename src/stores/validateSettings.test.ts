@@ -20,6 +20,7 @@ const VALID = {
   gitCustomServer: 'git@example.com:u/r.git',
   simpleMode: true,
   exportBrandingFooter: false,
+  exportBrandingText: '自定义水印',
 };
 
 describe('validateSettings', () => {
@@ -116,7 +117,8 @@ describe('validateSettings', () => {
       gitRemoteMode: 'ssh',
       gitCustomServer: '',
       simpleMode: false,
-      exportBrandingFooter: true,
+      exportBrandingFooter: false,
+      exportBrandingText: 'Made with InkStream',
     });
   });
 

@@ -17,6 +17,7 @@ import { initOsFileOpen, stopOsFileOpen } from './editor/osFileOpen';
 import { restoreLastVault } from './editor/startupFlow';
 import { windowControls } from './ipc/window';
 import { initOnboarding } from './stores/useOnboardingStore';
+import { usePandocStore } from './stores/usePandocStore';
 import { initPersistence } from './stores/persistSettings';
 import { initVaultPersistence } from './stores/persistVault';
 
@@ -33,6 +34,8 @@ export default function App() {
     initExitGuard();
     // #6：OS 文件接入（拖拽 + 「打开方式」冷启动/热转发）→ openExternalFile。
     initOsFileOpen();
+    // 文件导出：探测一次系统是否装 pandoc，决定「导出为」是否显示 odt/rtf/latex/epub/typst/org。
+    void usePandocStore.getState().detect();
     // FOUC 契约第 1 步收尾：首帧渲染后显示窗口（show 幂等，StrictMode 双执行无害）
     void windowControls.show();
     // 首次引导（簇③）：延迟到布局渲染后再开，spotlight 才能命中侧栏/状态栏元素。seen 标记防重复弹。

@@ -29,7 +29,8 @@ function defaults(): PersistedSettings {
     gitRemoteMode: 'ssh',
     gitCustomServer: '',
     simpleMode: false,
-    exportBrandingFooter: true,
+    exportBrandingFooter: false,
+    exportBrandingText: 'Made with InkStream',
   };
 }
 
@@ -85,6 +86,10 @@ export function validateSettings(raw: unknown): PersistedSettings {
       typeof raw.gitCustomServer === 'string' ? raw.gitCustomServer.slice(0, 500) : '',
     simpleMode: typeof raw.simpleMode === 'boolean' ? raw.simpleMode : false,
     exportBrandingFooter:
-      typeof raw.exportBrandingFooter === 'boolean' ? raw.exportBrandingFooter : true,
+      typeof raw.exportBrandingFooter === 'boolean' ? raw.exportBrandingFooter : false,
+    exportBrandingText:
+      typeof raw.exportBrandingText === 'string'
+        ? raw.exportBrandingText.slice(0, 200)
+        : 'Made with InkStream',
   };
 }

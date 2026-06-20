@@ -1,51 +1,67 @@
 import { create } from 'zustand';
 
 /**
- * 写作 HUD 指标（写作模式升级）：码字速度 / 码字时间 / 专注番茄钟。全部纯内存、永不持久化（约束）。
+ * 写作 HUD 指标（写作模式升级）：码字速度 / 码字时间 / 专注番茄钟 + HUD 悬浮位置。全部纯内存、永不持久化。
  *
  * 单向 sink：editor/writingMetrics 写入 charsPerMin（CM→store，60s 滑窗），WritingHud 的 1s tick 经
- * advance(deltaMs) 推进码字时间与番茄钟倒计时。store 永不回写 CM。番茄钟用「按真实时间增量推进」模型
- * （delta 来自 performance.now() 差值），对 tick 抖动 / StrictMode 双挂载稳健，且便于单测。
+ * advance(deltaMs) 推进码字时间与番茄钟倒计时。番茄钟时长可自定义（workMs/breakMs）；HUD 可拖拽（hudX/hudY）。
  */
 
-const WORK_MS = 25 * 60_000;
-const BREAK_MS = 5 * 60_000;
-export const POMODORO_WORK_MS = WORK_MS;
-export const POMODORO_BREAK_MS = BREAK_MS;
+/** 番茄钟默认时长（25 工作 / 5 休息）；用户可自定义，此处仅作初值与测试基线。 */
+export const POMODORO_WORK_MS = 25 * 60_000;
+export const POMODORO_BREAK_MS = 5 * 60_000;
+
+const MIN_MS = 60_000;
+const MAX_MS = 180 * 60_000;
+/** 分钟 → ms，夹到 1–180 分钟（非法输入回 1 分钟）。 */
+function minToMs(min: number): number {
+  if (!Number.isFinite(min)) return MIN_MS;
+  return Math.min(MAX_MS, Math.max(MIN_MS, Math.round(min) * 60_000));
+}
 
 type PomodoroPhase = 'work' | 'break';
 
 interface WritingMetricsState {
-  /** HUD 是否可见（默认关闭——规格：默认不开启，仅 Creative 状态栏给提示入口）。 */
   visible: boolean;
-  /** 码字速度：最近 60s 内净插入字符数（即 字/分），由 writingMetrics 滑窗写入。 */
+  /** HUD 悬浮位置（px，左上角）；null = 默认左下角（CSS）。拖拽后切绝对定位。 */
+  hudX: number | null;
+  hudY: number | null;
   charsPerMin: number;
-  /** 码字时间：HUD 打开期间累计墙钟（毫秒），关闭即冻结、重开续计。 */
   elapsedMs: number;
   pomodoroRunning: boolean;
   pomodoroPhase: PomodoroPhase;
   pomodoroRemainingMs: number;
+  /** 番茄钟工作 / 休息时长（ms，可自定义）。 */
+  workMs: number;
+  breakMs: number;
 
   toggleVisible: () => void;
   setVisible: (visible: boolean) => void;
+  setHudPos: (x: number, y: number) => void;
   reportSpeed: (charsPerMin: number) => void;
-  /** WritingHud 每秒调用：按真实时间增量推进码字时间 + 番茄钟（运行时倒计时，归零翻相）。 */
   advance: (deltaMs: number) => void;
   startPomodoro: () => void;
   pausePomodoro: () => void;
   resetPomodoro: () => void;
+  setWorkMin: (min: number) => void;
+  setBreakMin: (min: number) => void;
 }
 
 export const useWritingMetricsStore = create<WritingMetricsState>((set) => ({
   visible: false,
+  hudX: null,
+  hudY: null,
   charsPerMin: 0,
   elapsedMs: 0,
   pomodoroRunning: false,
   pomodoroPhase: 'work',
-  pomodoroRemainingMs: WORK_MS,
+  pomodoroRemainingMs: POMODORO_WORK_MS,
+  workMs: POMODORO_WORK_MS,
+  breakMs: POMODORO_BREAK_MS,
 
   toggleVisible: () => set((s) => ({ visible: !s.visible })),
   setVisible: (visible) => set({ visible }),
+  setHudPos: (hudX, hudY) => set({ hudX, hudY }),
   reportSpeed: (charsPerMin) => set({ charsPerMin }),
 
   advance: (deltaMs) =>
@@ -54,10 +70,9 @@ export const useWritingMetricsStore = create<WritingMetricsState>((set) => ({
       if (!s.pomodoroRunning) return { elapsedMs };
       let remaining = s.pomodoroRemainingMs - deltaMs;
       let phase = s.pomodoroPhase;
-      // 跨多个相位消化 overshoot：用 += 累加新相位时长，休眠 / 后台节流导致的大 delta 不丢时间、不卡在一相。
       while (remaining <= 0) {
         phase = phase === 'work' ? 'break' : 'work';
-        remaining += phase === 'work' ? WORK_MS : BREAK_MS;
+        remaining += phase === 'work' ? s.workMs : s.breakMs;
       }
       return { elapsedMs, pomodoroPhase: phase, pomodoroRemainingMs: remaining };
     }),
@@ -65,5 +80,21 @@ export const useWritingMetricsStore = create<WritingMetricsState>((set) => ({
   startPomodoro: () => set({ pomodoroRunning: true }),
   pausePomodoro: () => set({ pomodoroRunning: false }),
   resetPomodoro: () =>
-    set({ pomodoroRunning: false, pomodoroPhase: 'work', pomodoroRemainingMs: WORK_MS }),
+    set((s) => ({ pomodoroRunning: false, pomodoroPhase: 'work', pomodoroRemainingMs: s.workMs })),
+
+  // 静止于对应相位时即时反映新时长；运行中 / 处于另一相位则下次相位翻转 / 重置时生效。
+  setWorkMin: (min) =>
+    set((s) => {
+      const workMs = minToMs(min);
+      return !s.pomodoroRunning && s.pomodoroPhase === 'work'
+        ? { workMs, pomodoroRemainingMs: workMs }
+        : { workMs };
+    }),
+  setBreakMin: (min) =>
+    set((s) => {
+      const breakMs = minToMs(min);
+      return !s.pomodoroRunning && s.pomodoroPhase === 'break'
+        ? { breakMs, pomodoroRemainingMs: breakMs }
+        : { breakMs };
+    }),
 }));

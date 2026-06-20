@@ -46,6 +46,9 @@ export interface IpcCommands {
   write_file_bytes: { args: { path: string; content: number[] }; result: null };
   // 阅读模式二进制读（DOCX/EPUB/PDF）：绝对路径 → 字节数组（Vec<u8>→Uint8Array）。read_file 仅 UTF-8 文本。
   read_file_bytes: { args: { path: string }; result: number[] };
+  // 文件导出：检测系统 pandoc + 经其把 gfm markdown 转更多格式（odt/rtf/latex/epub/typst/org）。
+  pandoc_available: { args: undefined; result: boolean };
+  pandoc_convert: { args: { markdown: string; outPath: string; toFormat: string }; result: null };
   create_file: { args: { root: string; path: string }; result: null };
   create_dir: { args: { root: string; path: string }; result: null };
   rename_path: { args: { root: string; from: string; to: string }; result: null };

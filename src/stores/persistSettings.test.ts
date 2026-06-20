@@ -94,7 +94,8 @@ describe('persistSettings', () => {
       gitRemoteMode: 'ssh',
       gitCustomServer: '',
       simpleMode: false,
-      exportBrandingFooter: true,
+      exportBrandingFooter: false,
+      exportBrandingText: 'Made with InkStream',
     });
   });
 

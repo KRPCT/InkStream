@@ -71,4 +71,32 @@ describe('useWritingMetricsStore', () => {
     expect(s().pomodoroPhase).toBe('work');
     expect(s().pomodoroRemainingMs).toBe(POMODORO_WORK_MS);
   });
+
+  it('自定义番茄钟时长（分钟，夹 1–180）；静止工作相即时更新剩余', () => {
+    s().setWorkMin(50);
+    expect(s().workMs).toBe(50 * 60_000);
+    expect(s().pomodoroRemainingMs).toBe(50 * 60_000);
+    s().setBreakMin(10);
+    expect(s().breakMs).toBe(10 * 60_000);
+    expect(s().pomodoroRemainingMs).toBe(50 * 60_000); // 休息时长改动不动当前工作相剩余
+    s().setWorkMin(9999);
+    expect(s().workMs).toBe(180 * 60_000);
+    s().setWorkMin(0);
+    expect(s().workMs).toBe(60_000); // 夹下限 1 分钟
+  });
+
+  it('自定义时长驱动 advance 的相位翻转', () => {
+    s().setWorkMin(10);
+    s().startPomodoro();
+    s().advance(10 * 60_000);
+    expect(s().pomodoroPhase).toBe('break');
+    expect(s().pomodoroRemainingMs).toBe(POMODORO_BREAK_MS);
+  });
+
+  it('setHudPos 记录 HUD 拖拽位置', () => {
+    expect(s().hudX).toBeNull();
+    s().setHudPos(120, 80);
+    expect(s().hudX).toBe(120);
+    expect(s().hudY).toBe(80);
+  });
 });

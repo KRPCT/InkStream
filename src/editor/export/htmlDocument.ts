@@ -42,9 +42,11 @@ function esc(s: string): string {
 
 /** 正文 HTML + 元数据 → 完整自包含 HTML 文档串。 */
 export function buildHtmlDocument(bodyHtml: string, meta: ExportMeta): string {
-  const footer = meta.brandingFooter
-    ? '\n<footer class="ink-export-footer">Made with InkStream</footer>'
-    : '';
+  const brand = meta.brandingText.trim();
+  const footer =
+    meta.brandingFooter && brand
+      ? `\n<footer class="ink-export-footer">${esc(brand)}</footer>`
+      : '';
   return `<!doctype html>
 <html lang="zh-CN">
 <head>

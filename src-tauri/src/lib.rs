@@ -2,6 +2,7 @@ mod files;
 mod git;
 mod index;
 mod os_open;
+mod pandoc;
 mod path_guard;
 mod vault;
 mod watcher;
@@ -40,6 +41,8 @@ pub fn run() {
             files::write_file_to_path,
             files::write_file_bytes,
             files::read_file_bytes,
+            pandoc::pandoc_available,
+            pandoc::pandoc_convert,
             files::create_file,
             files::create_dir,
             files::rename_path,

@@ -35,6 +35,7 @@ function snapshot(): PersistedSettings {
     gitCustomServer,
     simpleMode,
     exportBrandingFooter,
+    exportBrandingText,
   } = useSettingsStore.getState();
   const { mode, layouts } = useWorkbenchStore.getState();
   return validateSettings({
@@ -51,6 +52,7 @@ function snapshot(): PersistedSettings {
     gitCustomServer,
     simpleMode,
     exportBrandingFooter,
+    exportBrandingText,
   });
 }
 
@@ -75,6 +77,7 @@ function apply(s: PersistedSettings): void {
     gitCustomServer: s.gitCustomServer,
     simpleMode: s.simpleMode,
     exportBrandingFooter: s.exportBrandingFooter,
+    exportBrandingText: s.exportBrandingText,
   });
   useSettingsStore.getState().setEditorFontSize(s.editorFontSize);
   useWorkbenchStore.getState().setMode(s.mode);

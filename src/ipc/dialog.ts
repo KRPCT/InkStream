@@ -1,4 +1,5 @@
 import { open, save } from '@tauri-apps/plugin-dialog';
+import type { PandocFormat } from '../types/export';
 
 /**
  * 原生系统对话框前端通道（R4 §2）。全项目唯一接触 @tauri-apps/plugin-dialog 的文件
@@ -21,10 +22,16 @@ const OPENABLE_FILTER = {
   extensions: ['md', 'markdown', 'txt', 'docx', 'epub', 'pdf'],
 };
 
-/** 文件导出保存过滤器（按格式；PDF 走打印对话框无需此路）。 */
-const EXPORT_FILTERS: Record<'html' | 'docx', { name: string; extensions: string[] }> = {
+/** 文件导出保存过滤器（按格式；PDF 走打印对话框无需此路）。pandoc 格式仅在系统装有 pandoc 时被调用。 */
+const EXPORT_FILTERS: Record<'html' | 'docx' | PandocFormat, { name: string; extensions: string[] }> = {
   html: { name: 'HTML', extensions: ['html'] },
   docx: { name: 'Word 文档', extensions: ['docx'] },
+  odt: { name: 'OpenDocument 文本', extensions: ['odt'] },
+  rtf: { name: 'RTF', extensions: ['rtf'] },
+  latex: { name: 'LaTeX', extensions: ['tex'] },
+  epub: { name: 'EPUB', extensions: ['epub'] },
+  typst: { name: 'Typst', extensions: ['typ'] },
+  org: { name: 'Org', extensions: ['org'] },
 };
 
 /**
@@ -55,6 +62,9 @@ export function pickSavePath(defaultName: string): Promise<string | null> {
  * 文件导出保存对话框（HTML / DOCX）：defaultName 预填带扩展名的文件名，按格式过滤。取消返回 null。
  * 返回绝对路径走 writeFileToPath（HTML 文本）/ writeBytesToPath（DOCX 二进制），不经 vault path_guard。
  */
-export function pickExportPath(defaultName: string, format: 'html' | 'docx'): Promise<string | null> {
+export function pickExportPath(
+  defaultName: string,
+  format: 'html' | 'docx' | PandocFormat,
+): Promise<string | null> {
   return save({ defaultPath: defaultName, filters: [EXPORT_FILTERS[format]] });
 }

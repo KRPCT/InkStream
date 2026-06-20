@@ -16,6 +16,11 @@ export interface Command {
    * 覆盖知识图谱 / Git Graph / 模式切换 / 学术引用 / 切换文档语言等依赖高级子系统的命令。
    */
   advanced?: boolean;
+  /**
+   * pandoc 专属命令：系统未装 pandoc 时在命令面板 / 「导出为」菜单隐藏（usePandocStore.available 门控）。
+   * 与 advanced 正交——pandoc 格式导出在简易模式下也可用，只取决于系统是否装 pandoc。
+   */
+  pandocOnly?: boolean;
   run: () => void | Promise<void>;
 }
 

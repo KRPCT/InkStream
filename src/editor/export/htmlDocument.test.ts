@@ -1,7 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import { buildHtmlDocument } from './htmlDocument';
 
-const META = { title: 'My Doc', brandingFooter: true, generator: 'InkStream 1.2.3' };
+const META = {
+  title: 'My Doc',
+  brandingFooter: true,
+  brandingText: 'Made with InkStream',
+  generator: 'InkStream 1.2.3',
+};
 
 describe('buildHtmlDocument', () => {
   it('包成自包含 HTML 文档 + 写入生成器元数据 + 标题 + 内联样式', () => {
@@ -21,6 +26,17 @@ describe('buildHtmlDocument', () => {
     expect(buildHtmlDocument('<p>x</p>', { ...META, brandingFooter: false })).not.toContain(
       'Made with InkStream',
     );
+  });
+
+  it('自定义水印文字按 brandingText 输出（转义）', () => {
+    const doc = buildHtmlDocument('<p>x</p>', { ...META, brandingText: '版权所有 <张三>' });
+    expect(doc).toContain('版权所有 &lt;张三&gt;');
+    expect(doc).not.toContain('Made with InkStream');
+  });
+
+  it('开启但水印文字为空白时不附页脚', () => {
+    const doc = buildHtmlDocument('<p>x</p>', { ...META, brandingText: '   ' });
+    expect(doc).not.toContain('<footer');
   });
 
   it('标题转义防注入', () => {

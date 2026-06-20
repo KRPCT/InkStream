@@ -3,6 +3,7 @@ import { rankCommands } from '../../commands/match';
 import * as mru from '../../commands/mru';
 import { execute, getAll, subscribe } from '../../commands/registry';
 import { usePaletteStore } from '../../stores/usePaletteStore';
+import { usePandocStore } from '../../stores/usePandocStore';
 import { useSettingsStore } from '../../stores/useSettingsStore';
 import { useVaultStore } from '../../stores/useVaultStore';
 import type { PaletteProvider } from '../../types/commands';
@@ -19,9 +20,12 @@ const HINT_QUICK_OPEN_NO_RESULT = '没有匹配的文件';
 const commandProvider: PaletteProvider = {
   prefix: '>',
   getItems: (query) => {
-    // 简易模式隐藏高级命令（图谱/Git/模式/学术/切换语言），与菜单门控同源。
-    const all = getAll();
-    const available = useSettingsStore.getState().simpleMode ? all.filter((c) => !c.advanced) : all;
+    // 简易模式隐藏高级命令；系统未装 pandoc 隐藏 pandoc 格式导出命令。与菜单门控同源。
+    const simpleMode = useSettingsStore.getState().simpleMode;
+    const pandocAvailable = usePandocStore.getState().available;
+    const available = getAll().filter(
+      (c) => !(simpleMode && c.advanced) && !(c.pandocOnly && !pandocAvailable),
+    );
     return rankCommands(query.trim(), available, mru.list()).map(({ id, title, shortcut }) => ({
       id,
       title,
@@ -60,6 +64,8 @@ function PalettePanel() {
 
   // 注册表变更时刷新列表（菜单/命令在面板开启期间增删的边界情形）
   useEffect(() => subscribe(() => setVersion((v) => v + 1)), []);
+  // pandoc 启动探测异步 resolve 后重算列表，使 pandoc 格式命令的显隐与菜单同步（与 MenuBar 同纪律）。
+  useEffect(() => usePandocStore.subscribe(() => setVersion((v) => v + 1)), []);
   useEffect(() => setSelectedIndex(0), [query]);
 
   const provider = routeProvider(query);

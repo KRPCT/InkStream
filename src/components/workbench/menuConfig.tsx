@@ -51,6 +51,12 @@ export const MENUS: GroupConfig[] = [
           { commandId: 'file.export-html', label: 'HTML…' },
           { commandId: 'file.export-pdf', label: 'PDF…' },
           { commandId: 'file.export-docx', label: 'DOCX…' },
+          { commandId: 'file.export-odt', label: 'ODT…' },
+          { commandId: 'file.export-rtf', label: 'RTF…' },
+          { commandId: 'file.export-latex', label: 'LaTeX…' },
+          { commandId: 'file.export-epub', label: 'EPUB…' },
+          { commandId: 'file.export-typst', label: 'Typst…' },
+          { commandId: 'file.export-org', label: 'Org…' },
         ],
       },
       { separator: true },
@@ -212,8 +218,13 @@ export function toEntries(
   commands: Map<string, Command>,
   recent: string[],
   simpleMode = false,
+  pandocAvailable = false,
 ): MenuEntry[] {
-  const hidden = (id: string): boolean => simpleMode && commands.get(id)?.advanced === true;
+  // 隐藏：简易模式下的 advanced 命令；以及系统未装 pandoc 时的 pandocOnly 命令（如 ODT/LaTeX/EPUB 导出）。
+  const hidden = (id: string): boolean => {
+    const cmd = commands.get(id);
+    return (simpleMode && cmd?.advanced === true) || (!pandocAvailable && cmd?.pandocOnly === true);
+  };
   const entries: MenuEntry[] = [];
   for (const [i, item] of group.items.entries()) {
     if ('separator' in item) {
