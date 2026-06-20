@@ -2,9 +2,9 @@ import type { ReadingGenre, ReadingPrefs } from '../../types/reading';
 import { GENRE_PRESETS, READING_THEMES } from './readingPresets';
 
 /**
- * 把正文 HTML 包成 sandbox iframe 的 srcdoc（FEAT-READ）：内联阅读排版 CSS（文体 + 偏好 + 主题 token）。
+ * 把正文 HTML 包成 sandbox iframe 的 srcdoc（FEAT-READ）：内联阅读排版 CSS（文体 + 偏好 + 主题）。
  * 在无 allow-scripts 的 sandbox iframe 渲染 → 内容里的脚本 / 事件处理 / javascript: 链接一律不执行（XSS 安全），
- * 故正文无需逐节点 sanitize。配色全用 var(--reading-* / 应用主题) token，无硬编码。
+ * 故正文无需逐节点 sanitize。配色/字体用具体值（readingPresets）：iframe 是隔离文档，看不到父 :root 变量。
  */
 export function buildReadingFrame(content: string, genre: ReadingGenre, prefs: ReadingPrefs): string {
   const g = GENRE_PRESETS[genre];
