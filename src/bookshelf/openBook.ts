@@ -31,14 +31,16 @@ function recordProgress(rootPath: string, index: number, total: number): void {
 export function openBook(book: Book): void {
   const chapters = flatChapters(book);
   if (chapters.length === 0) return;
-  // 续读章索引：仅当存的 total 与章数吻合才信任为章索引（防单文件 PDF 的页索引被误当章索引）。
+  // 续读章索引：仅当存的 total 与章数吻合才信任为章索引（防单文件书的页/行索引被误当章索引）。
+  // 单文件书（章数 1）的文档内续读由阅读器按 doc.path 自管，此处经下方 clamp 恒落到第 0 章。
   const p = useBookshelfStore.getState().progress[book.rootPath];
   const saved = p && p.total === chapters.length ? p.index : 0;
   const index = Math.min(Math.max(0, saved), chapters.length - 1);
   const ch = chapters[index];
   openReading(ch.path, ch.title); // 清旧 bookContext + 设 doc / 视图
   useReadingStore.getState().setBookContext({ bookId: book.id, rootPath: book.rootPath, chapters, index });
-  recordProgress(book.rootPath, index, chapters.length);
+  // 多章书记章级进度到 rootPath；单文件书（rootPath === 文档路径）的文档内续读由阅读器按 doc.path 自管，勿覆盖。
+  if (chapters.length > 1) recordProgress(book.rootPath, index, chapters.length);
   useBookshelfStore.getState().touch(book.id);
 }
 

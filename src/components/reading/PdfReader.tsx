@@ -91,6 +91,8 @@ export default function PdfReader({ doc }: { doc: ReadingDoc }) {
       // 阅读进度：真正进入视口的最靠前页 → setProgress（书架进度提示；与渲染观察器分开，rootMargin 0 取实际视口页）。
       // 书架书（bookContext 在架）：进度记到书的 rootPath，分数 = 章位置 + 章内页贡献，故文件夹书的页进度不被孤立。
       const ctx = useReadingStore.getState().bookContext;
+      // 单文档 / 单文件书（章数 ≤ 1）→ 页级续读记到 doc.path；多章书 → 复合分数记到书 rootPath（章级续读由 openBook 处理）。
+      const standalone = !ctx || ctx.chapters.length <= 1;
       const visible = new Set<number>();
       reportObs = new IntersectionObserver(
         (entries) => {
@@ -102,19 +104,21 @@ export default function PdfReader({ doc }: { doc: ReadingDoc }) {
           if (visible.size === 0) return;
           const page = Math.min(...visible);
           const intra = (page - 1) / pdf.numPages;
-          if (ctx) {
+          const store = useBookshelfStore.getState();
+          // 文档内（章内）页锚点始终记到 doc.path，支撑单文档与章内续读。
+          store.setProgress(doc.path, {
+            fraction: page / pdf.numPages,
+            index: page - 1,
+            total: pdf.numPages,
+            updatedAt: Date.now(),
+          });
+          // 多章书：另记复合分数到书 rootPath（驱动画廊进度条，与章级续读同键）。
+          if (!standalone && ctx) {
             const total = ctx.chapters.length;
-            useBookshelfStore.getState().setProgress(ctx.rootPath, {
-              fraction: total > 1 ? (ctx.index + intra) / total : intra,
+            store.setProgress(ctx.rootPath, {
+              fraction: (ctx.index + intra) / total,
               index: ctx.index,
               total,
-              updatedAt: Date.now(),
-            });
-          } else {
-            useBookshelfStore.getState().setProgress(doc.path, {
-              fraction: page / pdf.numPages,
-              index: page - 1,
-              total: pdf.numPages,
               updatedAt: Date.now(),
             });
           }
@@ -131,6 +135,17 @@ export default function PdfReader({ doc }: { doc: ReadingDoc }) {
         host.appendChild(slot);
         observer.observe(slot);
         reportObs.observe(slot);
+      }
+      // 续读：恢复到上次所在页（单文档 / 单文件书 / 多章书的章内页，统一按 doc.path；占位 slot 尺寸已定，offset 稳定）。
+      if (alive && scrollRef.current) {
+        const savedIdx = useBookshelfStore.getState().progress[doc.path]?.index ?? 0;
+        if (savedIdx > 0 && savedIdx < pdf.numPages) {
+          const slot = host.children[savedIdx] as HTMLElement | undefined;
+          if (slot) {
+            scrollRef.current.scrollTop +=
+              slot.getBoundingClientRect().top - scrollRef.current.getBoundingClientRect().top;
+          }
+        }
       }
       if (alive) setStatus('ready');
     })().catch(() => {

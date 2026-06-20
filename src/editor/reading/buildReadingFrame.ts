@@ -24,5 +24,8 @@ body{background:${t.bg};color:${t.text};overflow-y:auto;}
 .ink-reading td,.ink-reading th{border:1px solid currentColor;padding:.3em .6em;}
 .ink-reading section + section{margin-top:2em;}
 `;
-  return `<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><style>${css}</style></head><body><article class="ink-reading">${content}</article></body></html>`;
+  // 帧内 CSP（在继承的应用 CSP 之上再收紧）：脚本/网络一律禁，仅放内联样式与内嵌 data: 图——
+  // docx(mammoth)/epub(loadEpub) 的图片均已内联为 data:，故不破显示，却挡掉不可信正文经 <img>/CSS url() 的对外信标。
+  const csp = "default-src 'none'; img-src data:; style-src 'unsafe-inline'; font-src data:";
+  return `<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="${csp}"><style>${css}</style></head><body><article class="ink-reading">${content}</article></body></html>`;
 }
