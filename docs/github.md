@@ -1,6 +1,6 @@
 # GitHub 集成
 
-在 InkStream 内直接登录 GitHub、浏览与管理 Pull Request 和 Issue、撰写评论、做 PR 审阅，无需切换到浏览器或终端。
+在 InkStream 内登录 GitHub，浏览和管理 Pull Request、Issue，撰写评论，做 PR 审阅，不用切到浏览器或终端。
 
 ## 登录 GitHub
 
@@ -14,7 +14,7 @@ GitHub 登录入口在「设置 ▸ 账户」分区。
 登录有两种方式：
 
 - 个人访问令牌（PAT）：在输入框粘贴形如 `ghp_...` 的令牌，点「登录」。令牌需包含 repo 权限，可在 GitHub ▸ Settings ▸ Developer settings ▸ Personal access tokens 创建。
-- 本机 gh CLI 一键登录：若 InkStream 检测到你已通过 `gh` 命令行工具在 github.com 登录，账户分区会出现「用本机 gh CLI 一键登录」按钮，点一下即可，无需手动粘贴令牌。
+- 本机 gh CLI 登录：若 InkStream 检测到你已通过 `gh` 命令行工具在 github.com 登录，账户分区会出现「用本机 gh CLI 一键登录」按钮，点一下就行，不用手动粘贴令牌。
 
 登录成功后，账户分区显示「已登录」并提供「登出」按钮。登录后通过 HTTPS 推送、拉取、克隆会自动带上令牌。
 
@@ -56,7 +56,7 @@ Git Graph 顶部有四个标签：图谱、分支、PR、Issues。点「PR」或
 点开某个 PR 进入详情后：
 
 - 中栏显示 PR 标题、正文、作者、来源 → 目标分支，以及已有的 Review 列表（含审阅者与状态）。
-- 右栏内嵌该 PR 的逐文件代码 diff，可直接在 InkStream 内审阅改动，无需打开浏览器。
+- 右栏内嵌该 PR 的逐文件代码 diff，可以直接在 InkStream 里审阅改动。
 
 提交你自己的 Review：
 
