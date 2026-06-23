@@ -3,7 +3,14 @@
     "windows": [
       {
         "label": "main",
+        "title": "InkStream",
+        "width": 1200,
+        "height": 800,
+        "minWidth": 900,
+        "minHeight": 600,
+        "visible": false,
         "decorations": true,
+        "hiddenTitle": true,
         "titleBarStyle": "Overlay",
         "trafficLightPosition": { "x": 12, "y": 12 }
       }

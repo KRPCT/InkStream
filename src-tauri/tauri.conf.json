@@ -13,7 +13,7 @@
     "windows": [
       {
         "label": "main",
-        "title": "InkStream / 墨流",
+        "title": "InkStream",
         "width": 1200,
         "height": 800,
         "minWidth": 900,
