@@ -152,6 +152,35 @@ pub fn read_file_bytes(path: String) -> Result<Vec<u8>, String> {
     std::fs::read(&target).map_err(|e| format!("无法读取文件: {e}"))
 }
 
+/// 导出内嵌图片一次性读上限（25MB）：单张图字节经 number[] 过 IPC，过大撑主线程，超限拒之内嵌。
+const READ_IMAGE_MAX: u64 = 25 * 1024 * 1024;
+
+/// 导出内嵌：读绝对路径图片为字节（→ data URI 内嵌进 HTML/PDF/DOCX 导出产物，使产物脱离 vault 也能显示）。
+/// 信任边界（同 read_file_bytes）：TS 侧仅以 resolveVaultImage 判定为 vault 内的本地图绝对路径调用（承
+/// ImageWidget 安全边界纪律）；此处再以「仅绝对路径 + 仅图片扩展名 + 限大小」兜底，钝化经此通道的任意机密读取。
+#[tauri::command]
+pub fn read_image_bytes(path: String) -> Result<Vec<u8>, String> {
+    let target = PathBuf::from(&path);
+    if !target.is_absolute() {
+        return Err("读取路径必须是绝对路径".to_string());
+    }
+    let ext = target
+        .extension()
+        .and_then(|e| e.to_str())
+        .map(|s| s.to_ascii_lowercase());
+    if !matches!(
+        ext.as_deref(),
+        Some("png" | "jpg" | "jpeg" | "gif" | "bmp" | "webp" | "svg" | "avif" | "ico")
+    ) {
+        return Err("仅支持读取图片文件".to_string());
+    }
+    let meta = std::fs::metadata(&target).map_err(|e| format!("无法读取图片: {e}"))?;
+    if meta.len() > READ_IMAGE_MAX {
+        return Err("图片过大（超过 25MB），暂不内嵌".to_string());
+    }
+    std::fs::read(&target).map_err(|e| format!("无法读取图片: {e}"))
+}
+
 /// 新建空文件：已存在则 Err，绝不覆盖（D-12 同名拒绝）。
 ///
 /// WR-05：用 `create_new(true)` 原子创建——内核层保证「不存在才建、存在即 AlreadyExists」，
@@ -230,9 +259,9 @@ pub fn trash_path(root: String, path: String) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::{
-        create_dir, create_file, move_path, read_file, rename_path, temp_sibling, trash_path,
-        read_file_bytes, write_file_atomic, write_file_bytes, write_file_to_path,
-        READ_FILE_INLINE_LIMIT_BYTES,
+        create_dir, create_file, move_path, read_file, read_image_bytes, rename_path,
+        temp_sibling, trash_path, read_file_bytes, write_file_atomic, write_file_bytes,
+        write_file_to_path, READ_FILE_INLINE_LIMIT_BYTES,
     };
     use std::fs;
     use std::path::Path;
@@ -379,6 +408,35 @@ mod tests {
     #[test]
     fn read_file_bytes_rejects_relative() {
         assert!(read_file_bytes("relative.pdf".to_string()).is_err());
+    }
+
+    #[test]
+    fn read_image_bytes_round_trips_png() {
+        // 导出内嵌：图片字节原样读回（与磁盘一致）。
+        let root = temp_dir("read-image");
+        let target = root.join("pic.png");
+        let target_str = target.to_string_lossy().into_owned();
+        // 最小 PNG 魔数 + 任意尾字节（仅验字节通道，不解码）。
+        let bytes = vec![0x89u8, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 0x01, 0x02];
+        write_file_bytes(target_str.clone(), bytes.clone()).unwrap();
+        assert_eq!(read_image_bytes(target_str).unwrap(), bytes);
+        fs::remove_dir_all(&root).ok();
+    }
+
+    #[test]
+    fn read_image_bytes_rejects_non_image_ext() {
+        // 仅放行图片扩展名（钝化经此通道读 .md/.txt 等机密）。
+        let root = temp_dir("read-image-ext");
+        let target = root.join("secret.md");
+        let target_str = target.to_string_lossy().into_owned();
+        write_file_to_path(target_str.clone(), "secret".to_string()).unwrap();
+        assert!(read_image_bytes(target_str).is_err());
+        fs::remove_dir_all(&root).ok();
+    }
+
+    #[test]
+    fn read_image_bytes_rejects_relative() {
+        assert!(read_image_bytes("relative.png".to_string()).is_err());
     }
 
     #[test]

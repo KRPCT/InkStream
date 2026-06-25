@@ -87,8 +87,10 @@ function swapState(view: EditorView, key: string, doSwap: () => void): void {
 /**
  * 图片解析上下文：库外文件（绝对 path）按其所在目录解析相对图片；
  * 库内文件按当前 vault 根 + 相对 path 解析。无 vault 且非绝对（不该发生）→ null。
+ *
+ * 编辑器 live preview 与文件导出（imageEmbed）共用此唯一推导口——保证导出内嵌的图与编辑器所见一致。
  */
-function imageContextForPath(path: string): { root: string; docPath: string } | null {
+export function imageContextForPath(path: string): { root: string; docPath: string } | null {
   if (isAbsolutePath(path)) return { root: parentDir(path), docPath: basename(path) };
   const root = useVaultStore.getState().vault?.root ?? null;
   return root ? { root, docPath: path } : null;

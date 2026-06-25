@@ -10,7 +10,15 @@ export function pandocAvailable(): Promise<boolean> {
   return invoke('pandoc_available', undefined);
 }
 
-/** 经 pandoc 把 gfm markdown 转为 toFormat 写到 outPath（绝对路径，原生保存对话框授权边界）。 */
-export function pandocConvert(markdown: string, outPath: string, toFormat: string): Promise<null> {
-  return invoke('pandoc_convert', { markdown, outPath, toFormat });
+/**
+ * 经 pandoc 把 gfm markdown 转为 toFormat 写到 outPath（绝对路径，原生保存对话框授权边界）。
+ * resourcePath = 当前文档所在目录（pandoc --resource-path，解析并内嵌相对图片）；为空则不传该 flag。
+ */
+export function pandocConvert(
+  markdown: string,
+  outPath: string,
+  toFormat: string,
+  resourcePath?: string | null,
+): Promise<null> {
+  return invoke('pandoc_convert', { markdown, outPath, toFormat, resourcePath: resourcePath ?? null });
 }

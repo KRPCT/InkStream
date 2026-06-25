@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { markdownToHtml } from './markdownToHtml';
+import { collectImageUrls, markdownToHtml } from './markdownToHtml';
 
 describe('markdownToHtml', () => {
   it('标题 1-6', () => {
@@ -74,5 +74,26 @@ describe('markdownToHtml', () => {
     expect(markdownToHtml('![p](data:image/png;base64,iVBOR)')).toContain(
       'src="data:image/png;base64,iVBOR"',
     );
+  });
+
+  it('images 映射命中：本地图替换为内嵌 data URI（绕 safeSrc 白名单）', () => {
+    const images = new Map([['pic.png', 'data:image/png;base64,AAAA']]);
+    expect(markdownToHtml('![cap](pic.png)', { images })).toContain(
+      '<img src="data:image/png;base64,AAAA" alt="cap">',
+    );
+  });
+
+  it('images 未命中：回落 safeSrc（相对路径原样保留）', () => {
+    const images = new Map([['other.png', 'data:image/png;base64,AAAA']]);
+    expect(markdownToHtml('![cap](pic.png)', { images })).toContain('<img src="pic.png" alt="cap">');
+  });
+});
+
+describe('collectImageUrls', () => {
+  it('收集去重图片 url（与渲染分支同抽取口）', () => {
+    expect(collectImageUrls('![a](x.png) ![b](x.png) ![c](y.png)')).toEqual(['x.png', 'y.png']);
+  });
+  it('无图片返空数组', () => {
+    expect(collectImageUrls('# 标题\n\n[链接](a.md)')).toEqual([]);
   });
 });

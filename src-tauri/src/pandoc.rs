@@ -25,11 +25,14 @@ fn allowed(fmt: &str) -> bool {
 }
 
 /// 经 pandoc 把 gfm markdown 转为 to_format 写到 out_path（绝对路径）。markdown 经 stdin 喂入；失败回传 pandoc stderr。
+/// resource_path = 当前文档所在目录（pandoc `--resource-path`：解析并内嵌 markdown 里的相对图片，使 odt/epub 等
+/// 含图）；为 None / 空串则不传该 flag（行为同旧版）。同 out_path：作为单个 argv 元素传入，无 shell 注入面。
 #[tauri::command]
 pub async fn pandoc_convert(
     markdown: String,
     out_path: String,
     to_format: String,
+    resource_path: Option<String>,
 ) -> Result<(), String> {
     if !allowed(&to_format) {
         return Err(format!("不支持的导出格式: {to_format}"));
@@ -38,8 +41,17 @@ pub async fn pandoc_convert(
         return Err("导出路径必须是绝对路径".to_string());
     }
     tauri::async_runtime::spawn_blocking(move || {
+        let mut args: Vec<String> = vec![
+            "--from".into(), "gfm".into(),
+            "--to".into(), to_format.clone(),
+            "-o".into(), out_path.clone(),
+        ];
+        if let Some(rp) = resource_path.as_deref().filter(|s| !s.is_empty()) {
+            args.push("--resource-path".into());
+            args.push(rp.to_string());
+        }
         let mut child = Command::new("pandoc")
-            .args(["--from", "gfm", "--to", &to_format, "-o", &out_path])
+            .args(&args)
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())

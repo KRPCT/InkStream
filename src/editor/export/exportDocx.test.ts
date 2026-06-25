@@ -30,4 +30,11 @@ describe('htmlToDocxBlob', () => {
     const blob = await htmlToDocxBlob(html, META);
     expect(blob.size).toBeGreaterThan(0);
   });
+
+  it('data: 图在无 canvas 环境回落占位文本，不挂死/不抛错', async () => {
+    // jsdom 无 2d context → dataUriToPng 提前返回 null → img 走 [图片:…] 占位分支（真机经 canvas 内嵌）。
+    const html = '<p><img src="data:image/png;base64,iVBORw0KGgo=" alt="封面"></p>';
+    const blob = await htmlToDocxBlob(html, META);
+    expect(blob.size).toBeGreaterThan(0);
+  });
 });

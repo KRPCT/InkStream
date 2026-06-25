@@ -48,6 +48,14 @@ export async function readFileBytes(path: string): Promise<Uint8Array> {
   return new Uint8Array(await invoke('read_file_bytes', { path }));
 }
 
+/**
+ * 导出内嵌：读绝对路径图片为字节（→ data URI 内嵌进 HTML/PDF/DOCX 导出产物）。
+ * 调用前须经 resolveVaultImage 判定路径在 vault 内（承 ImageWidget 安全边界）；Rust 侧再以图片扩展名白名单兜底。
+ */
+export async function readImageBytes(path: string): Promise<Uint8Array> {
+  return new Uint8Array(await invoke('read_image_bytes', { path }));
+}
+
 /** 新建空文件：同名已存在则 Rust 侧返回错误，绝不覆盖（D-12）。 */
 export function createFile(root: string, path: string): Promise<null> {
   return invoke('create_file', { root, path });

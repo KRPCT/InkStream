@@ -9,8 +9,11 @@ import type { ExportFormat, ExportMeta, PandocFormat } from '../../types/export'
 import { readFields } from '../frontmatter';
 import { loadKatex } from '../livepreview/mathLoader';
 import { getView } from '../viewHandle';
+import { imageContextForPath } from '../editorState';
+import { stripVerbatim } from '../pathUtil';
 import { htmlToDocxBlob } from './exportDocx';
 import { buildHtmlDocument } from './htmlDocument';
+import { resolveExportImages } from './imageEmbed';
 import { PANDOC_FORMATS } from './pandocFormats';
 import { printHtml } from './exportPdf';
 import { markdownToHtml, type MathRenderer } from './markdownToHtml';
@@ -47,8 +50,9 @@ export async function exportDocument(format: ExportFormat): Promise<void> {
     showToast('warning', '请先打开一个文档再导出。');
     return;
   }
+  const activePath = useEditorStore.getState().activePath;
   const markdown = view.state.doc.toString();
-  const name = baseName(useEditorStore.getState().activePath);
+  const name = baseName(activePath);
   const meta: ExportMeta = {
     title: readFields(markdown, ['title']).title || name,
     brandingFooter: useSettingsStore.getState().exportBrandingFooter,
@@ -56,7 +60,10 @@ export async function exportDocument(format: ExportFormat): Promise<void> {
     generator: `InkStream ${await getAppVersion()}`,
   };
   const renderMath = await buildMathRenderer();
-  const bodyHtml = markdownToHtml(markdown, { renderMath });
+  // 图片内嵌：把文档引用的 vault 内本地图预解析为 data URI，HTML/PDF 内联、DOCX 经 canvas 嵌 ImageRun，
+  // 使导出产物脱离 vault 仍显示图片（远程图保活链接、已是 data: 的跳过——见 resolveExportImages）。
+  const images = await resolveExportImages(markdown, imageContextForPath(activePath ?? ''));
+  const bodyHtml = markdownToHtml(markdown, { renderMath, images });
 
   try {
     if (format === 'pdf') {
@@ -90,6 +97,21 @@ export function withWatermark(markdown: string): string {
   return `${markdown}\n\n---\n\n*${safe}*\n`;
 }
 
+/**
+ * 当前文档所在目录的绝对路径（pandoc `--resource-path`：使 markdown 里的相对图片得以解析并内嵌进 odt/epub 等）。
+ * 库内文件 = vault 根 + 文档子目录；库外文件 = 文件所在目录。无上下文（无 vault 的未命名草稿）返 null。
+ * vault 根经 stripVerbatim 去 Windows verbatim 前缀（`\\?\D:\…`）→ 正斜杠，pandoc 跨平台可解析。
+ */
+function docResourcePath(activePath: string | null): string | null {
+  const ctx = imageContextForPath(activePath ?? '');
+  if (!ctx) return null;
+  const norm = ctx.docPath.replace(/\\/g, '/');
+  const slash = norm.lastIndexOf('/');
+  const sub = slash >= 0 ? norm.slice(0, slash) : '';
+  const root = stripVerbatim(ctx.root).replace(/\/+$/, '');
+  return sub ? `${root}/${sub}` : root;
+}
+
 /** pandoc 导出（odt/rtf/latex/epub/typst/org）：当前文档 gfm markdown → pandoc → 保存对话框选定路径。 */
 export async function exportViaPandoc(format: PandocFormat): Promise<void> {
   const view = getView();
@@ -99,11 +121,17 @@ export async function exportViaPandoc(format: PandocFormat): Promise<void> {
   }
   const spec = PANDOC_FORMATS.find((f) => f.id === format);
   if (!spec) return;
-  const name = baseName(useEditorStore.getState().activePath);
+  const activePath = useEditorStore.getState().activePath;
+  const name = baseName(activePath);
   const path = await pickExportPath(`${name}.${spec.ext}`, format);
   if (!path) return;
   try {
-    await pandocConvert(withWatermark(view.state.doc.toString()), path, format);
+    await pandocConvert(
+      withWatermark(view.state.doc.toString()),
+      path,
+      format,
+      docResourcePath(activePath),
+    );
   } catch (e) {
     showToast('error', typeof e === 'string' ? e : `导出 ${spec.label} 失败（pandoc）。`);
   }

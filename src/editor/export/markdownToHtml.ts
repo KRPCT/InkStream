@@ -19,6 +19,12 @@ export type MathRenderer = (src: string, display: boolean) => string;
 export interface MdToHtmlOptions {
   /** 数学渲染器（KaTeX/MathJax → HTML 串）。缺省时 $..$/$$..$$/```math 降级为代码块。 */
   renderMath?: MathRenderer;
+  /**
+   * 图片内嵌映射（原始 url → data URI）。命中则 `<img src>` 直接用内嵌 data URI（脱离 vault 也能显示，
+   * 见 imageEmbed.resolveExportImages）；未命中走 safeSrc 白名单（远程活链接 / 已内嵌 data: / 其余落 #）。
+   * data URI 由本应用读本地图字节生成，可信，绕过 safeSrc 协议白名单。
+   */
+  images?: ReadonlyMap<string, string>;
 }
 
 interface Ctx {
@@ -76,6 +82,15 @@ function childText(node: SyntaxNode, name: string, ctx: Ctx): string {
   return c ? text(c, ctx) : '';
 }
 
+/**
+ * Image 节点的原始 url（剥 `<>` 角括号 + trim）。HTML 渲染分支与导出内嵌预解析（collectImageUrls）
+ * 共用此唯一抽取口，保证 images 映射键两侧一致（否则内嵌命中漂移、图片落 safeSrc 路径）。
+ */
+function imageRawUrl(node: SyntaxNode, ctx: Ctx): string {
+  const url = childOf(node, 'URL');
+  return (url ? text(url, ctx) : '').replace(/^<|>$/g, '').trim();
+}
+
 /** 行内内容：逐子节点 + 子节点间隙纯文本补回（间隙是 markdown 的行内文本，escape 后并入）。 */
 function inlineChildren(node: SyntaxNode, from: number, to: number, ctx: Ctx): string {
   let html = '';
@@ -108,7 +123,10 @@ function renderInline(node: SyntaxNode, ctx: Ctx): string {
       const url = childOf(node, 'URL');
       // alt = `![` 与 url 前 `](` 之间的原文（含 `]` 也不截断，不靠贪婪正则）。
       const alt = ctx.src.slice(node.from + 2, url ? url.from : node.to).replace(/\]\s*\(?\s*$/, '');
-      return `<img src="${escAttr(safeSrc(url ? text(url, ctx) : ''))}" alt="${escAttr(alt)}">`;
+      const raw = imageRawUrl(node, ctx);
+      // 内嵌优先（本应用生成的可信 data URI）；否则走 safeSrc 协议白名单。
+      const src = ctx.opts.images?.get(raw) ?? safeSrc(raw);
+      return `<img src="${escAttr(src)}" alt="${escAttr(alt)}">`;
     }
     case 'Autolink': {
       const u = safeHref(text(node, ctx));
@@ -195,4 +213,23 @@ export function markdownToHtml(markdown: string, opts: MdToHtmlOptions = {}): st
   const src = markdown.slice(bodyStart(markdown));
   const tree = parser.parse(src);
   return renderBlock(tree.topNode, { src, opts });
+}
+
+/**
+ * 文档内所有图片节点的原始 url（去重，与 markdownToHtml 同一解析器谱系 + 同一抽取口 imageRawUrl）。
+ * 导出内嵌预解析（resolveExportImages）据此逐图解析 vault 内本地图为 data URI，键与渲染分支严格一致。
+ */
+export function collectImageUrls(markdown: string): string[] {
+  const src = markdown.slice(bodyStart(markdown));
+  const ctx: Ctx = { src, opts: {} };
+  const urls = new Set<string>();
+  const walk = (node: SyntaxNode): void => {
+    if (node.name === 'Image') {
+      const raw = imageRawUrl(node, ctx);
+      if (raw) urls.add(raw);
+    }
+    for (let c = node.firstChild; c; c = c.nextSibling) walk(c);
+  };
+  walk(parser.parse(src).topNode);
+  return [...urls];
 }
