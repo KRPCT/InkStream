@@ -1,6 +1,7 @@
-import { FileText, Replace, Search, X } from 'lucide-react';
+import { FileText, Pencil, Replace, Search, X } from 'lucide-react';
 import { Fragment, useEffect, useRef, useState } from 'react';
 import { openFileAtOffset } from '../../editor/fileOpenFlow';
+import { commitExcerptEdit } from '../../editor/multibuffer/excerptEdit';
 import { excerptSegments, type ExcerptModel } from '../../editor/multibuffer/projectSearch';
 import { replaceAllInProject } from '../../editor/multibuffer/replaceAll';
 import { confirmDestructive } from '../../stores/useConfirmStore';
@@ -8,7 +9,14 @@ import { useProjectSearchStore } from '../../stores/useProjectSearchStore';
 import { showToast } from '../../stores/useToastStore';
 import { useVaultStore } from '../../stores/useVaultStore';
 import { useWorkbenchStore } from '../../stores/useWorkbenchStore';
+import ExcerptEditor from './ExcerptEditor';
 import './multibuffer.css';
+
+/** 正在行内编辑的摘录定位键（path + 源起始偏移，同一时刻至多一处，对齐 tableCellEditor 单活动模型）。 */
+interface EditTarget {
+  path: string;
+  from: number;
+}
 
 /**
  * 全库搜索结果视图（#2c 1b，中央区覆盖层）。
@@ -31,12 +39,34 @@ export default function ProjectSearchView() {
   const [input, setInput] = useState(query);
   const [replaceInput, setReplaceInput] = useState('');
   const [replacing, setReplacing] = useState(false);
+  const [editing, setEditing] = useState<EditTarget | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
   // 进入即聚焦搜索框（普通 input，非 CM contenteditable，不涉 WebView2 IME 纪律）。
   useEffect(() => {
     inputRef.current?.focus();
   }, []);
+
+  // 结果集变化（重新搜索 / replace-all 刷新）即收起任何开着的行内编辑器：摘录对象会重建、偏移会变，
+  // 旧 editing{path,from} 可能错绑到同偏移的另一摘录或随 key 变化静默卸载——一律收起，杜绝错绑/错写。
+  useEffect(() => {
+    setEditing(null);
+  }, [results]);
+
+  // 摘录行内编辑保存：经乐观重锚回写源文件（commitExcerptEdit）；成功后刷新结果，冲突/已变化/失败时
+  // 保留编辑器并提示（不丢用户未保存文本）。
+  const onSaveExcerpt = async (path: string, ex: ExcerptModel, newText: string): Promise<void> => {
+    const result = await commitExcerptEdit(path, ex.sourceFrom, ex.text, newText);
+    if (result === 'applied' || result === 'unchanged') {
+      setEditing(null);
+      if (result === 'applied') await run(query); // 刷新结果（编辑后命中/摘录已变）。
+      return;
+    }
+    // 失败/冲突/已变化：保留编辑器（用户文本不丢），仅告警。
+    if (result === 'skipped') showToast('warning', '该文件正在冲突处理中，已跳过本次编辑。');
+    else if (result === 'moved') showToast('warning', '该处内容在搜索后已变化，未保存；请重新搜索后再编辑。');
+    else showToast('error', '保存失败，文件可能已被删除或没有写入权限。');
+  };
 
   const onReplaceAll = async (): Promise<void> => {
     if (results.length === 0 || replacing) return;
@@ -128,7 +158,8 @@ export default function ProjectSearchView() {
           <button
             type="button"
             onClick={() => void onReplaceAll()}
-            disabled={results.length === 0 || replacing}
+            disabled={results.length === 0 || replacing || editing !== null}
+            title={editing !== null ? '请先完成或取消行内编辑' : undefined}
             className="flex-none rounded-[4px] border border-[var(--background-modifier-border)] px-2 py-0.5 text-[12px] text-[var(--text-muted)] hover:bg-[var(--background-modifier-hover)] hover:text-[var(--text-normal)] disabled:cursor-not-allowed disabled:opacity-50"
           >
             {replacing ? '替换中…' : '全部替换'}
@@ -142,7 +173,11 @@ export default function ProjectSearchView() {
           status={status}
           results={results}
           truncated={truncated}
+          editing={editing}
           onOpen={openMatch}
+          onEdit={(path, ex) => setEditing({ path, from: ex.sourceFrom })}
+          onSaveEdit={onSaveExcerpt}
+          onCancelEdit={() => setEditing(null)}
           onClear={() => {
             setInput('');
             clear();
@@ -159,12 +194,16 @@ interface BodyProps {
   status: 'idle' | 'searching' | 'done';
   results: ReturnType<typeof useProjectSearchStore.getState>['results'];
   truncated: boolean;
+  editing: EditTarget | null;
   onOpen: (path: string, offset: number) => void;
+  onEdit: (path: string, ex: ExcerptModel) => void;
+  onSaveEdit: (path: string, ex: ExcerptModel, text: string) => void;
+  onCancelEdit: () => void;
   onClear: () => void;
 }
 
 /** 结果体：空态分级（无 vault / 短词 / 搜索中 / 无结果）或文件分组列表。 */
-function Body({ hasVault, query, status, results, onOpen }: BodyProps) {
+function Body({ hasVault, query, status, results, editing, onOpen, onEdit, onSaveEdit, onCancelEdit }: BodyProps) {
   if (!hasVault) return <Hint text="请先打开一个文件夹作为工作区，再全库搜索。" />;
   if (query.length < 3) {
     return <Hint text={query === '' ? '输入关键字，在工作区 .md 文件中搜索。' : '全库搜索请至少输入 3 个字符。'} />;
@@ -186,21 +225,51 @@ function Body({ hasVault, query, status, results, onOpen }: BodyProps) {
             <span className="min-w-0 flex-1 truncate text-[var(--text-normal)]">{fm.path}</span>
             <span className="flex-none text-[12px] text-[var(--text-faint)]">{fm.matchCount}</span>
           </button>
-          {fm.excerpts.map((ex, i) => (
-            <button
-              key={`${ex.sourceFrom}-${i}`}
-              type="button"
-              onClick={() => onOpen(fm.path, ex.matches[0]?.from ?? ex.sourceFrom)}
-              className="flex w-full gap-2 px-3 py-0.5 text-left hover:bg-[var(--background-modifier-hover)]"
-            >
-              <span className="flex-none select-none text-right text-[11px] tabular-nums text-[var(--text-faint)]" style={{ minWidth: 28 }}>
-                {ex.firstLine}
-              </span>
-              <code className="min-w-0 flex-1 whitespace-pre-wrap break-words font-mono text-[12px] text-[var(--text-muted)]">
-                <ExcerptText excerpt={ex} />
-              </code>
-            </button>
-          ))}
+          {fm.excerpts.map((ex) => {
+            const isEditing = editing?.path === fm.path && editing.from === ex.sourceFrom;
+            return (
+              // 行 key 用内容稳定的源区间（摘录互不重叠，[from,to) 文件内唯一）而非掺数组下标，
+              // 避免结果重排时实例错位复用（叠加 results 变化即收编辑器，双重防错绑）。
+              <div key={`${ex.sourceFrom}-${ex.sourceTo}`} className="flex w-full gap-2 px-3 py-0.5">
+                <span
+                  className="flex-none select-none pt-0.5 text-right text-[11px] tabular-nums text-[var(--text-faint)]"
+                  style={{ minWidth: 28 }}
+                >
+                  {ex.firstLine}
+                </span>
+                {isEditing ? (
+                  <div className="min-w-0 flex-1">
+                    <ExcerptEditor
+                      initialText={ex.text}
+                      onSave={(text) => onSaveEdit(fm.path, ex, text)}
+                      onCancel={onCancelEdit}
+                    />
+                  </div>
+                ) : (
+                  <div className="group flex min-w-0 flex-1 items-start gap-1">
+                    <button
+                      type="button"
+                      onClick={() => onOpen(fm.path, ex.matches[0]?.from ?? ex.sourceFrom)}
+                      className="min-w-0 flex-1 rounded-[4px] px-1 py-0.5 text-left hover:bg-[var(--background-modifier-hover)]"
+                    >
+                      <code className="whitespace-pre-wrap break-words font-mono text-[12px] text-[var(--text-muted)]">
+                        <ExcerptText excerpt={ex} />
+                      </code>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => onEdit(fm.path, ex)}
+                      aria-label="行内编辑此处"
+                      title="行内编辑"
+                      className="flex-none rounded-[4px] p-1 text-[var(--text-faint)] opacity-0 hover:bg-[var(--background-modifier-hover)] hover:text-[var(--text-normal)] focus:opacity-100 group-hover:opacity-100"
+                    >
+                      <Pencil size={12} />
+                    </button>
+                  </div>
+                )}
+              </div>
+            );
+          })}
         </section>
       ))}
     </>

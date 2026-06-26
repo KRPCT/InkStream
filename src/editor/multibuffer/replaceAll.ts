@@ -1,12 +1,10 @@
-import { flushAutosave, writeProjectFile } from '../../stores/autosave';
 import { useEditorStore } from '../../stores/useEditorStore';
 import { useProjectSearchStore } from '../../stores/useProjectSearchStore';
 import { useVaultStore } from '../../stores/useVaultStore';
 import { readFile } from '../../ipc/files';
-import { isComposing, queueAfterComposition } from '../composition';
-import { applyEditsToOpenDoc, getDocForPath } from '../editorState';
-import { getView } from '../viewHandle';
-import { applyReplacements, findMatches, type MatchRange } from './projectSearch';
+import { getDocForPath } from '../editorState';
+import { findMatches, type MatchRange } from './projectSearch';
+import { applyRangeEdits } from './multibufferWrite';
 
 /**
  * 全库 replace-all 回写（#2c 1c，数据安全核心）。
@@ -77,32 +75,16 @@ export async function replaceAllInProject(term: string, replacement: string): Pr
   return report;
 }
 
-/** 单文件回写：已打开 → 改 EditorState + flushAutosave；未打开 → 直接落盘。 */
+/** 单文件回写：把全部命中替换为 replacement，收口到共享缓冲底座（applyRangeEdits，含 IME 安全 + 落盘路由）。 */
 async function writeBack(
   path: string,
   truth: string,
   matches: MatchRange[],
   replacement: string,
 ): Promise<boolean> {
-  const changes = matches.map((m) => ({ from: m.from, to: m.to, insert: replacement }));
-  // IME 纪律（铁律 2）：活动 view 组合期 dispatch 会撕掉 IME 锚定 → 吞字。组合期把这一笔
-  // {dispatch + markDirty + flush} 推迟到 compositionend drain（同 swapState 推迟换装的范式），
-  // 按入队序去重。multibuffer 覆盖层在前、编辑器通常不在组合中，此为防御性兜底。
-  const view = getView();
-  if (view && isComposing(view) && useEditorStore.getState().activePath === path) {
-    queueAfterComposition(view, 'mb-replace:' + path, () => {
-      view.dispatch({ changes });
-      useEditorStore.getState().markDirty(path);
-      void flushAutosave(path);
-    });
-    return true;
-  }
-  if (applyEditsToOpenDoc(path, changes)) {
-    // 活动文件 dispatch 已由 mirrorListener markDirty；后台缓存更新无监听，此处补 markDirty。
-    useEditorStore.getState().markDirty(path);
-    // 经自动保存串行链落盘；写失败由 autosave 自身 toast + 保脏处理（仍算「已改入编辑器」）。
-    await flushAutosave(path);
-    return true;
-  }
-  return writeProjectFile(path, applyReplacements(truth, matches, replacement));
+  return applyRangeEdits(
+    path,
+    truth,
+    matches.map((m) => ({ from: m.from, to: m.to, insert: replacement })),
+  );
 }

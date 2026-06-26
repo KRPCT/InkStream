@@ -7,6 +7,31 @@ vi.mock('../../editor/fileOpenFlow', () => ({ openFileAtOffset }));
 const replaceAllInProject = vi.hoisted(() => vi.fn());
 vi.mock('../../editor/multibuffer/replaceAll', () => ({ replaceAllInProject }));
 
+const commitExcerptEdit = vi.hoisted(() => vi.fn());
+vi.mock('../../editor/multibuffer/excerptEdit', () => ({ commitExcerptEdit }));
+
+// 行内编辑器以轻量 stub 替身（避免在 jsdom 挂真实 CM6；保存按钮回传「原文+!」便于断言）。
+vi.mock('./ExcerptEditor', () => ({
+  default: ({
+    initialText,
+    onSave,
+    onCancel,
+  }: {
+    initialText: string;
+    onSave: (t: string) => void;
+    onCancel: () => void;
+  }) => (
+    <div data-testid="excerpt-editor">
+      <button type="button" onClick={() => onSave(`${initialText}!`)}>
+        mock-保存
+      </button>
+      <button type="button" onClick={() => onCancel()}>
+        mock-取消
+      </button>
+    </div>
+  ),
+}));
+
 const confirmDestructive = vi.hoisted(() => vi.fn());
 vi.mock('../../stores/useConfirmStore', () => ({ confirmDestructive }));
 
@@ -41,6 +66,7 @@ function setStore(partial: Partial<ReturnType<typeof useProjectSearchStore.getSt
 beforeEach(() => {
   openFileAtOffset.mockClear();
   replaceAllInProject.mockReset();
+  commitExcerptEdit.mockReset();
   confirmDestructive.mockReset();
   showToast.mockClear();
   run.mockClear();
@@ -156,5 +182,60 @@ describe('ProjectSearchView', () => {
     render(<ProjectSearchView />);
     fireEvent.click(screen.getByText('全部替换'));
     await waitFor(() => expect(showToast).toHaveBeenCalledWith('warning', expect.stringContaining('失败')));
+  });
+
+  it('点击铅笔 → 进入行内编辑器', () => {
+    setStore({ query: 'foo', results: RESULTS, totalMatches: 2, status: 'done' });
+    render(<ProjectSearchView />);
+    fireEvent.click(screen.getAllByLabelText('行内编辑此处')[0]);
+    expect(screen.getByTestId('excerpt-editor')).toBeInTheDocument();
+  });
+
+  it('编辑保存 applied → commitExcerptEdit(路径,源偏移,原文,新文) 并刷新', async () => {
+    commitExcerptEdit.mockResolvedValue('applied');
+    setStore({ query: 'foo', results: RESULTS, totalMatches: 2, status: 'done' });
+    render(<ProjectSearchView />);
+    fireEvent.click(screen.getAllByLabelText('行内编辑此处')[0]);
+    fireEvent.click(screen.getByText('mock-保存'));
+    await waitFor(() =>
+      expect(commitExcerptEdit).toHaveBeenCalledWith('notes/a.md', 0, '前foo后', '前foo后!'),
+    );
+    await waitFor(() => expect(run).toHaveBeenCalledWith('foo'));
+    expect(screen.queryByTestId('excerpt-editor')).not.toBeInTheDocument(); // 成功后关闭
+  });
+
+  it('编辑取消 → 关闭编辑器，不回写', () => {
+    setStore({ query: 'foo', results: RESULTS, totalMatches: 2, status: 'done' });
+    render(<ProjectSearchView />);
+    fireEvent.click(screen.getAllByLabelText('行内编辑此处')[0]);
+    fireEvent.click(screen.getByText('mock-取消'));
+    expect(screen.queryByTestId('excerpt-editor')).not.toBeInTheDocument();
+    expect(commitExcerptEdit).not.toHaveBeenCalled();
+  });
+
+  it('保存遇 moved（搜索后已变）→ 保留编辑器并 warning', async () => {
+    commitExcerptEdit.mockResolvedValue('moved');
+    setStore({ query: 'foo', results: RESULTS, totalMatches: 2, status: 'done' });
+    render(<ProjectSearchView />);
+    fireEvent.click(screen.getAllByLabelText('行内编辑此处')[0]);
+    fireEvent.click(screen.getByText('mock-保存'));
+    await waitFor(() => expect(showToast).toHaveBeenCalledWith('warning', expect.stringContaining('已变化')));
+    expect(screen.getByTestId('excerpt-editor')).toBeInTheDocument(); // 文本不丢，编辑器仍在
+  });
+
+  it('行内编辑期间「全部替换」禁用（避免刷新冲掉草稿）', () => {
+    setStore({ query: 'foo', results: RESULTS, totalMatches: 2, status: 'done' });
+    render(<ProjectSearchView />);
+    fireEvent.click(screen.getAllByLabelText('行内编辑此处')[0]);
+    expect(screen.getByText('全部替换')).toBeDisabled();
+  });
+
+  it('结果集变化即收起开着的行内编辑器（防错绑/错写）', () => {
+    setStore({ query: 'foo', results: RESULTS, totalMatches: 2, status: 'done' });
+    render(<ProjectSearchView />);
+    fireEvent.click(screen.getAllByLabelText('行内编辑此处')[0]);
+    expect(screen.getByTestId('excerpt-editor')).toBeInTheDocument();
+    act(() => useProjectSearchStore.setState({ results: [...RESULTS] })); // 模拟刷新（新数组引用）
+    expect(screen.queryByTestId('excerpt-editor')).not.toBeInTheDocument();
   });
 });

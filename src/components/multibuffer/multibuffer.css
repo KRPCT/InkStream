@@ -4,3 +4,15 @@
   background: color-mix(in srgb, var(--accent) 32%, transparent);
   color: var(--text-normal);
 }
+
+/* 摘录行内编辑器（#2c 增量 2）：左侧 accent 竖条标识编辑态，主题背景融入结果列表。 */
+.mb-excerpt-edit {
+  border-left: 2px solid var(--accent);
+  padding-left: 6px;
+}
+
+.mb-excerpt-host {
+  border-radius: 4px;
+  background: var(--background-primary-alt, var(--background-secondary));
+  padding: 2px 6px;
+}

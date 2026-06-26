@@ -124,7 +124,10 @@ describe('replaceAllInProject', () => {
     useProjectSearchStore.setState({ results: [fm('act.md')] });
     useEditorStore.setState({ activePath: 'act.md', frozen: {}, externalChanged: {}, dirty: {} });
     docFor.mockReturnValue('foo bar');
-    const fakeView = {} as never;
+    const fakeView = {
+      state: { doc: { length: 7, sliceString: (a: number, b: number) => 'foo bar'.slice(a, b) } },
+      dispatch: vi.fn(),
+    } as never;
     view.mockReturnValue(fakeView);
     composing.mockReturnValue(true);
     let deferred: (() => void) | null = null;
@@ -132,7 +135,7 @@ describe('replaceAllInProject', () => {
       deferred = cb as () => void;
     });
     const report = await replaceAllInProject('foo', 'X');
-    expect(queue).toHaveBeenCalledWith(fakeView, 'mb-replace:act.md', expect.any(Function));
+    expect(queue).toHaveBeenCalledWith(fakeView, 'mb-write:act.md', expect.any(Function));
     expect(applyOpen).not.toHaveBeenCalled(); // 组合期不当场改 doc
     expect(report.files).toBe(1); // 乐观计入，drain 时落地
     expect(deferred).toBeTypeOf('function');
