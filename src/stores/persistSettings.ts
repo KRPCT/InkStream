@@ -38,6 +38,7 @@ function snapshot(): PersistedSettings {
     exportBrandingFooter,
     exportBrandingText,
     bookshelfEnabled,
+    terminalEnabled,
   } = useSettingsStore.getState();
   const { mode, layouts } = useWorkbenchStore.getState();
   return validateSettings({
@@ -56,6 +57,7 @@ function snapshot(): PersistedSettings {
     exportBrandingFooter,
     exportBrandingText,
     bookshelfEnabled,
+    terminalEnabled,
   });
 }
 
@@ -82,6 +84,7 @@ function apply(s: PersistedSettings): void {
     exportBrandingFooter: s.exportBrandingFooter,
     exportBrandingText: s.exportBrandingText,
     bookshelfEnabled: s.bookshelfEnabled,
+    terminalEnabled: s.terminalEnabled,
   });
   useSettingsStore.getState().setEditorFontSize(s.editorFontSize);
   useWorkbenchStore.getState().setMode(s.mode);

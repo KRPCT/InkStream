@@ -51,6 +51,11 @@ export interface IpcCommands {
   read_image_bytes: { args: { path: string }; result: number[] };
   // 书架文件夹导入：读绝对路径文件夹的书籍目录树（书→卷→章，深度封顶，只读）。
   list_dir_tree: { args: { path: string }; result: DirTreeEntry };
+  // v1.2 #3 内置终端：开会话起系统 shell（cwd=工作区根），经 channel（Raw 字节=输出 / Json=退出）回传；返回会话 id。
+  terminal_open: { args: { cwd: string | null; cols: number; rows: number }; result: number };
+  terminal_write: { args: { id: number; data: string }; result: null };
+  terminal_resize: { args: { id: number; cols: number; rows: number }; result: null };
+  terminal_close: { args: { id: number }; result: null };
   // 文件导出：检测系统 pandoc + 经其把 gfm markdown 转更多格式（odt/rtf/latex/epub/typst/org）。
   pandoc_available: { args: undefined; result: boolean };
   // resourcePath = 当前文档所在目录（pandoc --resource-path，解析并内嵌相对图片）；null 则不传该 flag。

@@ -97,6 +97,7 @@ describe('persistSettings', () => {
       exportBrandingFooter: false,
       exportBrandingText: 'Made with InkStream',
       bookshelfEnabled: false,
+      terminalEnabled: false,
     });
   });
 

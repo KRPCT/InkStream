@@ -12,6 +12,7 @@ import {
   zoteroSetCredentials,
   zoteroSync,
 } from '../../ipc/zotero';
+import { confirmDestructive } from '../../stores/useConfirmStore';
 import { useHelpStore } from '../../stores/useHelpStore';
 import { useSettingsStore } from '../../stores/useSettingsStore';
 import { showToast } from '../../stores/useToastStore';
@@ -141,6 +142,22 @@ export function GeneralSection() {
   const setExportBrandingText = useSettingsStore((s) => s.setExportBrandingText);
   const bookshelfEnabled = useSettingsStore((s) => s.bookshelfEnabled);
   const setBookshelfEnabled = useSettingsStore((s) => s.setBookshelfEnabled);
+  const terminalEnabled = useSettingsStore((s) => s.terminalEnabled);
+  const setTerminalEnabled = useSettingsStore((s) => s.setTerminalEnabled);
+
+  // 开启时弹安全确认（终端可执行任意命令）：拒绝则不开。关闭无需确认。
+  const onToggleTerminal = async (next: boolean): Promise<void> => {
+    if (next) {
+      const ok = await confirmDestructive({
+        title: '启用内置终端',
+        body: '内置终端会在工作区目录启动系统 shell，可执行任意命令、读写本机文件。请仅在信任当前工作区内容时启用。启用后可用 Ctrl+` 唤起。',
+        confirmLabel: '启用',
+      });
+      if (!ok) return;
+    }
+    setTerminalEnabled(next);
+  };
+
   return (
     <div>
       <SettingRow
@@ -154,6 +171,12 @@ export function GeneralSection() {
         description="为轻度用户精简界面：关闭反链 / 知识图谱 / Git / Zotero / 搜索等全部高级功能，且不在工作区创建 .inkstream 索引文件夹，仅保留基础编辑、文件树与 Live Preview。随时可关，关闭后恢复全部功能（重开工作区自动重建索引）。"
       >
         <Toggle checked={simpleMode} onChange={setSimpleMode} />
+      </SettingRow>
+      <SettingRow
+        label="内置终端"
+        description="在编辑区底部显示系统终端面板（默认关）：在工作区目录运行 shell，可执行命令、跑脚本。开启时需确认安全提示；开启后用 Ctrl+` 唤起或收起。仅在信任当前工作区时启用。"
+      >
+        <Toggle checked={terminalEnabled} onChange={(v) => void onToggleTerminal(v)} />
       </SettingRow>
       <SettingRow
         label="导出水印页脚"

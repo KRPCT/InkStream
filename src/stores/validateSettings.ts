@@ -32,6 +32,7 @@ function defaults(): PersistedSettings {
     exportBrandingFooter: false,
     exportBrandingText: 'Made with InkStream',
     bookshelfEnabled: false,
+    terminalEnabled: false,
   };
 }
 
@@ -93,5 +94,6 @@ export function validateSettings(raw: unknown): PersistedSettings {
         ? raw.exportBrandingText.slice(0, 200)
         : 'Made with InkStream',
     bookshelfEnabled: typeof raw.bookshelfEnabled === 'boolean' ? raw.bookshelfEnabled : false,
+    terminalEnabled: typeof raw.terminalEnabled === 'boolean' ? raw.terminalEnabled : false,
   };
 }

@@ -5,6 +5,7 @@ mod index;
 mod os_open;
 mod pandoc;
 mod path_guard;
+mod terminal;
 mod vault;
 mod watcher;
 mod window_guard;
@@ -110,13 +111,19 @@ pub fn run() {
             zotero_sync::zotero_credentials_status,
             zotero_sync::zotero_sync,
             zotero_sync::zotero_cache_items,
-            zotero_sync::zotero_cache_csl
+            zotero_sync::zotero_cache_csl,
+            terminal::terminal_open,
+            terminal::terminal_write,
+            terminal::terminal_resize,
+            terminal::terminal_close
         ])
         .setup(|app| {
             // watcher 单例状态注册（切 vault 时 start/stop_watch 经此句柄换装）。
             watcher::init(app);
             // FTS5 索引单例：建有界写队列 + spawn 后台单写 worker（Phase 4 W1）。
             index::init(app);
+            // 内置终端会话注册表单例（v1.2 #3）。
+            terminal::init(app);
             // D-04 离屏兜底：window-state 插件先于 setup 恢复几何，
             // 此处校验窗口与任一显示器相交，否则 center()
             if let Some(win) = app.get_webview_window("main") {

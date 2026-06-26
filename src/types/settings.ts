@@ -43,4 +43,6 @@ export interface PersistedSettings {
   exportBrandingText: string;
   /** 书架功能开关（默认关，opt-in）：关闭仅隐藏菜单入口 / 门控命令，绝不删除 bookshelf.json 索引（req 6）。 */
   bookshelfEnabled: boolean;
+  /** 内置终端开关（默认关，opt-in，v1.2 #3）：首次开启弹安全确认；关闭即隐藏面板入口、不再可 Ctrl+` 唤起。 */
+  terminalEnabled: boolean;
 }

@@ -3,6 +3,7 @@ import { toggleRenderMode } from '../editor/livepreview/renderMode';
 import { toggleTypewriter } from '../editor/livepreview/typewriter';
 import { openActiveInReading, readingFormatOf } from '../editor/reading/openReading';
 import { useEditorStore } from '../stores/useEditorStore';
+import { useSettingsStore } from '../stores/useSettingsStore';
 import { showToast } from '../stores/useToastStore';
 import { useWritingMetricsStore } from '../stores/useWritingMetricsStore';
 import { useWorkbenchStore } from '../stores/useWorkbenchStore';
@@ -29,6 +30,20 @@ export const VIEW_COMMANDS: Command[] = [
     shortcut: 'Ctrl+Shift+F',
     advanced: true,
     run: () => useWorkbenchStore.getState().toggleCentralView('multibuffer'),
+  },
+  {
+    id: 'view.toggle-terminal',
+    title: '视图：内置终端',
+    // 底部终端 dock 开关（#3）。依赖设置中启用；未启用时提示去开启。advanced：简易模式隐藏。
+    shortcut: 'Ctrl+`',
+    advanced: true,
+    run: () => {
+      if (!useSettingsStore.getState().terminalEnabled) {
+        showToast('warning', '内置终端未启用：在「设置 ▸ 通用 ▸ 内置终端」中开启。');
+        return;
+      }
+      useWorkbenchStore.getState().toggleTerminal();
+    },
   },
   {
     id: 'view.toggle-render-mode',

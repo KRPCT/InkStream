@@ -83,3 +83,7 @@ reqwest = { version = "=0.13.4", default-features = false, features = [
     "default-tls",
     "json",
 ] }
+# v1.2 #3 内置终端：跨平台 PTY 抽象（Windows=ConPTY、unix=openpty）。wez/wezterm 一方维护，
+# wezterm 终端模拟器同款 PTY 后端，成熟度高、无 install hook。默认 feature 即可（含各平台 pty 实现）。
+# 阻塞 I/O：每会话起一条读线程 read→Channel<InvokeResponseBody>::Raw 回传，与 tokio 运行时正交。精确 pin。
+portable-pty = "=0.9.0"

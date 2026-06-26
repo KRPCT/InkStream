@@ -42,6 +42,7 @@ const TITLES: Record<string, string> = {
   'view.reset-layout': '视图：重置当前模式布局',
   'view.open-graph': '视图：知识图谱',
   'view.project-search': '视图：全库搜索替换',
+  'view.toggle-terminal': '视图：内置终端',
   'view.command-palette': '视图：命令面板',
   'view.settings': '视图：设置',
   'file.open-file': '文件：打开文件',
@@ -122,8 +123,8 @@ const TITLES: Record<string, string> = {
   'bookshelf.import-folder': '书架：导入书籍文件夹',
 };
 
-/** 生产命令总数：…前略… + pandoc 格式导出(×6) + 检查更新(×1) + 更新公告(×1) + 书架(open/add/import-files/import-folder ×4) = 86。 */
-const COMMAND_COUNT = 87;
+/** 生产命令总数：…前略… + pandoc 格式导出(×6) + 检查更新(×1) + 更新公告(×1) + 书架(open/add/import-files/import-folder ×4) + 内置终端(×1, #3) = 88。 */
+const COMMAND_COUNT = 88;
 
 /** 生产命令（剔除 dev.* DEV-only 命令，如 IME 探针 dev.ime-probe）。 */
 function prodCommands() {
@@ -154,7 +155,7 @@ describe('builtins', () => {
     disposeKeymap();
   });
 
-  it('注册 85 条生产命令，标题与 UI-SPEC / R4 字面逐字一致', () => {
+  it('注册全部生产命令，标题与 UI-SPEC / R4 字面逐字一致', () => {
     const all = prodCommands();
     expect(all).toHaveLength(COMMAND_COUNT);
     for (const [id, title] of Object.entries(TITLES)) {
@@ -309,6 +310,18 @@ describe('builtins', () => {
     expect(useWorkbenchStore.getState().centralView).toBe('graph');
     window.dispatchEvent(key({ key: 'g', ctrlKey: true }));
     expect(useWorkbenchStore.getState().centralView).toBe('editor');
+  });
+
+  it('Ctrl+` 仅在内置终端启用时切换 dock（未启用时不动）', () => {
+    initKeymap();
+    expect(normalizeEvent(key({ key: '`', ctrlKey: true }))).toBe('Ctrl+`');
+    // 默认未启用：不切换。
+    window.dispatchEvent(key({ key: '`', ctrlKey: true }));
+    expect(useWorkbenchStore.getState().terminalOpen).toBe(false);
+    // 设置启用后：切换 terminalOpen。
+    useSettingsStore.setState({ terminalEnabled: true });
+    window.dispatchEvent(key({ key: '`', ctrlKey: true }));
+    expect(useWorkbenchStore.getState().terminalOpen).toBe(true);
   });
 
   it('execute app.exit 经 ipc 收口调 close', async () => {

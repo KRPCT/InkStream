@@ -53,6 +53,7 @@ export function registerBuiltinCommands(): () => void {
     bind('Ctrl+E', 'view.toggle-render-mode'),
     bind('Ctrl+G', 'view.open-graph'),
     bind('Ctrl+Shift+F', 'view.project-search'),
+    bind('Ctrl+`', 'view.toggle-terminal'),
     bind('Ctrl+Shift+G', 'git.toggle-graph'),
     // ZOT-01：编辑器聚焦时由 CM6 keymap 处理（preventDefault → 本 window 级短路不重复）；
     // 编辑器未聚焦时本绑定兜底触发，insertCitation 经 getView() 仍插入到编辑器光标处。

@@ -14,7 +14,10 @@ import { useCodeMirror } from '../../editor/useCodeMirror';
 import { requestOpenFolder } from '../../editor/vaultFlow';
 import { getView } from '../../editor/viewHandle';
 import { useEditorStore } from '../../stores/useEditorStore';
+import { useSettingsStore } from '../../stores/useSettingsStore';
 import { useVaultStore } from '../../stores/useVaultStore';
+import { useWorkbenchStore } from '../../stores/useWorkbenchStore';
+import TerminalDock from '../terminal/TerminalDock';
 
 /** 空态操作按钮（Heading 14/600，沿 UI-SPEC 主操作入口）。 */
 function ActionButton({ label, onClick }: { label: string; onClick: () => void }) {
@@ -41,6 +44,9 @@ export default function EditorArea() {
   const vault = useVaultStore((s) => s.vault);
   const activePath = useEditorStore((s) => s.activePath);
   const hasTabs = useEditorStore((s) => s.tabs.length > 0);
+  // 内置终端 dock：仅功能开启（设置）且当前展开时渲染（#3，临时态 terminalOpen）。
+  const terminalEnabled = useSettingsStore((s) => s.terminalEnabled);
+  const terminalOpen = useWorkbenchStore((s) => s.terminalOpen);
   const [menuPos, setMenuPos] = useState<MenuPosition | null>(null);
   const [tableCtx, setTableCtx] = useState<TableMenuContext | null>(null);
 
@@ -112,6 +118,8 @@ export default function EditorArea() {
           </div>
         ) : null}
       </div>
+      {/* 终端 dock 在 CM 容器之下（flex-none）：开关只增减本节点，绝不卸载上方单内核容器。 */}
+      {terminalEnabled && terminalOpen ? <TerminalDock /> : null}
     </div>
   );
 }

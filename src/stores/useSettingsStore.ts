@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { subscribeSystemTheme, type Unsubscribe } from '../ipc/theme';
 import { initBookshelf } from './persistBookshelf';
+import { useWorkbenchStore } from './useWorkbenchStore';
 import type { GitRemoteMode, ResolvedTheme, ThemeSetting } from '../types/settings';
 
 interface SettingsState {
@@ -18,6 +19,7 @@ interface SettingsState {
   exportBrandingFooter: boolean;
   exportBrandingText: string;
   bookshelfEnabled: boolean;
+  terminalEnabled: boolean;
   setAutosaveEnabled: (enabled: boolean) => void;
   setAutosaveDelayMs: (ms: number) => void;
   setEditorFontSize: (px: number) => void;
@@ -28,6 +30,7 @@ interface SettingsState {
   setExportBrandingFooter: (on: boolean) => void;
   setExportBrandingText: (text: string) => void;
   setBookshelfEnabled: (on: boolean) => void;
+  setTerminalEnabled: (on: boolean) => void;
 }
 
 /** 字体大小落到 CSS 变量（编辑器 .cm-editor 经 var(--editor-font-size) 消费，见 app.css）。 */
@@ -100,6 +103,7 @@ export const useSettingsStore = create<SettingsState>((set) => ({
   exportBrandingFooter: false,
   exportBrandingText: 'Made with InkStream',
   bookshelfEnabled: false,
+  terminalEnabled: false,
   setAutosaveEnabled: (autosaveEnabled) => set({ autosaveEnabled }),
   setAutosaveDelayMs: (autosaveDelayMs) => set({ autosaveDelayMs }),
   setEditorFontSize: (editorFontSize) => {
@@ -116,6 +120,12 @@ export const useSettingsStore = create<SettingsState>((set) => ({
   setBookshelfEnabled: (bookshelfEnabled) => {
     if (bookshelfEnabled) void initBookshelf();
     set({ bookshelfEnabled });
+  },
+  // 关闭终端：同时复位临时展开态 terminalOpen=false——否则再次启用会自动重开 dock（凭空起 shell），
+  // 且关后残留的 open=true 会让重启用后首个 Ctrl+` 反向（先收起而非展开）。dock 卸载即触发会话 close。
+  setTerminalEnabled: (terminalEnabled) => {
+    if (!terminalEnabled) useWorkbenchStore.getState().setTerminalOpen(false);
+    set({ terminalEnabled });
   },
 }));
 
