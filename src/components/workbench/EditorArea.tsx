@@ -1,6 +1,7 @@
 import { FileText, FolderOpen } from 'lucide-react';
 import { useRef, useState, type MouseEvent } from 'react';
 import EmptyState from '../common/EmptyState';
+import Breadcrumbs from './Breadcrumbs';
 import EditorTabs from './EditorTabs';
 import EditorContextMenu, { type MenuPosition } from './EditorContextMenu';
 import ExternalChangeBar from './ExternalChangeBar';
@@ -68,6 +69,8 @@ export default function EditorArea() {
       <ExternalChangeBar />
       {/* richtext 工具条：frontmatter language=richtext 时显示（D-14，自身条件渲染） */}
       <Toolbar />
+      {/* 面包屑栏：光标所在标题路径（#2b，自身条件渲染——无标题路径时整条自隐） */}
+      <Breadcrumbs />
       <div className="relative min-h-0 flex-1">
         {/* 单内核 DOM 挂载点：始终存在；无活动文件时由空态覆盖层遮住。
             右键挂此容器（R4 §4.3）：组合期防御见 onContextMenu。 */}

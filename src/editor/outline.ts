@@ -42,6 +42,37 @@ function sameOutline(a: OutlineItem[], b: OutlineItem[]): boolean {
   return a.every((x, i) => x.level === b[i].level && x.from === b[i].from && x.text === b[i].text);
 }
 
+/**
+ * 光标所在的标题路径（面包屑 + 大纲活动项双向同步共用，v1.2 #2b）。
+ *
+ * active = 最后一个 `from <= pos` 的标题（items 按 from 单调递增，文档序）；祖先链 = 自 active 向前
+ * 收集每个「严格更浅层级」的最近标题，直到 H1。光标在首个标题之前时返回空数组（面包屑据此自隐）。
+ * 纯函数（不读 view/store），供组件按 (items, cursor) 反应式推导，无需另开镜像通道。
+ */
+export function activeHeadingPath(items: OutlineItem[], pos: number): OutlineItem[] {
+  let activeIdx = -1;
+  for (let i = 0; i < items.length; i++) {
+    if (items[i].from <= pos) activeIdx = i;
+    else break;
+  }
+  if (activeIdx === -1) return [];
+  const path: OutlineItem[] = [items[activeIdx]];
+  let level = items[activeIdx].level;
+  for (let i = activeIdx - 1; i >= 0 && level > 1; i--) {
+    if (items[i].level < level) {
+      path.unshift(items[i]);
+      level = items[i].level;
+    }
+  }
+  return path;
+}
+
+/** 光标所在的最深标题起始偏移（大纲活动项高亮键）；无则 null。 */
+export function activeHeadingFrom(items: OutlineItem[], pos: number): number | null {
+  const path = activeHeadingPath(items, pos);
+  return path.length === 0 ? null : path[path.length - 1].from;
+}
+
 /** 把当前 view 的大纲镜像到 store（变化才写）。 */
 export function syncOutline(view: EditorView): void {
   const items = extractOutline(view.state);

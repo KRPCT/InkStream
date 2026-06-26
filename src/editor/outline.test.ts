@@ -1,7 +1,8 @@
 import { markdown } from '@codemirror/lang-markdown';
 import { EditorState } from '@codemirror/state';
 import { describe, expect, it } from 'vitest';
-import { extractOutline } from './outline';
+import type { OutlineItem } from '../types/editor';
+import { activeHeadingFrom, activeHeadingPath, extractOutline } from './outline';
 
 /** 大纲析出（RightPanel 大纲 tab，Phase 10 前移）。语法树驱动，覆盖 ATX/Setext/闭合式/锚点。 */
 function outline(doc: string) {
@@ -37,5 +38,40 @@ describe('extractOutline', () => {
 
   it('无标题文档 → 空', () => {
     expect(outline('只有正文，没有标题。')).toEqual([]);
+  });
+});
+
+/** 面包屑 / 大纲活动项的光标→标题路径推导（#2b）。 */
+describe('activeHeadingPath', () => {
+  const h = (level: number, from: number): OutlineItem => ({ level, text: `H${level}@${from}`, from });
+  // H1@0 / H2@10 / H3@20 / H2@30 / H1@40（文档序，from 递增）
+  const items = [h(1, 0), h(2, 10), h(3, 20), h(2, 30), h(1, 40)];
+
+  it('光标在首个标题之前 → 空路径（面包屑自隐）', () => {
+    expect(activeHeadingPath([h(1, 5)], 0)).toEqual([]);
+    expect(activeHeadingFrom([h(1, 5)], 0)).toBeNull();
+  });
+
+  it('深层光标回溯出完整祖先链', () => {
+    // 光标在 H3@20 段内 → 路径 H1@0 › H2@10 › H3@20
+    expect(activeHeadingPath(items, 25).map((i) => i.from)).toEqual([0, 10, 20]);
+    expect(activeHeadingFrom(items, 25)).toBe(20);
+  });
+
+  it('同级兄弟标题只保留最近祖先（不串入更早的兄弟）', () => {
+    // 光标在第二个 H2@30 段内 → H1@0 › H2@30（跳过 H2@10/H3@20）
+    expect(activeHeadingPath(items, 35).map((i) => i.from)).toEqual([0, 30]);
+  });
+
+  it('回到 H1 段 → 路径仅自身', () => {
+    expect(activeHeadingPath(items, 45).map((i) => i.from)).toEqual([40]);
+  });
+
+  it('跳级标题（H1 直接到 H3）祖先链仍连到 H1', () => {
+    expect(activeHeadingPath([h(1, 0), h(3, 10)], 15).map((i) => i.from)).toEqual([0, 10]);
+  });
+
+  it('光标恰在标题起点（from===pos）即归属该标题', () => {
+    expect(activeHeadingFrom(items, 10)).toBe(10);
   });
 });

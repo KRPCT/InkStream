@@ -145,6 +145,9 @@ export function openFile(view: EditorView, path: string, doc: string, ext: Exten
     markAppliedLanguage(view, languageFromDoc(state.doc.toString(), path));
     // 大纲镜像（RightPanel 大纲 tab）：换装不触发 updateListener，故同 syncRichtext 在此显式同步。
     syncOutline(view);
+    // 光标镜像（#2b）：setState 换装不触发 updateListener，须在此把恢复后的选区头同步给 store，
+    // 否则面包屑 / 大纲活动项 / 状态栏行列沿用上一文件的光标偏移，直到用户在新文件里首次落选。
+    useEditorStore.getState().setCursor(view.state.selection.main.head);
     syncCitations(view); // 引用镜像（ZOT-03）同此显式同步
     rebaseWordCount(view); // 字数基线（CREA-04）：换装不触发 updateListener，此处重设基线、不计入今日写入
     syncSceneSummary(view); // 场景概要镜像（CREA-05），同 syncOutline 在换装入口补位
@@ -200,6 +203,8 @@ export function switchToTab(path: string): void {
     // IN-06：换装后对齐语言 diff 基线到目标文件实际语言（同 openFile，防多余/漏 reconfigure）。
     markAppliedLanguage(view, languageFromDoc(cached.doc.toString(), path));
     syncOutline(view);
+    // 光标镜像（#2b）：缓存态恢复的选区头同步给 store（同 openFile，防面包屑/大纲活动项沿用上一文件偏移）。
+    useEditorStore.getState().setCursor(view.state.selection.main.head);
     syncCitations(view); // 引用镜像（ZOT-03）
     rebaseWordCount(view); // 字数基线（CREA-04），同 openFile
     syncSceneSummary(view); // 场景概要镜像（CREA-05），同 openFile

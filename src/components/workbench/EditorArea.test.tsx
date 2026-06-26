@@ -2,6 +2,7 @@ import { fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { EditorView } from '@codemirror/view';
 import { useEditorStore } from '../../stores/useEditorStore';
+import { useOutlineStore } from '../../stores/useOutlineStore';
 import { useVaultStore } from '../../stores/useVaultStore';
 import EditorArea from './EditorArea';
 
@@ -106,5 +107,36 @@ describe('EditorArea 空态与草稿（未命名文档）', () => {
     useVaultStore.setState({ vault: { root: '/v', repoRoot: null, name: 'v' } });
     render(<EditorArea />);
     expect(screen.getByText('未打开文件')).toBeInTheDocument();
+  });
+});
+
+describe('EditorArea 面包屑插槽（#2b）', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    useVaultStore.setState({ vault: { root: '/v', repoRoot: null, name: 'v' } });
+    useEditorStore.setState({ tabs: [{ path: 'a.md', name: 'a.md' }], activePath: 'a.md', cursor: 3 });
+    getView.mockReturnValue(fakeView);
+    isComposing.mockReturnValue(false);
+  });
+
+  afterEach(() => {
+    useVaultStore.setState(useVaultStore.getInitialState(), true);
+    useEditorStore.setState(useEditorStore.getInitialState(), true);
+    useOutlineStore.setState({ items: [] });
+  });
+
+  it('有大纲且光标落在标题内：面包屑栏渲染且位于 CM 挂载点之前（插在 Toolbar 与 CM 容器间）', () => {
+    useOutlineStore.setState({ items: [{ level: 1, text: '引言', from: 0 }] });
+    render(<EditorArea />);
+    const nav = screen.getByLabelText('标题路径');
+    expect(nav).toBeInTheDocument();
+    expect(nav.compareDocumentPosition(cmMount()) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it('无大纲：面包屑自隐（不占插槽），CM 挂载点仍在', () => {
+    useOutlineStore.setState({ items: [] });
+    render(<EditorArea />);
+    expect(screen.queryByLabelText('标题路径')).not.toBeInTheDocument();
+    expect(cmMount()).toBeInTheDocument();
   });
 });
