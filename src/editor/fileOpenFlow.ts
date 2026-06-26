@@ -8,7 +8,7 @@ import { baseExtensions } from './extensions';
 import { openFile, snapshotBeforeSwitch, switchToTab } from './editorState';
 import { languageFromDoc, markAppliedLanguage } from './languages';
 import { basename, parentDir, relativeWithin, stripVerbatim } from './pathUtil';
-import { getView } from './viewHandle';
+import { getView, revealRange } from './viewHandle';
 
 /**
  * 文件打开编排（从 vaultFlow 析出，289 行超限拆分）。
@@ -48,6 +48,29 @@ export async function openFileByPath(path: string): Promise<void> {
   const name = path.split('/').pop() ?? path;
   if (!view) return;
   await openFileInEditor(view, { id: path, name, isDir: false });
+}
+
+/** 正文中定位搜索词首个出现（大小写不敏感，对齐 FTS5 trigram `case_sensitive 0`）；未命中返 -1。 */
+export function findMatchOffset(doc: string, term: string): number {
+  const t = term.trim();
+  if (t === '') return -1;
+  return doc.toLowerCase().indexOf(t.toLowerCase());
+}
+
+/**
+ * 打开文件并跳到搜索词首个出现（命令面板 `#` 全文搜索选中入口，v1.2 #2a）。
+ *
+ * 索引可能滞后于磁盘——故落盘后在「当前文档真相源」上重新定位 term（自校准，复用 v1.1.7 续读锚点纪律）：
+ * 命中则选中并滚到该处，未命中（索引陈旧 / 词已删）则停在文首不跳。跳转排在 openFile 的滚动还原
+ * （requestAnimationFrame 回填）之后一帧执行，否则定位会被滚动还原覆盖。
+ */
+export async function openFileAndFind(path: string, term: string): Promise<void> {
+  await openFileByPath(path);
+  const view = getView();
+  if (!view) return;
+  const at = findMatchOffset(view.state.doc.toString(), term);
+  if (at < 0) return;
+  requestAnimationFrame(() => revealRange(view, at, at + term.trim().length));
 }
 
 /**

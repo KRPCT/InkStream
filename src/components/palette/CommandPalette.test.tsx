@@ -2,13 +2,20 @@ import { act, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 import { hydrate, list } from '../../commands/mru';
 import { register } from '../../commands/registry';
+import { useOutlineStore } from '../../stores/useOutlineStore';
 import { usePaletteStore } from '../../stores/usePaletteStore';
 import { useVaultStore } from '../../stores/useVaultStore';
 import type { FileEntry, VaultInfo } from '../../types/vault';
 import CommandPalette from './CommandPalette';
 
 const openFileByPath = vi.hoisted(() => vi.fn());
-vi.mock('../../editor/fileOpenFlow', () => ({ openFileByPath }));
+const openFileAndFind = vi.hoisted(() => vi.fn());
+vi.mock('../../editor/fileOpenFlow', () => ({ openFileByPath, openFileAndFind }));
+
+const scrollToHeading = vi.hoisted(() => vi.fn());
+vi.mock('../../editor/outline', () => ({ scrollToHeading }));
+
+const HINT_NO_PREFIX = '输入 “>” 命令 · “#” 全文 · “@” 标题';
 
 const VAULT: VaultInfo = { root: '/vault', repoRoot: null, name: 'vault' };
 const FILES: FileEntry[] = [
@@ -123,7 +130,7 @@ describe('CommandPalette', () => {
     render(<CommandPalette />);
     openPalette();
     type('');
-    expect(screen.getByText('输入 “>” 以搜索并执行命令')).toBeInTheDocument();
+    expect(screen.getByText(HINT_NO_PREFIX)).toBeInTheDocument();
   });
 
   it('无匹配结果显示空态行', () => {
@@ -153,7 +160,7 @@ describe('CommandPalette', () => {
     openQuick();
     type('readme');
     // 无 workspace 时无前缀无可路由 provider，回退命令前缀提示而非文件 provider。
-    expect(screen.getByText('输入 “>” 以搜索并执行命令')).toBeInTheDocument();
+    expect(screen.getByText(HINT_NO_PREFIX)).toBeInTheDocument();
     expect(openFileByPath).not.toHaveBeenCalled();
   });
 
@@ -173,5 +180,53 @@ describe('CommandPalette', () => {
     openQuick();
     type('任意');
     expect(screen.getByText('没有匹配的文件')).toBeInTheDocument();
+  });
+
+  describe('@ 标题跳转', () => {
+    beforeEach(() => {
+      scrollToHeading.mockClear();
+      act(() =>
+        useOutlineStore.setState({
+          items: [
+            { level: 1, text: '引言', from: 0 },
+            { level: 2, text: '研究方法', from: 42 },
+          ],
+        }),
+      );
+    });
+    afterEach(() => act(() => useOutlineStore.setState({ items: [] })));
+
+    it('“@” 列出当前文档标题', () => {
+      render(<CommandPalette />);
+      openPalette();
+      type('@');
+      expect(screen.getByText('引言')).toBeInTheDocument();
+      expect(screen.getByText('研究方法')).toBeInTheDocument();
+    });
+
+    it('“@方法” fuzzy 命中标题', () => {
+      render(<CommandPalette />);
+      openPalette();
+      type('@方法');
+      expect(screen.getByText('研究方法')).toBeInTheDocument();
+      expect(screen.queryByText('引言')).not.toBeInTheDocument();
+    });
+
+    it('选中标题调用 scrollToHeading(其 from) 并关闭面板', () => {
+      render(<CommandPalette />);
+      openPalette();
+      type('@方法');
+      fireEvent.keyDown(input(), { key: 'Enter' });
+      expect(scrollToHeading).toHaveBeenCalledWith(42);
+      expect(usePaletteStore.getState().open).toBe(false);
+    });
+
+    it('文档无标题时显示空态文案', () => {
+      act(() => useOutlineStore.setState({ items: [] }));
+      render(<CommandPalette />);
+      openPalette();
+      type('@');
+      expect(screen.getByText('当前文档没有标题')).toBeInTheDocument();
+    });
   });
 });

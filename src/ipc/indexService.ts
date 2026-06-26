@@ -113,6 +113,39 @@ export async function queryBacklinks(filePath: string): Promise<string[]> {
   }
 }
 
+/** 全文搜索一条命中：vault 相对路径 + 匹配上下文片段（FTS5 snippet，已折叠空白成单行）。 */
+export interface ContentHit {
+  path: string;
+  snippet: string;
+}
+
+/**
+ * 全库全文搜索（命令面板 `#` 模式，v1.2 #2a）：trigram MATCH 正文，返回路径 + snippet 上下文。
+ *
+ * 简易模式 / 无 vault（indexDb()→null）/ 短查询（<3 字 trigram 召回下限）一律空。查询词作短语量子化
+ * （双引号包裹 + 内嵌引号转义），ORDER BY rank（bm25）取前 50。snippet 取 content 列（列序 0），不加
+ * 高亮标记（面板纯文本渲染，避免任何 innerHTML 注入面）。失败弃连接返空，不阻断面板。
+ */
+export async function queryContent(text: string): Promise<ContentHit[]> {
+  const conn = indexDb();
+  if (!conn) return [];
+  const term = text.trim();
+  if (term.length < 3) return []; // trigram 最小可搜 3 字，短查询跳过。
+  try {
+    const db = await conn;
+    const phrase = `"${term.split('"').join('""')}"`;
+    const rows = await db.select<Array<{ path: string; snippet: string }>>(
+      "SELECT path, snippet(files_fts, 0, '', '', '…', 32) AS snippet " +
+        'FROM files_fts WHERE files_fts MATCH ? ORDER BY rank LIMIT 50',
+      [phrase],
+    );
+    return rows.map((r) => ({ path: r.path, snippet: (r.snippet ?? '').replace(/\s+/g, ' ').trim() }));
+  } catch {
+    resetConn();
+    return [];
+  }
+}
+
 /** unlinked mentions：正文提及文件名却未建 `[[]]` 链的文件（trigram MATCH 文件名，排除自身 + 已反链）。 */
 export async function queryUnlinkedMentions(filePath: string): Promise<string[]> {
   const conn = indexDb();

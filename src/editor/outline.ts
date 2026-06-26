@@ -3,7 +3,7 @@ import type { EditorState } from '@codemirror/state';
 import type { EditorView } from '@codemirror/view';
 import { useOutlineStore } from '../stores/useOutlineStore';
 import type { OutlineItem } from '../types/editor';
-import { getView, scrollContainer } from './viewHandle';
+import { getView, revealRange } from './viewHandle';
 
 /**
  * 文档大纲（RightPanel 大纲 tab）：从 markdown 语法树析出 H1-H6 标题。
@@ -50,18 +50,11 @@ export function syncOutline(view: EditorView): void {
 }
 
 /**
- * 跳到某标题位置：移动光标 + 把该标题滚到编辑区顶部。
- *
- * 滚动作用于 #17 的真实滚动容器（外层 overflow-auto，非恒 0 的 scrollDOM）——故不用 CM 的
- * scrollIntoView（它只动 scrollDOM）。不程序化抢焦点（CONSTRAINTS §8 IME 纪律），由用户点击落焦。
+ * 跳到某标题位置：移动光标 + 把该标题滚到编辑区顶部（大纲点击 / 命令面板 `@` 标题跳转共用）。
+ * 滚动纪律下沉 viewHandle.revealRange（#17 真实滚动容器 + 不抢焦点），此处只解析 view。
  */
 export function scrollToHeading(from: number): void {
   const view = getView();
   if (view === null) return;
-  const pos = Math.min(Math.max(from, 0), view.state.doc.length);
-  view.dispatch({ selection: { anchor: pos } });
-  const container = scrollContainer(view);
-  const editorTop =
-    view.dom.getBoundingClientRect().top - container.getBoundingClientRect().top + container.scrollTop;
-  container.scrollTop = Math.max(0, editorTop + view.lineBlockAt(pos).top - 8);
+  revealRange(view, from, from);
 }

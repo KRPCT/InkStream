@@ -36,3 +36,22 @@ export function scrollContainer(view: EditorView): HTMLElement {
   }
   return view.scrollDOM;
 }
+
+/**
+ * 选中 [from,to) 并把其首行滚到编辑区顶部（标题跳转 `@` / 全文搜索定位 `#` 共用）。
+ *
+ * 滚动作用于 #17 的真实滚动容器（外层 overflow-auto，非恒 0 的 scrollDOM）——故不用 CM 的
+ * scrollIntoView。不程序化抢焦点（CONSTRAINTS §8 IME 纪律），由用户点击落焦。from===to 即折叠光标。
+ */
+export function revealRange(view: EditorView, from: number, to: number): void {
+  const len = view.state.doc.length;
+  const a = Math.min(Math.max(from, 0), len);
+  const b = Math.min(Math.max(to, a), len);
+  view.dispatch({ selection: { anchor: a, head: b } });
+  const container = scrollContainer(view);
+  const editorTop =
+    view.dom.getBoundingClientRect().top -
+    container.getBoundingClientRect().top +
+    container.scrollTop;
+  container.scrollTop = Math.max(0, editorTop + view.lineBlockAt(a).top - 8);
+}

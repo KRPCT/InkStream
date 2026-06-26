@@ -1,5 +1,13 @@
-import { describe, expect, it } from 'vitest';
-import { indexDbUrl, isIndexable } from './indexService';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+
+const select = vi.hoisted(() => vi.fn());
+vi.mock('@tauri-apps/plugin-sql', () => ({
+  default: { load: vi.fn(async () => ({ select })) },
+}));
+
+import { useSettingsStore } from '../stores/useSettingsStore';
+import { useVaultStore } from '../stores/useVaultStore';
+import { indexDbUrl, isIndexable, queryContent } from './indexService';
 
 /** 索引库连接串构造（Phase 4 W4 修：剥 Windows \\?\ 扩展前缀，反链恒空真因回归门）。 */
 describe('indexDbUrl', () => {
@@ -29,5 +37,43 @@ describe('isIndexable', () => {
     expect(isIndexable('a/b.md')).toBe(true);
     expect(isIndexable('a/b.txt')).toBe(false);
     expect(isIndexable('a/b.markdown')).toBe(false);
+  });
+});
+
+describe('queryContent', () => {
+  beforeEach(() => {
+    select.mockReset();
+    useSettingsStore.setState({ simpleMode: false });
+    useVaultStore.setState({ vault: { root: 'D:/v', repoRoot: null, name: 'v' }, files: [] });
+  });
+
+  it('简易模式不触库，返空', async () => {
+    useSettingsStore.setState({ simpleMode: true });
+    expect(await queryContent('研究方法')).toEqual([]);
+    expect(select).not.toHaveBeenCalled();
+  });
+
+  it('短查询（<3 字 trigram 下限）不触库，返空', async () => {
+    expect(await queryContent('研')).toEqual([]);
+    expect(await queryContent('ab')).toEqual([]);
+    expect(select).not.toHaveBeenCalled();
+  });
+
+  it('查询词作短语量子化（双引号包裹），结果折叠空白成单行', async () => {
+    select.mockResolvedValue([{ path: '笔记/a.md', snippet: '前文  研究方法\n 与数据' }]);
+    const hits = await queryContent('研究方法');
+    expect(select).toHaveBeenCalledWith(expect.any(String), ['"研究方法"']);
+    expect(hits).toEqual([{ path: '笔记/a.md', snippet: '前文 研究方法 与数据' }]);
+  });
+
+  it('内嵌双引号转义为两个双引号', async () => {
+    select.mockResolvedValue([]);
+    await queryContent('a"b"c');
+    expect(select).toHaveBeenCalledWith(expect.any(String), ['"a""b""c"']);
+  });
+
+  it('查询失败弃连接返空，不抛', async () => {
+    select.mockRejectedValue(new Error('db gone'));
+    await expect(queryContent('研究方法')).resolves.toEqual([]);
   });
 });
