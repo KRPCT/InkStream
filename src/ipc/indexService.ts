@@ -146,6 +146,33 @@ export async function queryContent(text: string): Promise<ContentHit[]> {
   }
 }
 
+/**
+ * 全库搜索候选文件名单（命中文件路径，无 snippet，#2c multibuffer 用）：trigram MATCH 召回，按路径序。
+ *
+ * 与 queryContent 区别：只取路径、上限可调（replace-all 须见全部命中，不能用 50 的展示上限截断）。
+ * 仍是召回过滤器——精确命中偏移由前端在「当前真相源」上重算（getDocForPath ?? readFile），不信索引偏移。
+ * 简易模式 / 无 vault / 短词（<3 trigram 下限）一律空。limit 为内部受控整数，floor 后内联（无注入面）。
+ */
+export async function queryContentPaths(text: string, limit = 500): Promise<string[]> {
+  const conn = indexDb();
+  if (!conn) return [];
+  const term = text.trim();
+  if (term.length < 3) return [];
+  try {
+    const db = await conn;
+    const phrase = `"${term.split('"').join('""')}"`;
+    const cap = Math.max(1, Math.floor(limit));
+    const rows = await db.select<Array<{ path: string }>>(
+      `SELECT path FROM files_fts WHERE files_fts MATCH ? ORDER BY path LIMIT ${cap}`,
+      [phrase],
+    );
+    return rows.map((r) => r.path);
+  } catch {
+    resetConn();
+    return [];
+  }
+}
+
 /** unlinked mentions：正文提及文件名却未建 `[[]]` 链的文件（trigram MATCH 文件名，排除自身 + 已反链）。 */
 export async function queryUnlinkedMentions(filePath: string): Promise<string[]> {
   const conn = indexDb();

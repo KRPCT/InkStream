@@ -7,7 +7,7 @@ vi.mock('@tauri-apps/plugin-sql', () => ({
 
 import { useSettingsStore } from '../stores/useSettingsStore';
 import { useVaultStore } from '../stores/useVaultStore';
-import { indexDbUrl, isIndexable, queryContent } from './indexService';
+import { indexDbUrl, isIndexable, queryContent, queryContentPaths } from './indexService';
 
 /** 索引库连接串构造（Phase 4 W4 修：剥 Windows \\?\ 扩展前缀，反链恒空真因回归门）。 */
 describe('indexDbUrl', () => {
@@ -75,5 +75,36 @@ describe('queryContent', () => {
   it('查询失败弃连接返空，不抛', async () => {
     select.mockRejectedValue(new Error('db gone'));
     await expect(queryContent('研究方法')).resolves.toEqual([]);
+  });
+});
+
+describe('queryContentPaths', () => {
+  beforeEach(() => {
+    select.mockReset();
+    useSettingsStore.setState({ simpleMode: false });
+    useVaultStore.setState({ vault: { root: 'D:/v', repoRoot: null, name: 'v' }, files: [] });
+  });
+
+  it('简易模式 / 短词不触库，返空', async () => {
+    useSettingsStore.setState({ simpleMode: true });
+    expect(await queryContentPaths('研究方法')).toEqual([]);
+    useSettingsStore.setState({ simpleMode: false });
+    expect(await queryContentPaths('研')).toEqual([]);
+    expect(select).not.toHaveBeenCalled();
+  });
+
+  it('短语量子化 + LIMIT 内联默认 500，返回路径名单', async () => {
+    select.mockResolvedValue([{ path: 'a.md' }, { path: 'b.md' }]);
+    const paths = await queryContentPaths('研究方法');
+    expect(paths).toEqual(['a.md', 'b.md']);
+    const [sql, params] = select.mock.calls[0];
+    expect(sql).toContain('LIMIT 500');
+    expect(params).toEqual(['"研究方法"']);
+  });
+
+  it('自定义 limit floor 后内联', async () => {
+    select.mockResolvedValue([]);
+    await queryContentPaths('研究方法', 42.9);
+    expect(select.mock.calls[0][0]).toContain('LIMIT 42');
   });
 });
