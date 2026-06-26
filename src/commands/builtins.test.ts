@@ -78,6 +78,7 @@ const TITLES: Record<string, string> = {
   'help.onboarding': '帮助：重新引导',
   'help.shortcuts': '帮助：快捷键参考',
   'help.check-update': '帮助：检查更新',
+  'help.whats-new': '帮助：更新公告',
   // 编辑组
   'edit.undo': '编辑：撤销',
   'edit.redo': '编辑：重做',
@@ -120,8 +121,8 @@ const TITLES: Record<string, string> = {
   'bookshelf.import-folder': '书架：导入书籍文件夹',
 };
 
-/** 生产命令总数：…前略… + pandoc 格式导出(×6) + 检查更新(×1) + 书架(open/add/import-files/import-folder ×4) = 85。 */
-const COMMAND_COUNT = 85;
+/** 生产命令总数：…前略… + pandoc 格式导出(×6) + 检查更新(×1) + 更新公告(×1) + 书架(open/add/import-files/import-folder ×4) = 86。 */
+const COMMAND_COUNT = 86;
 
 /** 生产命令（剔除 dev.* DEV-only 命令，如 IME 探针 dev.ime-probe）。 */
 function prodCommands() {

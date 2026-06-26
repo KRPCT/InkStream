@@ -16,6 +16,7 @@ import { useHelpStore } from '../stores/useHelpStore';
 import { useOnboardingStore } from '../stores/useOnboardingStore';
 import { usePaletteStore } from '../stores/usePaletteStore';
 import { useUpdaterStore } from '../stores/useUpdaterStore';
+import { useWhatsNewStore } from '../stores/useWhatsNewStore';
 import { useSettingsStore } from '../stores/useSettingsStore';
 import { useSettingsUiStore } from '../stores/useSettingsUiStore';
 import { useWorkbenchStore } from '../stores/useWorkbenchStore';
@@ -196,5 +197,10 @@ export const CORE_COMMANDS: Command[] = [
     id: 'help.check-update',
     title: '帮助：检查更新', // 手动检查；启动静默检查见 App.tsx
     run: () => void useUpdaterStore.getState().checkManual(),
+  },
+  {
+    id: 'help.whats-new',
+    title: '帮助：更新公告', // 重看最新版本公告；启动自动展示见 App.tsx
+    run: () => useWhatsNewStore.getState().showLatest(),
   },
 ];

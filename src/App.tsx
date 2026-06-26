@@ -5,6 +5,7 @@ import ConfirmDialog from './components/common/ConfirmDialog';
 import PromptDialog from './components/common/PromptDialog';
 import Toast from './components/common/Toast';
 import UpdateDialog from './components/common/UpdateDialog';
+import WhatsNewDialog from './components/common/WhatsNewDialog';
 import WritingHud from './components/common/WritingHud';
 import ImeProbe from './components/dev/ImeProbe';
 import HelpModal from './components/help/HelpModal';
@@ -20,6 +21,9 @@ import { windowControls } from './ipc/window';
 import { initOnboarding } from './stores/useOnboardingStore';
 import { usePandocStore } from './stores/usePandocStore';
 import { useUpdaterStore } from './stores/useUpdaterStore';
+import { useWhatsNewStore } from './stores/useWhatsNewStore';
+import { getAppVersion } from './ipc/app';
+import { loadLastSeenVersion } from './ipc/settings';
 import { initPersistence } from './stores/persistSettings';
 import { initVaultPersistence } from './stores/persistVault';
 
@@ -40,6 +44,13 @@ export default function App() {
     void usePandocStore.getState().detect();
     // 自动更新：启动静默检查（dev / 无网 / 无更新一律静默；有更新弹非侵入对话框）。模块级 checking 守 StrictMode。
     void useUpdaterStore.getState().checkSilent();
+    // 更新公告（What's New）：当前版本 !== 已见版本时展示本版公告——覆盖「发版后首启」与「更新重启后首启」。
+    // dev 不弹；落盘已见版本在 showFor 内幂等完成。StrictMode 双执行无害（同版只展示一次）。
+    void (async () => {
+      const version = await getAppVersion();
+      if (version === 'dev') return;
+      useWhatsNewStore.getState().showFor(version, await loadLastSeenVersion());
+    })();
     // FOUC 契约第 1 步收尾：首帧渲染后显示窗口（show 幂等，StrictMode 双执行无害）
     void windowControls.show();
     // 首次引导（簇③）：延迟到布局渲染后再开，spotlight 才能命中侧栏/状态栏元素。seen 标记防重复弹。
@@ -77,6 +88,8 @@ export default function App() {
       <WritingHud />
       {/* 自动更新对话框（FEAT-UPDATER）：有更新 / 手动检查时弹出，useUpdaterStore.dialogOpen 控制 */}
       <UpdateDialog />
+      {/* 更新公告（What's New）：发版/更新后首启展示本版要点，重大更新附恭喜动效，useWhatsNewStore.open 控制 */}
+      <WhatsNewDialog />
       {/* DEV-only：IME 输入探针（R2 实验，dev.ime-probe 命令打开）。生产构建摇树移除。 */}
       {import.meta.env.DEV && <ImeProbe />}
     </>

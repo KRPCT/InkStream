@@ -174,6 +174,7 @@ export const MENUS: GroupConfig[] = [
       { commandId: 'app.about', label: '关于 InkStream' },
       { commandId: 'help.shortcuts', label: '快捷键参考' },
       { separator: true },
+      { commandId: 'help.whats-new', label: '更新公告' },
       { commandId: 'help.check-update', label: '检查更新' },
     ],
   },

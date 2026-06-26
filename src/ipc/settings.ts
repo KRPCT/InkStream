@@ -15,10 +15,12 @@ import type { PersistedVault } from '../types/vault';
 const FILE = 'settings.json';
 const VAULT_FILE = 'vault-state.json';
 const BOOKSHELF_FILE = 'bookshelf.json';
+const APP_STATE_FILE = 'app-state.json';
 
 let storePromise: Promise<Store> | null = null;
 let vaultStorePromise: Promise<Store> | null = null;
 let bookshelfStorePromise: Promise<Store> | null = null;
+let appStatePromise: Promise<Store> | null = null;
 
 function settingsStore(): Promise<Store> {
   storePromise ??= load(FILE, { defaults: {}, autoSave: false });
@@ -90,5 +92,24 @@ export async function saveBookshelf(b: PersistedBookshelf): Promise<void> {
   await store.set('version', b.version);
   await store.set('books', b.books);
   await store.set('progress', b.progress);
+  await store.save();
+}
+
+function appStateStore(): Promise<Store> {
+  appStatePromise ??= load(APP_STATE_FILE, { defaults: {}, autoSave: false });
+  return appStatePromise;
+}
+
+/** 读「上次展示过更新公告的版本」（应用数据目录，用户仓库零写入，D-08）；无则 null。 */
+export async function loadLastSeenVersion(): Promise<string | null> {
+  const store = await appStateStore();
+  const v = await store.get('lastSeenVersion');
+  return typeof v === 'string' ? v : null;
+}
+
+/** 记录已展示公告的版本（启动比对当前版本，决定是否弹更新公告）。 */
+export async function saveLastSeenVersion(version: string): Promise<void> {
+  const store = await appStateStore();
+  await store.set('lastSeenVersion', version);
   await store.save();
 }
