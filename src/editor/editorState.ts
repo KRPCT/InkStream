@@ -1,4 +1,4 @@
-import { Compartment, EditorState, type Extension } from '@codemirror/state';
+import { Compartment, EditorState, type ChangeSpec, type Extension } from '@codemirror/state';
 import type { EditorView } from '@codemirror/view';
 import { readFile } from '../ipc/files';
 import { useEditorStore } from '../stores/useEditorStore';
@@ -235,6 +235,30 @@ export function getDocForPath(path: string): string | null {
   }
   const cached = cache.get(path);
   return cached ? cached.doc.toString() : null;
+}
+
+/**
+ * 把一组改动应用到某 path 的「打开缓冲」（活动 view 或缓存态），保留撤销历史（#2c replace-all 回写）。
+ *
+ * - 活动文件：dispatch 到 live view —— getDocForPath/autosave 随即见替换，mirrorListener 自动 markDirty；
+ * - 后台已开文件：更新其缓存 EditorState（切回该 tab 即见改动、undo 不丢），调用方另行 markDirty + flush；
+ * - 该 path 未打开（无 live/缓存）：返回 false，调用方改走直接落盘（writeProjectFile），不在此凭空建缓冲。
+ *
+ * 返回是否落在「打开缓冲」上。replace-all 经此把回写收口到与主编辑器**同一**份 per-path 缓冲，
+ * 杜绝 multibuffer 另持副本造成的双真相源 clobber（CR-01 纪律）。
+ */
+export function applyEditsToOpenDoc(path: string, changes: ChangeSpec): boolean {
+  const view = getView();
+  if (view && useEditorStore.getState().activePath === path) {
+    view.dispatch({ changes });
+    return true;
+  }
+  const st = cache.get(path);
+  if (st !== undefined) {
+    cache.set(path, st.update({ changes }).state);
+    return true;
+  }
+  return false;
 }
 
 /** 关 tab 时释放该文件 state 与滚动缓存（D-03 会话内，关 tab 即释放）。 */

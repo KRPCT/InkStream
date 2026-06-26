@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { buildExcerpts, excerptSegments, findMatches, searchFile } from './projectSearch';
+import {
+  applyReplacements,
+  buildExcerpts,
+  excerptSegments,
+  findMatches,
+  searchFile,
+} from './projectSearch';
 
 describe('findMatches', () => {
   it('大小写不敏感字面量，全部不重叠命中', () => {
@@ -32,6 +38,24 @@ describe('findMatches', () => {
   it('空词 / 无命中返空', () => {
     expect(findMatches('abc', '')).toEqual([]);
     expect(findMatches('abc', 'xyz')).toEqual([]);
+  });
+
+  it('内容含变长折叠字符 İ(U+0130) 时命中区间恒在原串坐标（慢路径，杜绝写盘腐坏）', () => {
+    // 'İ' 小写化为 2 码元（i + 组合点上）→ toLowerCase 长度增 → 触发原串慢路径。
+    // 若误用 lowercased 偏移套回原串，'sta' 会被错切为 'tan'（漂移 1）。
+    const content = 'İstanbul'; // İ(0) s(1) t(2) a(3) n(4) b(5) u(6) l(7)
+    expect(content.toLowerCase().length).toBeGreaterThan(content.length); // 确证变长，命中慢路径
+    const m = findMatches(content, 'sta');
+    expect(m).toEqual([{ from: 1, to: 4 }]);
+    expect(content.slice(m[0].from, m[0].to)).toBe('sta'); // 原串切片恰为命中，零漂移
+  });
+
+  it('含 İ 的多命中仍各自落在原串坐标（慢路径不重叠扫描）', () => {
+    const content = 'İ bridge İ bridge';
+    expect(findMatches(content, 'bridge')).toEqual([
+      { from: 2, to: 8 },
+      { from: 11, to: 17 },
+    ]);
   });
 });
 
@@ -132,5 +156,33 @@ describe('excerptSegments', () => {
 
   it('无命中返整段非命中', () => {
     expect(excerptSegments(ex('plain', []))).toEqual([{ text: 'plain', match: false }]);
+  });
+});
+
+describe('applyReplacements', () => {
+  it('多命中自后向前替换，偏移不串位', () => {
+    const content = 'foo bar foo';
+    const m = findMatches(content, 'foo'); // [{0,3},{8,11}]
+    expect(applyReplacements(content, m, 'X')).toBe('X bar X');
+  });
+
+  it('替换串长度变化也正确（变长）', () => {
+    const content = 'a foo b';
+    expect(applyReplacements(content, findMatches(content, 'foo'), 'LONGER')).toBe('a LONGER b');
+  });
+
+  it('替换为空串即删除命中', () => {
+    const content = 'keep foo keep';
+    expect(applyReplacements(content, findMatches(content, 'foo'), '')).toBe('keep  keep');
+  });
+
+  it('无命中返原文', () => {
+    expect(applyReplacements('abc', [], 'X')).toBe('abc');
+  });
+
+  it('内容含 İ(慢路径偏移) 时回写落点精确，不腐坏前后文', () => {
+    const content = 'İ bridge İ bridge';
+    const m = findMatches(content, 'bridge');
+    expect(applyReplacements(content, m, 'X')).toBe('İ X İ X');
   });
 });

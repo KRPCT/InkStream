@@ -186,6 +186,31 @@ export async function flushAutosave(path: string): Promise<void> {
   await enqueueWrite(path);
 }
 
+/**
+ * 直接落盘「未打开文件」的显式内容（#2c replace-all 回写未开文件用）。
+ *
+ * 与 flushAutosave 的关键区别：内容由调用方给定，**不**经 getDoc(path)——未打开文件 getDocForPath 返
+ * null，flushAutosave 会写成空串并清脏（数据丢失）。故此处独立路径：库内 .md 的原子写 + 自激抑制 +
+ * 增量索引，复用 writeOnce 的同套纪律。仅供未打开（无 live/缓存）的库内文件；外部/草稿/已开文件不走此。
+ * 失败返回 false（调用方计入报告），不抛、不清脏（未打开文件无脏标记）。
+ */
+export async function writeProjectFile(path: string, content: string): Promise<boolean> {
+  if (suspended) return false; // 切库期间不落盘（同 writeOnce）。
+  const root = deps.getRoot();
+  if (root === null) return false;
+  suppressNextWatch(path); // 自激抑制：自己的原子写不触发 watcher 误判（Layer 2）。
+  try {
+    await writeFileAtomic(root, path, content);
+    suppressNextWatch(path); // 写成功续窗，覆盖 rename 尾随事件。
+    if (isIndexable(path) && !useSettingsStore.getState().simpleMode)
+      void indexUpsertDoc(path, content).catch(() => {});
+    return true;
+  } catch {
+    suppressedUntil.delete(path); // 写失败无事件落地，撤回抑制窗（同 writeOnce 的 WR-01）。
+    return false;
+  }
+}
+
 /** 冻结某文件自动保存（转发 store；02-04 仲裁接）。 */
 export function freezeAutosave(path: string): void {
   useEditorStore.getState().freezeAutosave(path);

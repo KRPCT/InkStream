@@ -3,7 +3,9 @@ import { EditorState } from '@codemirror/state';
 import { EditorView } from '@codemirror/view';
 import { undo } from '@codemirror/commands';
 import {
+  applyEditsToOpenDoc,
   disposeState,
+  getDocForPath,
   openFile,
   scrollContainer,
   snapshotBeforeSwitch,
@@ -318,6 +320,51 @@ describe('换装过统一冻结门（§4.1：组合期排队、compositionend �
     switchToTab('ghost.md');
     expect(useEditorStore.getState().activePath).toBe('A.md');
     expect(view.state.doc.toString()).toBe('AAA');
+  });
+});
+
+describe('applyEditsToOpenDoc（#2c replace-all 回写到同一 per-path 缓冲）', () => {
+  beforeEach(() => {
+    __clearCacheForTest();
+    useEditorStore.setState({ activePath: null });
+  });
+
+  it('活动文件：dispatch 到 live view，返回 true', () => {
+    const view = mountView();
+    setView(view);
+    openFile(view, 'a.md', 'foo bar', baseExtensions());
+    useEditorStore.setState({ activePath: 'a.md' });
+    const ok = applyEditsToOpenDoc('a.md', { from: 0, to: 3, insert: 'XXX' });
+    expect(ok).toBe(true);
+    expect(view.state.doc.toString()).toBe('XXX bar');
+    setView(null);
+    view.destroy();
+  });
+
+  it('后台已开文件：更新缓存态（getDocForPath 反映、保 undo），返回 true', () => {
+    const view = mountView();
+    setView(view);
+    openFile(view, 'a.md', 'foo bar', baseExtensions());
+    useEditorStore.setState({ activePath: 'a.md' });
+    snapshotBeforeSwitch(view, 'a.md'); // a.md 入缓存
+    openFile(view, 'b.md', 'other', baseExtensions());
+    useEditorStore.setState({ activePath: 'b.md' });
+    const ok = applyEditsToOpenDoc('a.md', { from: 0, to: 3, insert: 'XXX' });
+    expect(ok).toBe(true);
+    expect(getDocForPath('a.md')).toBe('XXX bar'); // 后台缓存已改
+    expect(view.state.doc.toString()).toBe('other'); // 活动 view 未受影响
+    setView(null);
+    view.destroy();
+  });
+
+  it('未打开文件：返回 false（不凭空建缓冲，调用方改走直写）', () => {
+    const view = mountView();
+    setView(view);
+    openFile(view, 'a.md', 'x', baseExtensions());
+    useEditorStore.setState({ activePath: 'a.md' });
+    expect(applyEditsToOpenDoc('ghost.md', { from: 0, to: 0, insert: 'Y' })).toBe(false);
+    setView(null);
+    view.destroy();
   });
 });
 

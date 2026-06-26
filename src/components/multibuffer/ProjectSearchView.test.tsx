@@ -1,8 +1,17 @@
-import { act, fireEvent, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const openFileAtOffset = vi.hoisted(() => vi.fn());
 vi.mock('../../editor/fileOpenFlow', () => ({ openFileAtOffset }));
+
+const replaceAllInProject = vi.hoisted(() => vi.fn());
+vi.mock('../../editor/multibuffer/replaceAll', () => ({ replaceAllInProject }));
+
+const confirmDestructive = vi.hoisted(() => vi.fn());
+vi.mock('../../stores/useConfirmStore', () => ({ confirmDestructive }));
+
+const showToast = vi.hoisted(() => vi.fn());
+vi.mock('../../stores/useToastStore', () => ({ showToast }));
 
 import type { FileMatches } from '../../editor/multibuffer/projectSearch';
 import { useProjectSearchStore } from '../../stores/useProjectSearchStore';
@@ -31,6 +40,9 @@ function setStore(partial: Partial<ReturnType<typeof useProjectSearchStore.getSt
 
 beforeEach(() => {
   openFileAtOffset.mockClear();
+  replaceAllInProject.mockReset();
+  confirmDestructive.mockReset();
+  showToast.mockClear();
   run.mockClear();
   act(() => useVaultStore.setState({ vault: { root: 'D:/v', repoRoot: null, name: 'v' }, files: [] }));
   act(() => useWorkbenchStore.setState({ centralView: 'multibuffer' }));
@@ -96,5 +108,53 @@ describe('ProjectSearchView', () => {
     setStore({ query: 'zzz', status: 'done', results: [] });
     render(<ProjectSearchView />);
     expect(screen.getByText(/未找到「zzz」/)).toBeInTheDocument();
+  });
+
+  it('无结果时「全部替换」禁用', () => {
+    setStore({ query: 'zzz', status: 'done', results: [] });
+    render(<ProjectSearchView />);
+    expect(screen.getByText('全部替换')).toBeDisabled();
+  });
+
+  it('确认后调用 replaceAllInProject(query, replacement) 并刷新（干净成功不打扰）', async () => {
+    confirmDestructive.mockResolvedValue(true);
+    replaceAllInProject.mockResolvedValue({ files: 1, replaced: 2, skipped: [], failed: [] });
+    setStore({ query: 'foo', results: RESULTS, totalMatches: 2, status: 'done' });
+    render(<ProjectSearchView />);
+    fireEvent.change(screen.getByLabelText('替换为'), { target: { value: 'bar' } });
+    fireEvent.click(screen.getByText('全部替换'));
+    await waitFor(() => expect(replaceAllInProject).toHaveBeenCalledWith('foo', 'bar'));
+    await waitFor(() => expect(run).toHaveBeenCalledWith('foo'));
+    expect(showToast).not.toHaveBeenCalled(); // 干净成功无 toast
+  });
+
+  it('取消确认：不替换', async () => {
+    confirmDestructive.mockResolvedValue(false);
+    setStore({ query: 'foo', results: RESULTS, totalMatches: 2, status: 'done' });
+    render(<ProjectSearchView />);
+    fireEvent.click(screen.getByText('全部替换'));
+    await act(async () => {});
+    expect(replaceAllInProject).not.toHaveBeenCalled();
+  });
+
+  it('结果被截断：确认框如实告知只替换已列出文件', async () => {
+    confirmDestructive.mockResolvedValue(false);
+    setStore({ query: 'foo', results: RESULTS, totalMatches: 2, truncated: true, status: 'done' });
+    render(<ProjectSearchView />);
+    fireEvent.click(screen.getByText('全部替换'));
+    await waitFor(() =>
+      expect(confirmDestructive).toHaveBeenCalledWith(
+        expect.objectContaining({ body: expect.stringContaining('截断') }),
+      ),
+    );
+  });
+
+  it('有跳过/失败：warning 提示', async () => {
+    confirmDestructive.mockResolvedValue(true);
+    replaceAllInProject.mockResolvedValue({ files: 1, replaced: 1, skipped: ['c.md'], failed: ['d.md'] });
+    setStore({ query: 'foo', results: RESULTS, totalMatches: 2, status: 'done' });
+    render(<ProjectSearchView />);
+    fireEvent.click(screen.getByText('全部替换'));
+    await waitFor(() => expect(showToast).toHaveBeenCalledWith('warning', expect.stringContaining('失败')));
   });
 });

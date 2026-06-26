@@ -13,6 +13,7 @@ import {
   scheduleAutosave,
   suppressNextWatch,
   suspendAutosave,
+  writeProjectFile,
 } from './autosave';
 
 vi.mock('../ipc/files', () => ({
@@ -232,6 +233,40 @@ describe('autosave 防抖落盘管线', () => {
     scheduleAutosave('a.md');
     cancelPendingAutosave();
     await vi.runAllTimersAsync();
+    expect(mockWrite).not.toHaveBeenCalled();
+  });
+});
+
+describe('writeProjectFile（#2c 未打开文件直写显式内容）', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockWrite.mockResolvedValue(null);
+    resetAutosave();
+    configureAutosave({ getRoot: () => '/vault', getDoc: () => '' });
+  });
+
+  afterEach(() => resetAutosave());
+
+  it('原子写显式内容（不经 getDoc，杜绝按 null 写空），返回 true', async () => {
+    const ok = await writeProjectFile('notes/x.md', '替换后的内容');
+    expect(ok).toBe(true);
+    expect(mockWrite).toHaveBeenCalledWith('/vault', 'notes/x.md', '替换后的内容');
+  });
+
+  it('写成功后自激抑制该路径 watcher 事件', async () => {
+    await writeProjectFile('notes/x.md', '内容');
+    expect(consumeSuppressedWatch('notes/x.md')).toBe(true);
+  });
+
+  it('写失败返回 false 且撤回抑制窗（不吞后续真实外部变更）', async () => {
+    mockWrite.mockRejectedValueOnce(new Error('EACCES'));
+    expect(await writeProjectFile('notes/x.md', '内容')).toBe(false);
+    expect(consumeSuppressedWatch('notes/x.md')).toBe(false);
+  });
+
+  it('无 vault 根：不写，返回 false', async () => {
+    configureAutosave({ getRoot: () => null });
+    expect(await writeProjectFile('x.md', 'c')).toBe(false);
     expect(mockWrite).not.toHaveBeenCalled();
   });
 });

@@ -1,8 +1,11 @@
-import { FileText, Search, X } from 'lucide-react';
+import { FileText, Replace, Search, X } from 'lucide-react';
 import { Fragment, useEffect, useRef, useState } from 'react';
 import { openFileAtOffset } from '../../editor/fileOpenFlow';
 import { excerptSegments, type ExcerptModel } from '../../editor/multibuffer/projectSearch';
+import { replaceAllInProject } from '../../editor/multibuffer/replaceAll';
+import { confirmDestructive } from '../../stores/useConfirmStore';
 import { useProjectSearchStore } from '../../stores/useProjectSearchStore';
+import { showToast } from '../../stores/useToastStore';
 import { useVaultStore } from '../../stores/useVaultStore';
 import { useWorkbenchStore } from '../../stores/useWorkbenchStore';
 import './multibuffer.css';
@@ -26,12 +29,43 @@ export default function ProjectSearchView() {
   const truncated = useProjectSearchStore((s) => s.truncated);
   const status = useProjectSearchStore((s) => s.status);
   const [input, setInput] = useState(query);
+  const [replaceInput, setReplaceInput] = useState('');
+  const [replacing, setReplacing] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
   // 进入即聚焦搜索框（普通 input，非 CM contenteditable，不涉 WebView2 IME 纪律）。
   useEffect(() => {
     inputRef.current?.focus();
   }, []);
+
+  const onReplaceAll = async (): Promise<void> => {
+    if (results.length === 0 || replacing) return;
+    // 确认框打开期间即置 replacing（按钮随之禁用），杜绝期间重复触发；取消/完成都在 finally 复位。
+    setReplacing(true);
+    try {
+      // 结果被截断时如实告知：只替换已列出的文件，库中可能还有未显示的命中需再次替换。
+      const note = truncated
+        ? '\n注意：结果过多已截断，本次只替换已列出的文件，可能仍有未显示的命中需再次替换。'
+        : '';
+      const ok = await confirmDestructive({
+        title: '全库替换',
+        body: `将在 ${results.length} 个文件中替换 ${totalMatches} 处「${query}」为「${replaceInput || '（空）'}」。撤销为逐文件（在各自标签页 Ctrl+Z）；冲突中的文件会跳过。${note}`,
+        confirmLabel: '全部替换',
+      });
+      if (!ok) return;
+      const report = await replaceAllInProject(query, replaceInput);
+      await run(query); // 刷新结果（替换后命中应消失，空结果即成功反馈）。
+      // toast 仅 error/warning 两种：干净成功不打扰（结果刷新即反馈）；有跳过/失败才告警。
+      if (report.skipped.length > 0 || report.failed.length > 0) {
+        const parts = [`已替换 ${report.replaced} 处（${report.files} 文件）`];
+        if (report.skipped.length > 0) parts.push(`跳过 ${report.skipped.length} 个（冲突中）`);
+        if (report.failed.length > 0) parts.push(`失败 ${report.failed.length} 个`);
+        showToast('warning', parts.join('，'));
+      }
+    } finally {
+      setReplacing(false);
+    }
+  };
 
   // 防抖触发查询（180ms）。
   useEffect(() => {
@@ -55,30 +89,51 @@ export default function ProjectSearchView() {
 
   return (
     <div className="flex h-full flex-col bg-[var(--background-primary)]">
-      <header className="flex h-10 flex-none items-center gap-2 border-b border-[var(--background-modifier-border)] px-3">
-        <Search size={15} className="flex-none text-[var(--text-faint)]" aria-hidden />
-        <input
-          ref={inputRef}
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          onKeyDown={onKeyDown}
-          placeholder="全库搜索（工作区 .md，≥3 字）"
-          aria-label="全库搜索"
-          className="min-w-0 flex-1 bg-transparent text-[13px] text-[var(--text-normal)] outline-none placeholder:text-[var(--text-faint)]"
-        />
-        {status === 'done' && results.length > 0 && (
-          <span className="flex-none text-[12px] text-[var(--text-faint)]">
-            {totalMatches} 处 · {results.length} 文件{truncated ? ' · 结果过多' : ''}
-          </span>
-        )}
-        <button
-          type="button"
-          onClick={close}
-          aria-label="关闭全库搜索"
-          className="flex-none rounded-[4px] p-1 text-[var(--text-muted)] hover:bg-[var(--background-modifier-hover)]"
-        >
-          <X size={15} />
-        </button>
+      <header className="flex-none border-b border-[var(--background-modifier-border)]">
+        <div className="flex h-10 items-center gap-2 px-3">
+          <Search size={15} className="flex-none text-[var(--text-faint)]" aria-hidden />
+          <input
+            ref={inputRef}
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            onKeyDown={onKeyDown}
+            placeholder="全库搜索（工作区 .md，≥3 字）"
+            aria-label="全库搜索"
+            className="min-w-0 flex-1 bg-transparent text-[13px] text-[var(--text-normal)] outline-none placeholder:text-[var(--text-faint)]"
+          />
+          {status === 'done' && results.length > 0 && (
+            <span className="flex-none text-[12px] text-[var(--text-faint)]">
+              {totalMatches} 处 · {results.length} 文件{truncated ? ' · 结果过多' : ''}
+            </span>
+          )}
+          <button
+            type="button"
+            onClick={close}
+            aria-label="关闭全库搜索"
+            className="flex-none rounded-[4px] p-1 text-[var(--text-muted)] hover:bg-[var(--background-modifier-hover)]"
+          >
+            <X size={15} />
+          </button>
+        </div>
+        <div className="flex h-9 items-center gap-2 px-3 pb-1">
+          <Replace size={15} className="flex-none text-[var(--text-faint)]" aria-hidden />
+          <input
+            value={replaceInput}
+            onChange={(e) => setReplaceInput(e.target.value)}
+            onKeyDown={onKeyDown}
+            placeholder="替换为…"
+            aria-label="替换为"
+            className="min-w-0 flex-1 bg-transparent text-[13px] text-[var(--text-normal)] outline-none placeholder:text-[var(--text-faint)]"
+          />
+          <button
+            type="button"
+            onClick={() => void onReplaceAll()}
+            disabled={results.length === 0 || replacing}
+            className="flex-none rounded-[4px] border border-[var(--background-modifier-border)] px-2 py-0.5 text-[12px] text-[var(--text-muted)] hover:bg-[var(--background-modifier-hover)] hover:text-[var(--text-normal)] disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {replacing ? '替换中…' : '全部替换'}
+          </button>
+        </div>
       </header>
       <div className="min-h-0 flex-1 overflow-auto py-1 text-[13px]">
         <Body

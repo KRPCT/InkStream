@@ -36,16 +36,40 @@ export interface SearchOpts {
 }
 
 /**
- * 大小写不敏感字面量定位全部不重叠命中（对齐 findMatchOffset：toLowerCase 双侧比较）。
- * 空词返空。注：toLowerCase 对常见中英文本长度守恒，偏移即源偏移；极少数变长折叠（如 ß）不在本应用语料内。
+ * 大小写不敏感字面量定位全部不重叠命中。空词返空。命中区间恒为「原串坐标」——offset 直接用于
+ * 替换/写盘，绝不可漂移。
+ *
+ * 快路径：content 小写化长度守恒时，lowercased 偏移即原串偏移（indexOf 精确）。JS 中仅 U+0130(İ)
+ * 小写化变长（1→2），含此类字符时退到在原串上以 needle 定长逐位比较的慢路径——否则把 lowercased
+ * 偏移套回原串会错位（轻则替换错字符、重则区间越界 doc 长度致 CM ChangeSpec 抛错）。这是把 #2a 的
+ * 显示级隐患在 #2c 升级为破坏性写盘前必须堵死的口子。
  */
 export function findMatches(content: string, query: string): MatchRange[] {
   if (query === '') return [];
-  const hay = content.toLowerCase();
   const needle = query.toLowerCase();
+  const hay = content.toLowerCase();
+  if (hay.length === content.length) {
+    const out: MatchRange[] = [];
+    for (let i = hay.indexOf(needle); i !== -1; i = hay.indexOf(needle, i + needle.length)) {
+      out.push({ from: i, to: i + needle.length });
+    }
+    return out;
+  }
+  return scanMatchesOnOriginal(content, needle);
+}
+
+/** 慢路径：在原串上以 needle 长度定窗逐位比较小写形，命中区间恒在原串坐标内（含变长折叠字符时用）。 */
+function scanMatchesOnOriginal(content: string, needle: string): MatchRange[] {
   const out: MatchRange[] = [];
-  for (let i = hay.indexOf(needle); i !== -1; i = hay.indexOf(needle, i + needle.length)) {
-    out.push({ from: i, to: i + needle.length });
+  const n = needle.length;
+  if (n === 0) return out;
+  for (let i = 0; i + n <= content.length; ) {
+    if (content.slice(i, i + n).toLowerCase() === needle) {
+      out.push({ from: i, to: i + n });
+      i += n;
+    } else {
+      i += 1;
+    }
   }
   return out;
 }
@@ -123,6 +147,18 @@ export function buildExcerpts(
       matches: s.matches,
     };
   });
+}
+
+/**
+ * 在内容上应用全部命中的替换（replace-all 回写用，纯函数）。
+ * matches 须升序且互不重叠（findMatches 保证）；自后向前替换，免前序替换移位后序偏移。
+ */
+export function applyReplacements(content: string, matches: MatchRange[], replacement: string): string {
+  let out = content;
+  for (let i = matches.length - 1; i >= 0; i--) {
+    out = out.slice(0, matches[i].from) + replacement + out.slice(matches[i].to);
+  }
+  return out;
 }
 
 /** 摘录文本按命中切分为高亮段（match=true 即命中片段），供结果视图渲染 <mark>。 */
