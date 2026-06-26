@@ -125,6 +125,22 @@ export function buildExcerpts(
   });
 }
 
+/** 摘录文本按命中切分为高亮段（match=true 即命中片段），供结果视图渲染 <mark>。 */
+export function excerptSegments(excerpt: ExcerptModel): Array<{ text: string; match: boolean }> {
+  const { text, sourceFrom, matches } = excerpt;
+  const parts: Array<{ text: string; match: boolean }> = [];
+  let cursor = 0;
+  for (const m of matches) {
+    const start = Math.max(0, m.from - sourceFrom);
+    const end = Math.min(text.length, m.to - sourceFrom);
+    if (start > cursor) parts.push({ text: text.slice(cursor, start), match: false });
+    if (end > start) parts.push({ text: text.slice(start, end), match: true });
+    cursor = Math.max(cursor, end);
+  }
+  if (cursor < text.length) parts.push({ text: text.slice(cursor), match: false });
+  return parts;
+}
+
 /** 单文件搜索：真相源内容 + 词 → FileMatches（无命中返 null）。 */
 export function searchFile(
   path: string,

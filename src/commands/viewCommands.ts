@@ -23,6 +23,14 @@ export const VIEW_COMMANDS: Command[] = [
     run: () => useWorkbenchStore.getState().toggleCentralView('graph'),
   },
   {
+    id: 'view.project-search',
+    title: '视图：全库搜索替换',
+    // 全库搜索 multibuffer 中央区覆盖层（#2c）；再按回编辑器。依赖 FTS5 索引，简易模式隐藏（同知识图谱）。
+    shortcut: 'Ctrl+Shift+F',
+    advanced: true,
+    run: () => useWorkbenchStore.getState().toggleCentralView('multibuffer'),
+  },
+  {
     id: 'view.toggle-render-mode',
     title: '视图：切换渲染模式',
     shortcut: 'Ctrl+E',

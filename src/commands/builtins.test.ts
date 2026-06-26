@@ -41,6 +41,7 @@ const TITLES: Record<string, string> = {
   'view.toggle-right-panel': '视图：切换右侧面板',
   'view.reset-layout': '视图：重置当前模式布局',
   'view.open-graph': '视图：知识图谱',
+  'view.project-search': '视图：全库搜索替换',
   'view.command-palette': '视图：命令面板',
   'view.settings': '视图：设置',
   'file.open-file': '文件：打开文件',
@@ -122,7 +123,7 @@ const TITLES: Record<string, string> = {
 };
 
 /** 生产命令总数：…前略… + pandoc 格式导出(×6) + 检查更新(×1) + 更新公告(×1) + 书架(open/add/import-files/import-folder ×4) = 86。 */
-const COMMAND_COUNT = 86;
+const COMMAND_COUNT = 87;
 
 /** 生产命令（剔除 dev.* DEV-only 命令，如 IME 探针 dev.ime-probe）。 */
 function prodCommands() {

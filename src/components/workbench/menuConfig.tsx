@@ -123,6 +123,7 @@ export const MENUS: GroupConfig[] = [
     items: [
       { commandId: 'view.command-palette', label: '命令面板' },
       { commandId: 'go.quick-open', label: '快速打开文件' },
+      { commandId: 'view.project-search', label: '全库搜索替换' },
       { separator: true },
       { commandId: 'view.toggle-render-mode', label: '切换渲染模式' },
       { commandId: 'view.toggle-typewriter', label: '打字机模式（光标行居中）' },

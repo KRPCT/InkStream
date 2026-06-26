@@ -15,6 +15,7 @@ import MergeResolver from '../git/MergeResolver';
 import ReadingView from '../reading/ReadingView';
 import BookshelfView from '../bookshelf/BookshelfView';
 import GraphView from './GraphView';
+import ProjectSearchView from '../multibuffer/ProjectSearchView';
 import CentralArea from './CentralArea';
 import RightPanel from './RightPanel';
 import Sidebar from './Sidebar';
@@ -69,6 +70,8 @@ export default function WorkbenchLayout() {
   // git-graph 全宽：开图谱时作覆盖层盖住三栏（Group 不卸载保编辑器/CM 状态），故不动面板折叠机制（避 UAT #6）。
   const gitGraphOpen = useWorkbenchStore((s) => s.centralView === 'gitGraph') && !simpleMode;
   const graphOpen = useWorkbenchStore((s) => s.centralView === 'graph') && !simpleMode;
+  // 全库搜索 multibuffer 覆盖层（#2c）：依赖 FTS5 索引，简易模式隐藏（同知识图谱）。
+  const projectSearchOpen = useWorkbenchStore((s) => s.centralView === 'multibuffer') && !simpleMode;
   const mergeOpen = useWorkbenchStore((s) => s.centralView === 'mergeResolve') && !simpleMode;
   // 阅读模式覆盖层（FEAT-READ）：基础功能，简易模式下也可用（不 !simpleMode 门控）。
   const readingOpen = useWorkbenchStore((s) => s.centralView === 'reading');
@@ -195,6 +198,11 @@ export default function WorkbenchLayout() {
         {graphOpen ? (
           <div className="absolute inset-0 bg-[var(--background-primary)]">
             <GraphView />
+          </div>
+        ) : null}
+        {projectSearchOpen ? (
+          <div className="absolute inset-0 bg-[var(--background-primary)]">
+            <ProjectSearchView />
           </div>
         ) : null}
         {mergeOpen ? (

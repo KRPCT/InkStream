@@ -58,6 +58,20 @@ export function findMatchOffset(doc: string, term: string): number {
 }
 
 /**
+ * 打开文件并跳到指定偏移（全库搜索 multibuffer 选中命中入口，v1.2 #2c）。
+ *
+ * 与 openFileAndFind 的区别：偏移由调用方在「同一真相源」上算好（命中已在 getDocForPath 内容上定位），
+ * 直接选中并滚到该处。跳转排在 openFile 的滚动还原（rAF 回填）之后一帧，否则被覆盖。
+ */
+export async function openFileAtOffset(path: string, offset: number): Promise<void> {
+  await openFileByPath(path);
+  const view = getView();
+  if (!view) return;
+  const at = Math.min(Math.max(offset, 0), view.state.doc.length);
+  requestAnimationFrame(() => revealRange(view, at, at));
+}
+
+/**
  * 打开文件并跳到搜索词首个出现（命令面板 `#` 全文搜索选中入口，v1.2 #2a）。
  *
  * 索引可能滞后于磁盘——故落盘后在「当前文档真相源」上重新定位 term（自校准，复用 v1.1.7 续读锚点纪律）：

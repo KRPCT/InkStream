@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildExcerpts, findMatches, searchFile } from './projectSearch';
+import { buildExcerpts, excerptSegments, findMatches, searchFile } from './projectSearch';
 
 describe('findMatches', () => {
   it('大小写不敏感字面量，全部不重叠命中', () => {
@@ -93,5 +93,44 @@ describe('searchFile', () => {
 
   it('无命中返 null', () => {
     expect(searchFile('a.md', 'nothing here', 'zzz')).toBeNull();
+  });
+});
+
+describe('excerptSegments', () => {
+  const ex = (text: string, matches: Array<{ from: number; to: number }>, sourceFrom = 0) => ({
+    sourceFrom,
+    sourceTo: sourceFrom + text.length,
+    text,
+    firstLine: 1,
+    matches,
+  });
+
+  it('中部命中切为 [前, 命中, 后]', () => {
+    expect(excerptSegments(ex('前foo后', [{ from: 1, to: 4 }]))).toEqual([
+      { text: '前', match: false },
+      { text: 'foo', match: true },
+      { text: '后', match: false },
+    ]);
+  });
+
+  it('首尾命中无空前/后段', () => {
+    expect(excerptSegments(ex('foox', [{ from: 0, to: 3 }]))).toEqual([
+      { text: 'foo', match: true },
+      { text: 'x', match: false },
+    ]);
+    expect(excerptSegments(ex('xfoo', [{ from: 1, to: 4 }]))).toEqual([
+      { text: 'x', match: false },
+      { text: 'foo', match: true },
+    ]);
+  });
+
+  it('多命中交替切分；源偏移随 sourceFrom 平移', () => {
+    const segs = excerptSegments(ex('a foo b foo', [{ from: 12, to: 15 }, { from: 18, to: 21 }], 10));
+    expect(segs.filter((s) => s.match).map((s) => s.text)).toEqual(['foo', 'foo']);
+    expect(segs.map((s) => s.text).join('')).toBe('a foo b foo');
+  });
+
+  it('无命中返整段非命中', () => {
+    expect(excerptSegments(ex('plain', []))).toEqual([{ text: 'plain', match: false }]);
   });
 });

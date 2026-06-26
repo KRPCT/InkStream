@@ -1,0 +1,6 @@
+/* 全库搜索结果视图（#2c 1b）。命中高亮与悬停背景一律走主题 CSS 变量，禁硬编色。 */
+.mb-match {
+  border-radius: 2px;
+  background: color-mix(in srgb, var(--accent) 32%, transparent);
+  color: var(--text-normal);
+}

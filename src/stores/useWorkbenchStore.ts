@@ -3,8 +3,15 @@ import { MODE_PRESETS } from '../modes/presets';
 import type { AppMode } from '../types/settings';
 import { DEFAULT_LAYOUT, type ModeLayout, type TabId } from '../types/workbench';
 
-/** 中央区视图：编辑器 / git-graph / 知识图谱 / 合并冲突解决器 / 阅读模式 / 书架（FEAT-SHELF）整页接管。 */
-export type CentralView = 'editor' | 'gitGraph' | 'graph' | 'mergeResolve' | 'reading' | 'bookshelf';
+/** 中央区视图：编辑器 / git-graph / 知识图谱 / 合并冲突解决器 / 阅读模式 / 书架 / 全库搜索（multibuffer）整页接管。 */
+export type CentralView =
+  | 'editor'
+  | 'gitGraph'
+  | 'graph'
+  | 'mergeResolve'
+  | 'reading'
+  | 'bookshelf'
+  | 'multibuffer';
 
 interface WorkbenchState {
   mode: AppMode;
