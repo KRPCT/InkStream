@@ -36,8 +36,8 @@ export function extractOutline(state: EditorState): OutlineItem[] {
   return items;
 }
 
-/** 两份大纲是否等价（级别/位置/文本逐项相同）——避免无变化时的无谓 setState 与面板重渲染。 */
-function sameOutline(a: OutlineItem[], b: OutlineItem[]): boolean {
+/** 两份大纲是否等价（级别/位置/文本逐项相同）——避免无变化时的无谓 setState 与面板重渲染；拖拽重排前据此校验 live 与渲染快照一致。 */
+export function sameOutline(a: OutlineItem[], b: OutlineItem[]): boolean {
   if (a.length !== b.length) return false;
   return a.every((x, i) => x.level === b[i].level && x.from === b[i].from && x.text === b[i].text);
 }
