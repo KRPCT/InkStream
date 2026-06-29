@@ -24,6 +24,8 @@
     "dialog:allow-save",
     "sql:default",
     "updater:default",
-    "process:allow-restart"
+    "process:allow-restart",
+    "clipboard-manager:allow-read-text",
+    "core:webview:allow-set-webview-zoom"
   ]
 }

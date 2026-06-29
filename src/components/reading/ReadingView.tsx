@@ -2,6 +2,7 @@ import { BookOpen, ChevronLeft, ChevronRight, Library, Minus, Plus, X } from 'lu
 import { exitReading } from '../../bookshelf/exitReading';
 import { addFileToShelf } from '../../bookshelf/importBooks';
 import { goChapter } from '../../bookshelf/openBook';
+import { isShelfFormat } from '../../editor/reading/openReading';
 import { useBookshelfStore } from '../../stores/useBookshelfStore';
 import { useReadingStore } from '../../stores/useReadingStore';
 import { useSettingsStore } from '../../stores/useSettingsStore';
@@ -12,7 +13,7 @@ import PdfReader from './PdfReader';
 
 /**
  * 阅读模式覆盖层（FEAT-READ）：顶部工具栏（文体 / 配色分段控件 + 字号 + 关闭）+ 正文区。
- * 覆盖层盖住三栏（编辑器不卸载，保 CM 实例 / IME），编辑功能天然不可达。txt/docx/epub → HtmlReader，pdf → PdfReader。
+ * 覆盖层盖住三栏（编辑器不卸载，保 CM 实例 / IME），编辑功能天然不可达。txt/md/docx/epub → HtmlReader，pdf → PdfReader。
  * 分段控件样式取自落地页阅读演示：文体「小说/文献」、配色「亮/护眼/夜间」一目了然，当前项高亮。
  */
 const GENRES: { id: ReadingGenre; label: string }[] = [
@@ -81,7 +82,8 @@ export default function ReadingView() {
     doc ? s.books.some((b) => b.rootPath === doc.path || b.volumes.some((v) => v.chapters.some((c) => c.path === doc.path))) : false,
   );
   if (!doc) return null;
-  const canShelve = bookshelfEnabled && !ctx && !shelved;
+  // md 可进阅读但不入书架（isShelfFormat 排除）：否则按钮显示却点了无反馈（addFileToShelf 对 md 返 false）。
+  const canShelve = bookshelfEnabled && !ctx && !shelved && isShelfFormat(doc.path);
 
   const shelveCurrent = async (): Promise<void> => {
     if (await addFileToShelf(doc.path)) showToast('warning', '已加入书架。');

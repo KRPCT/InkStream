@@ -8,7 +8,7 @@ import { useReadingStore } from '../../stores/useReadingStore';
 import type { ReadingDoc } from '../../types/reading';
 
 /**
- * txt / docx / epub 阅读渲染（FEAT-READ）：解析为 HTML 放进 iframe 排版，据正文识别文体。
+ * txt / md / docx / epub 阅读渲染（FEAT-READ）：解析为 HTML 放进 iframe 排版，据正文识别文体。
  * sandbox="allow-same-origin"（不含 allow-scripts）：内容脚本 / 事件 / javascript: 链接仍一律不执行
  * → 不可信文档跑不了代码、读不到 token（危险的是 same-origin + scripts 同时给，这里只给 same-origin）；
  * 仅借 same-origin 让父框测量与设置子文档滚动位，支撑「续读到上次行/段」。srcdoc 继承应用 CSP，资源加载仍受限。
@@ -32,7 +32,7 @@ export default function HtmlReader({ doc }: { doc: ReadingDoc }) {
     let alive = true;
     setContent(null);
     setFailed(false);
-    loadReadingHtml(doc.format as 'txt' | 'docx' | 'epub', doc.path)
+    loadReadingHtml(doc.format as 'txt' | 'md' | 'docx' | 'epub', doc.path)
       .then(({ html, text }) => {
         if (!alive) return;
         setContent(html);

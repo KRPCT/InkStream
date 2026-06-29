@@ -31,6 +31,7 @@ function snapshot(): PersistedSettings {
     autosaveEnabled,
     autosaveDelayMs,
     editorFontSize,
+    uiZoom,
     dailyWordGoal,
     gitRemoteMode,
     gitCustomServer,
@@ -50,6 +51,7 @@ function snapshot(): PersistedSettings {
     autosaveEnabled,
     autosaveDelayMs,
     editorFontSize,
+    uiZoom,
     dailyWordGoal,
     gitRemoteMode,
     gitCustomServer,
@@ -87,6 +89,8 @@ function apply(s: PersistedSettings): void {
     terminalEnabled: s.terminalEnabled,
   });
   useSettingsStore.getState().setEditorFontSize(s.editorFontSize);
+  // 界面缩放经 setter 重放到 webview（缩放是会话态，不跨重载，须启动时重放；同字体落 CSS 变量的纪律）。
+  useSettingsStore.getState().setUiZoom(s.uiZoom);
   useWorkbenchStore.getState().setMode(s.mode);
   useWorkbenchStore.setState({ layouts: s.layouts });
   hydrateMru(s.commandMru);

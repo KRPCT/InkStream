@@ -58,6 +58,9 @@ const TITLES: Record<string, string> = {
   'go.quick-open': '转到：快速打开文件',
   'doc.toggle-language': '文档：切换文档语言',
   'view.toggle-render-mode': '视图：切换渲染模式',
+  'view.zoom-in': '视图：放大界面',
+  'view.zoom-out': '视图：缩小界面',
+  'view.zoom-reset': '视图：重置界面缩放',
   'view.toggle-typewriter': '视图：打字机模式',
   'view.toggle-focus': '视图：专注模式',
   'writing.toggle-hud': '写作：写作 HUD（码字速度 / 时间 / 番茄钟）',
@@ -123,8 +126,8 @@ const TITLES: Record<string, string> = {
   'bookshelf.import-folder': '书架：导入书籍文件夹',
 };
 
-/** 生产命令总数：…前略… + pandoc 格式导出(×6) + 检查更新(×1) + 更新公告(×1) + 书架(open/add/import-files/import-folder ×4) + 内置终端(×1, #3) = 88。 */
-const COMMAND_COUNT = 88;
+/** 生产命令总数：…前略… + pandoc 格式导出(×6) + 检查更新(×1) + 更新公告(×1) + 书架(open/add/import-files/import-folder ×4) + 内置终端(×1, #3) + 界面缩放(zoom-in/out/reset ×3, v1.2.1) = 91。 */
+const COMMAND_COUNT = 91;
 
 /** 生产命令（剔除 dev.* DEV-only 命令，如 IME 探针 dev.ime-probe）。 */
 function prodCommands() {
@@ -322,6 +325,19 @@ describe('builtins', () => {
     useSettingsStore.setState({ terminalEnabled: true });
     window.dispatchEvent(key({ key: '`', ctrlKey: true }));
     expect(useWorkbenchStore.getState().terminalOpen).toBe(true);
+  });
+
+  it('合成 Ctrl+= / Ctrl+- / Ctrl+0 调整界面缩放（v1.2.1）', () => {
+    initKeymap();
+    expect(normalizeEvent(key({ key: '=', ctrlKey: true }))).toBe('Ctrl+=');
+    window.dispatchEvent(key({ key: '=', ctrlKey: true }));
+    expect(useSettingsStore.getState().uiZoom).toBeCloseTo(1.1);
+    window.dispatchEvent(key({ key: '-', ctrlKey: true }));
+    expect(useSettingsStore.getState().uiZoom).toBeCloseTo(1);
+    // 先放大再按 Ctrl+0 重置回 1。
+    window.dispatchEvent(key({ key: '=', ctrlKey: true }));
+    window.dispatchEvent(key({ key: '0', ctrlKey: true }));
+    expect(useSettingsStore.getState().uiZoom).toBe(1);
   });
 
   it('execute app.exit 经 ipc 收口调 close', async () => {

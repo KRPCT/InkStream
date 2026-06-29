@@ -1,4 +1,5 @@
 import { addFileToShelf, importBookFiles, importBookFolder } from '../bookshelf/importBooks';
+import { isShelfFormat } from '../editor/reading/openReading';
 import { isPathShelved } from '../stores/useBookshelfStore';
 import { useReadingStore } from '../stores/useReadingStore';
 import { showToast } from '../stores/useToastStore';
@@ -24,6 +25,11 @@ export const BOOKSHELF_COMMANDS: Command[] = [
       const doc = useReadingStore.getState().doc;
       if (!doc) {
         showToast('warning', '请先在阅读模式打开一个文档。');
+        return;
+      }
+      // md 可阅读但不入书架（与 addFileToShelf 一致）：明确提示而非静默失败。
+      if (!isShelfFormat(doc.path)) {
+        showToast('warning', '该文档不支持加入书架（仅 txt / docx / epub / pdf）。');
         return;
       }
       if (isPathShelved(doc.path)) {

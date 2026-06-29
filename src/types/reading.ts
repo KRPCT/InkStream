@@ -1,7 +1,7 @@
-/** 阅读模式（FEAT-READ）类型契约：沉浸式阅读 txt / docx / epub / pdf。 */
+/** 阅读模式（FEAT-READ）类型契约：沉浸式阅读 txt / md / docx / epub / pdf。 */
 
-/** 支持的阅读格式（按扩展名判定）。 */
-export type ReadingFormat = 'txt' | 'docx' | 'epub' | 'pdf';
+/** 支持的阅读格式（按扩展名判定）。md 经阅读命令进入，不自动、也不计入书架收录。 */
+export type ReadingFormat = 'txt' | 'md' | 'docx' | 'epub' | 'pdf';
 
 /** 文体：小说 vs 文献（规则启发式自动识别，用户可手动覆盖），驱动排版预设。 */
 export type ReadingGenre = 'novel' | 'literature';

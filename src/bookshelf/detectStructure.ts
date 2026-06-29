@@ -5,7 +5,8 @@ import type { ReadingFormat } from '../types/reading';
 /**
  * 文件夹结构识别（FEAT-SHELF）：把 list_dir_tree 的目录树映射为「卷-章」。纯逻辑、可单测。
  * 规则：根的子目录 = 卷（其下递归文件 = 章）；根下松散文件归入「正文」卷；无子目录则所有文件为单卷。
- * 仅收录 txt/docx/epub/pdf；中英数混排按自然序（第2章 < 第10章）。
+ * 仅收录 txt/docx/epub/pdf（md 虽可进阅读模式，但属可编辑库文档、不作书章，免 readme/notes 噪音）；
+ * 中英数混排按自然序（第2章 < 第10章）。
  */
 const CN_DIGIT: Record<string, number> = {
   零: 0, 一: 1, 二: 2, 两: 2, 三: 3, 四: 4, 五: 5, 六: 6, 七: 7, 八: 8, 九: 9,
@@ -66,7 +67,8 @@ function collectFiles(entry: DirTreeEntry): DirTreeEntry[] {
 function toChapters(files: DirTreeEntry[]): BookChapter[] {
   return files
     .map((e) => ({ e, format: readingFormatOf(e.path) }))
-    .filter((x): x is { e: DirTreeEntry; format: ReadingFormat } => x.format !== null)
+    // md 可进阅读但不作书章（见文件头）：连同非阅读格式一并排除。
+    .filter((x): x is { e: DirTreeEntry; format: ReadingFormat } => x.format !== null && x.format !== 'md')
     .sort((a, b) => naturalCompare(a.e.name, b.e.name))
     .map(({ e, format }) => ({ title: stripExt(e.name), path: e.path, format }));
 }

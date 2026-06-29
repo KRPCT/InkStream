@@ -1,9 +1,17 @@
 import { history } from '@codemirror/commands';
 import { EditorSelection, EditorState } from '@codemirror/state';
 import { EditorView } from '@codemirror/view';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { doRedo, doSelectAll, doUndo } from './editCommands';
+import { readText } from '@tauri-apps/plugin-clipboard-manager';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { doPaste, doRedo, doSelectAll, doUndo } from './editCommands';
+import { useEditorStore } from '../stores/useEditorStore';
 import { setView } from './viewHandle';
+
+const mockReadText = vi.mocked(readText);
+/** isMarkdownFamily() === (activeRenderMode !== null)：true=markdown 家族文档，null=代码文件。 */
+function setMarkdownFamily(on: boolean): void {
+  useEditorStore.setState({ activeRenderMode: on ? 'source' : null });
+}
 
 let view: EditorView;
 
@@ -47,6 +55,53 @@ describe('编辑命令经 getView 派发到单内核', () => {
       doUndo();
       doRedo();
     }).not.toThrow();
+  });
+});
+
+describe('右键菜单粘贴读系统剪贴板（v1.2.1）', () => {
+  beforeEach(() => {
+    mockReadText.mockReset();
+    setMarkdownFamily(true);
+  });
+  afterEach(() => useEditorStore.setState(useEditorStore.getInitialState(), true));
+
+  it('把系统剪贴板文本插入到光标处（替换选区）', async () => {
+    mount('ab');
+    view.dispatch({ selection: EditorSelection.cursor(2) });
+    mockReadText.mockResolvedValue('外部文本');
+    await doPaste();
+    expect(view.state.doc.toString()).toBe('ab外部文本');
+  });
+
+  it('剪贴板为空：no-op，不改文档', async () => {
+    mount('ab');
+    mockReadText.mockResolvedValue('');
+    await doPaste();
+    expect(view.state.doc.toString()).toBe('ab');
+  });
+
+  it('markdown 家族文档：http(s) URL + 选区 → 包成 Markdown 链接（与 Ctrl+V 一致）', async () => {
+    setMarkdownFamily(true);
+    mount('标题');
+    view.dispatch({ selection: EditorSelection.range(0, 2) });
+    mockReadText.mockResolvedValue('https://example.com');
+    await doPaste();
+    expect(view.state.doc.toString()).toBe('[标题](https://example.com)');
+  });
+
+  it('代码文件（非 markdown 家族）：URL + 选区 → 纯文本替换，不注入链接语法', async () => {
+    setMarkdownFamily(false);
+    mount('code');
+    view.dispatch({ selection: EditorSelection.range(0, 4) });
+    mockReadText.mockResolvedValue('https://example.com');
+    await doPaste();
+    expect(view.state.doc.toString()).toBe('https://example.com');
+  });
+
+  it('无活动 view：粘贴静默 no-op（不抛错）', async () => {
+    setView(null);
+    mockReadText.mockResolvedValue('x');
+    await expect(doPaste()).resolves.toBeUndefined();
   });
 });
 

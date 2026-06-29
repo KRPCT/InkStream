@@ -70,6 +70,17 @@ vi.mock('@tauri-apps/api/window', () => ({
   getCurrentWindow: vi.fn(() => mockWindow),
 }));
 
+// webview 原生缩放（界面缩放 setUiZoom → ipc/zoom.setWebviewZoom）：测试环境桩为 resolved no-op。
+vi.mock('@tauri-apps/api/webview', () => ({
+  getCurrentWebview: vi.fn(() => ({ setZoom: vi.fn().mockResolvedValue(undefined) })),
+}));
+
+// 系统剪贴板（右键菜单粘贴 doPaste → readText）：默认返回空串（不粘贴），测试可按需覆盖。
+vi.mock('@tauri-apps/plugin-clipboard-manager', () => ({
+  readText: vi.fn().mockResolvedValue(''),
+  writeText: vi.fn().mockResolvedValue(undefined),
+}));
+
 class MockChannel {
   onmessage: ((response: unknown) => void) | null = null;
 }

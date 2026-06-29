@@ -54,6 +54,13 @@ export function registerBuiltinCommands(): () => void {
     bind('Ctrl+G', 'view.open-graph'),
     bind('Ctrl+Shift+F', 'view.project-search'),
     bind('Ctrl+`', 'view.toggle-terminal'),
+    // 界面缩放（v1.2.1）：Ctrl+= 放大 / Ctrl+- 缩小 / Ctrl+0 重置。keymap 解析器无法表达 Ctrl++
+    // （字面 split 切出空 main 键），故放大用 Ctrl+=（浏览器同惯例）。Ctrl+0 与 CM 的「段落」命令
+    // 同键但不冲突：markdown 编辑器聚焦时 CM keymap 先处理并 preventDefault → 本 window 级 onKeydown
+    // 见 defaultPrevented 即短路（段落优先，无回归）；仅在非 markdown 编辑 / 未聚焦时落到此处重置缩放。
+    bind('Ctrl+=', 'view.zoom-in'),
+    bind('Ctrl+-', 'view.zoom-out'),
+    bind('Ctrl+0', 'view.zoom-reset'),
     bind('Ctrl+Shift+G', 'git.toggle-graph'),
     // ZOT-01：编辑器聚焦时由 CM6 keymap 处理（preventDefault → 本 window 级短路不重复）；
     // 编辑器未聚焦时本绑定兜底触发，insertCitation 经 getView() 仍插入到编辑器光标处。

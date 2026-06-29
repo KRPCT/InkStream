@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { subscribeSystemTheme, type Unsubscribe } from '../ipc/theme';
+import { setWebviewZoom } from '../ipc/zoom';
 import { initBookshelf } from './persistBookshelf';
 import { useWorkbenchStore } from './useWorkbenchStore';
 import type { GitRemoteMode, ResolvedTheme, ThemeSetting } from '../types/settings';
@@ -12,6 +13,7 @@ interface SettingsState {
   autosaveEnabled: boolean;
   autosaveDelayMs: number;
   editorFontSize: number;
+  uiZoom: number;
   dailyWordGoal: number;
   gitRemoteMode: GitRemoteMode;
   gitCustomServer: string;
@@ -23,6 +25,7 @@ interface SettingsState {
   setAutosaveEnabled: (enabled: boolean) => void;
   setAutosaveDelayMs: (ms: number) => void;
   setEditorFontSize: (px: number) => void;
+  setUiZoom: (zoom: number) => void;
   setDailyWordGoal: (goal: number) => void;
   setGitRemoteMode: (mode: GitRemoteMode) => void;
   setGitCustomServer: (server: string) => void;
@@ -96,6 +99,7 @@ export const useSettingsStore = create<SettingsState>((set) => ({
   autosaveEnabled: true,
   autosaveDelayMs: 500,
   editorFontSize: 16,
+  uiZoom: 1,
   dailyWordGoal: 1000,
   gitRemoteMode: 'ssh',
   gitCustomServer: '',
@@ -109,6 +113,12 @@ export const useSettingsStore = create<SettingsState>((set) => ({
   setEditorFontSize: (editorFontSize) => {
     applyFontSize(editorFontSize);
     set({ editorFontSize });
+  },
+  // 界面缩放：钳到 [0.5,3] 后调 webview 原生缩放（异步副作用，不进 state 等待），再落内存态。
+  setUiZoom: (zoom) => {
+    const uiZoom = Math.min(3, Math.max(0.5, zoom));
+    void setWebviewZoom(uiZoom);
+    set({ uiZoom });
   },
   setDailyWordGoal: (dailyWordGoal) => set({ dailyWordGoal }),
   setGitRemoteMode: (gitRemoteMode) => set({ gitRemoteMode }),

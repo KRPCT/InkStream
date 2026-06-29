@@ -1,4 +1,4 @@
-import { closeReading } from '../editor/reading/openReading';
+import { closeReading, isShelfFormat } from '../editor/reading/openReading';
 import { chooseAction } from '../stores/useChoiceStore';
 import { isPathShelved } from '../stores/useBookshelfStore';
 import { useReadingStore } from '../stores/useReadingStore';
@@ -12,11 +12,13 @@ import { addFileToShelf } from './importBooks';
  */
 export async function exitReading(): Promise<void> {
   const { doc, bookContext } = useReadingStore.getState();
-  // 从书架打开（bookContext 在架）或书架未开 → 直接关；否则未在架的直接打开文档提示加入。
+  // 从书架打开（bookContext 在架）或书架未开 → 直接关；否则未在架且可入架的直接打开文档提示加入。
+  // isShelfFormat 排除 md：否则对 md 弹「加入书架？」而点确认会静默失败（addFileToShelf 返 false）。
   if (
     doc &&
     !bookContext &&
     useSettingsStore.getState().bookshelfEnabled &&
+    isShelfFormat(doc.path) &&
     !isPathShelved(doc.path)
   ) {
     const pick = await chooseAction({

@@ -90,6 +90,7 @@ describe('persistSettings', () => {
       autosaveEnabled: true,
       autosaveDelayMs: 500,
       editorFontSize: 16,
+      uiZoom: 1,
       dailyWordGoal: 1000,
       gitRemoteMode: 'ssh',
       gitCustomServer: '',

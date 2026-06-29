@@ -1,4 +1,4 @@
-import { readingFormatOf } from '../editor/reading/openReading';
+import { isShelfFormat, readingFormatOf } from '../editor/reading/openReading';
 import { pickBookFiles, pickFolder } from '../ipc/dialog';
 import { listDirTree } from '../ipc/files';
 import { isPathShelved, useBookshelfStore } from '../stores/useBookshelfStore';
@@ -40,9 +40,9 @@ async function coverFor(format: ReadingFormat, path: string, title: string): Pro
 /** 把单个文件作为「单文件书」加入书架（exitReading 的「加入书架」与单文件导入共用）。成功返回 true。 */
 export async function addFileToShelf(path: string): Promise<boolean> {
   // 已在架（含被某文件夹书作为章覆盖）则不重复加，避免单文件书与文件夹章重复。
-  if (isPathShelved(path)) return false;
+  if (isPathShelved(path) || !isShelfFormat(path)) return false; // md/非阅读格式不作书目（见 isShelfFormat）
   const format = readingFormatOf(path);
-  if (!format) return false;
+  if (!format) return false; // isShelfFormat 已保非 null，此处仅为类型收窄
   const title = stripExt(baseName(path));
   const book: Book = {
     id: bookIdFor(path),

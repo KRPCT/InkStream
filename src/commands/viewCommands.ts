@@ -53,6 +53,32 @@ export const VIEW_COMMANDS: Command[] = [
     run: () => void toggleRenderMode(),
   },
   {
+    // 界面缩放（v1.2.1）：webview 原生缩放整 UI。非 advanced——基础视图功能，简易模式亦可用。
+    // 步进 0.1、钳 [0.5,3]；setUiZoom 内已再钳并落 webview + 内存态，持久化经 persistSettings。
+    id: 'view.zoom-in',
+    title: '视图：放大界面',
+    shortcut: 'Ctrl+=',
+    run: () => {
+      const s = useSettingsStore.getState();
+      s.setUiZoom(Math.round((s.uiZoom + 0.1) * 10) / 10);
+    },
+  },
+  {
+    id: 'view.zoom-out',
+    title: '视图：缩小界面',
+    shortcut: 'Ctrl+-',
+    run: () => {
+      const s = useSettingsStore.getState();
+      s.setUiZoom(Math.round((s.uiZoom - 0.1) * 10) / 10);
+    },
+  },
+  {
+    id: 'view.zoom-reset',
+    title: '视图：重置界面缩放',
+    shortcut: 'Ctrl+0',
+    run: () => useSettingsStore.getState().setUiZoom(1),
+  },
+  {
     // 写作模式升级：光标行居中。写作辅助，非 advanced——任何模式（含简易模式）可用。
     id: 'view.toggle-typewriter',
     title: '视图：打字机模式',
@@ -76,7 +102,7 @@ export const VIEW_COMMANDS: Command[] = [
     run: () => {
       const { activePath, tabs } = useEditorStore.getState();
       if (!activePath || readingFormatOf(activePath) === null) {
-        showToast('warning', '当前文件不支持阅读模式（支持 txt / docx / epub / pdf）。');
+        showToast('warning', '当前文件不支持阅读模式（支持 txt / md / docx / epub / pdf）。');
         return;
       }
       openActiveInReading(activePath, tabs.find((t) => t.path === activePath)?.name ?? activePath);

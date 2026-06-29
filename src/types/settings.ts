@@ -29,6 +29,8 @@ export interface PersistedSettings {
   autosaveDelayMs: number;
   /** 编辑器字体大小（px，10–28）。 */
   editorFontSize: number;
+  /** 整体界面缩放比例（0.5–3.0，1=100%）：经 webview 原生缩放均匀缩放全 UI；不跨重载持久，启动时重放。 */
+  uiZoom: number;
   /** 今日字数目标（字，0–100000；0=关闭 StatusBar 进度条，CREA-04）。 */
   dailyWordGoal: number;
   /** git 远程方式（簇④接入行为）。 */

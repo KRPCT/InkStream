@@ -1,7 +1,10 @@
 import { selectAll, undo, redo } from '@codemirror/commands';
 import { openSearchPanel } from '@codemirror/search';
+import { readText } from '@tauri-apps/plugin-clipboard-manager';
 import type { EditorView } from '@codemirror/view';
 import { getView } from './viewHandle';
+import { isMarkdownFamily } from './markdownCommands';
+import { smartLinkPaste } from './richtext/commands';
 
 /**
  * 「编辑」菜单的视图级命令（R4 §1.3 编辑组）：撤销/重做/全选/查找/替换/剪贴板。
@@ -64,13 +67,31 @@ export function doCopy(): void {
 }
 
 /**
- * 粘贴（菜单手势）：回焦 contentDOM 后 execCommand('paste') 触发 CM6 原生内建 paste（含
- * richtext 智能链接白名单——挂在 langCompartment 的 paste domEventHandler，T-02-17）。
- * 键盘 Ctrl+V 始终走浏览器原生 paste 事件，不依赖本命令。
+ * 粘贴（菜单 / 命令面板手势，v1.2.1 修复）：WebView2/Chromium 对**网页内容**禁用
+ * `execCommand('paste')`（出于安全：网页不能静默读系统剪贴板），原实现是个空操作——故菜单粘贴
+ * 粘不进外部应用复制的文本（而键盘 Ctrl+V 走浏览器受信任原生 paste 事件，clipboardData 已填好，
+ * 命中 CM6 内建 paste handler，不受影响）。改为经 OS 剪贴板插件 readText() 主动读系统剪贴板，
+ * 再 dispatch CM6 插入事务；并复用 smartLinkPaste 受信白名单（URL 包裹选区，与 Ctrl+V 行为一致，T-02-17）。
+ *
+ * 剪切/复制（copyCut）保留 execCommand：剪贴板**写**在 WebView2 用户手势下被允许，仍写入系统剪贴板。
  */
-export function doPaste(): void {
-  withView((view) => {
-    view.focus();
-    document.execCommand('paste');
+export async function doPaste(): Promise<void> {
+  const view = getView();
+  if (!view) return;
+  view.focus();
+  let text: string;
+  try {
+    text = await readText();
+  } catch {
+    return; // 剪贴板无文本 / 读取被拒 / 非 Tauri 运行时：静默 no-op
+  }
+  if (!text) return;
+  // 智能链接仅限 markdown 家族文档（markdown/richtext，isMarkdownFamily=activeRenderMode!==null）：
+  // smartLinkPaste 语言无关，若不门控会在 .py/.rs/.json 等代码文件里把选中源码误包成 [选区](URL)，
+  // 污染源码且与 Ctrl+V（代码文件走纯文本粘贴）分叉。门控后与键盘路径对齐。
+  if (isMarkdownFamily() && smartLinkPaste(view, text)) return; // http(s) URL + 有选区 → 包成 [选区](URL)
+  view.dispatch(view.state.replaceSelection(text), {
+    userEvent: 'input.paste',
+    scrollIntoView: true,
   });
 }

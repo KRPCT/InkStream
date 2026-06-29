@@ -10,7 +10,7 @@ import { isAbsolutePath, stripVerbatim } from '../pathUtil';
  */
 
 const EXT_FORMAT: Record<string, ReadingFormat> = {
-  txt: 'txt', docx: 'docx', epub: 'epub', pdf: 'pdf',
+  txt: 'txt', md: 'md', markdown: 'md', docx: 'docx', epub: 'epub', pdf: 'pdf',
 };
 
 /** 扩展名 → 阅读格式（不支持返回 null）。 */
@@ -22,6 +22,16 @@ export function readingFormatOf(path: string): ReadingFormat | null {
 export function isAutoReadingFormat(path: string): boolean {
   const f = readingFormatOf(path);
   return f === 'docx' || f === 'epub' || f === 'pdf';
+}
+
+/**
+ * 是否可加入书架：md 可进阅读模式但属可编辑库文档、不作书目（连同非阅读格式一并排除）。
+ * 「能否进阅读」（readingFormatOf）与「能否入书架」（本判定）正交——md 进前者、不进后者。
+ * 用于书架的「加入」入口（ReadingView 按钮 / 退出提示 / 命令 / addFileToShelf）避免对 md 出现静默死路。
+ */
+export function isShelfFormat(path: string): boolean {
+  const f = readingFormatOf(path);
+  return f !== null && f !== 'md';
 }
 
 /** 打开绝对路径文件进入阅读模式覆盖层。直接打开（非书架）清空章节上下文。 */

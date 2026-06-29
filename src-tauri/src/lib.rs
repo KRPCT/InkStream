@@ -30,6 +30,8 @@ pub fn run() {
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
+        // 右键菜单「粘贴」读系统剪贴板（capability 仅授 read-text）：WebView2 禁 execCommand('paste')。
+        .plugin(tauri_plugin_clipboard_manager::init())
         // 前端只读 SQL 查询通道（Phase 4 FTS5 索引；写全在 Rust index 模块，capability 仅授 sql:default 只读集）。
         .plugin(tauri_plugin_sql::Builder::default().build())
         // 自动更新（GitHub Releases latest.json + minisign 验签，公钥在 tauri.conf.json）+ 更新后重启。

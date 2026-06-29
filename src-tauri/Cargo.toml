@@ -83,6 +83,11 @@ reqwest = { version = "=0.13.4", default-features = false, features = [
     "default-tls",
     "json",
 ] }
+# 右键菜单「粘贴」修复（v1.2.1）：WebView2/Chromium 禁用网页内容的 execCommand('paste')，菜单粘贴
+# 读不到系统剪贴板（Ctrl+V 走受信原生 paste 事件不受影响）。改走 OS 剪贴板 API。Tauri 官方
+# plugins-workspace 一方插件，与 fs/opener/dialog/store 同仓同维护团队（仅生成 permission schema，无 install hook）；
+# capability 仅授 clipboard-manager:allow-read-text（粘贴只需读）。精确 pin（供应链零信任，npm 与 crate 同步 2.3.2）。
+tauri-plugin-clipboard-manager = "=2.3.2"
 # v1.2 #3 内置终端：跨平台 PTY 抽象（Windows=ConPTY、unix=openpty）。wez/wezterm 一方维护，
 # wezterm 终端模拟器同款 PTY 后端，成熟度高、无 install hook。默认 feature 即可（含各平台 pty 实现）。
 # 阻塞 I/O：每会话起一条读线程 read→Channel<InvokeResponseBody>::Raw 回传，与 tokio 运行时正交。精确 pin。

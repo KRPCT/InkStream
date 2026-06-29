@@ -205,6 +205,8 @@ export function AppearanceSection() {
   const setTheme = useSettingsStore((s) => s.setTheme);
   const fontSize = useSettingsStore((s) => s.editorFontSize);
   const setFontSize = useSettingsStore((s) => s.setEditorFontSize);
+  const uiZoom = useSettingsStore((s) => s.uiZoom);
+  const setUiZoom = useSettingsStore((s) => s.setUiZoom);
   return (
     <div>
       <SettingRow label="主题" description="界面亮暗，或跟随系统。">
@@ -220,6 +222,19 @@ export function AppearanceSection() {
       </SettingRow>
       <SettingRow label="编辑器字体大小" description="正文与编辑区字号。">
         <NumberInput value={fontSize} min={10} max={28} suffix="px" onChange={setFontSize} />
+      </SettingRow>
+      <SettingRow
+        label="界面缩放"
+        description="整体界面缩放比例（含侧栏 / 编辑器 / 面板 / 终端）。也可用 Ctrl+=、Ctrl+-、Ctrl+0 调整。"
+      >
+        <NumberInput
+          value={Math.round(uiZoom * 100)}
+          min={50}
+          max={300}
+          step={10}
+          suffix="%"
+          onChange={(v) => setUiZoom(v / 100)}
+        />
       </SettingRow>
     </div>
   );
