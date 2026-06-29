@@ -22,6 +22,17 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: readonly ChangelogEntry[] = [
   {
+    version: '1.2.1',
+    date: '2026-06-29',
+    title: 'v1.2.1 · 粘贴修复 / 界面缩放 / Markdown 阅读',
+    level: 'patch',
+    highlights: [
+      '修复：右键菜单「粘贴」现可粘入从其它应用复制的文本（此前仅 Ctrl+V 可用）',
+      '界面缩放：Ctrl+= 放大 / Ctrl+- 缩小 / Ctrl+0 重置，或在「设置 ▸ 外观 ▸ 界面缩放」中调整（50%–300%）',
+      'Markdown 阅读模式：.md 文件可经命令面板「视图：阅读模式」进入沉浸式排版阅读',
+    ],
+  },
+  {
     version: '1.2.0',
     date: '2026-06-26',
     title: 'v1.2 · 更新公告 / 内置终端 / 全库搜索替换',
