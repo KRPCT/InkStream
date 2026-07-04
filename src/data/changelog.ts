@@ -22,6 +22,16 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: readonly ChangelogEntry[] = [
   {
+    version: '1.2.2',
+    date: '2026-07-04',
+    title: 'v1.2.2 · 代码块选区可见性修复',
+    level: 'patch',
+    highlights: [
+      '修复：在代码块内拖拽选中文本时，选区高亮此前被代码块底纹遮住、看似「选不中」——现全程清晰可见，源码 / 实时预览模式均生效',
+      '顺带优化：编辑器选区改用半透明强调色，文字在选区上仍清晰可读',
+    ],
+  },
+  {
     version: '1.2.1',
     date: '2026-06-29',
     title: 'v1.2.1 · 粘贴修复 / 界面缩放 / Markdown 阅读',
