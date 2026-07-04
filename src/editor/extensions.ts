@@ -43,6 +43,17 @@ const editorBaseTheme = EditorView.theme({
     WebkitFontSmoothing: 'antialiased',
     textRendering: 'optimizeLegibility',
   },
+  // 选区可见性修复（「代码块内无法拖拽选中」实为选区被遮不可见，非真选不中）：
+  // drawSelection 的选区层被 CM6 内联设 z-index:-1（画在 .cm-content 之下），遇代码块 .cm-ink-codeblock
+  // 等**不透明行底纹**即被整块遮住——拖选有效但看不见，误判为选不中。修法：把选区层抬到内容之上
+  // （'1 !important' 覆 CM6 内联 z-index），并置 pointerEvents:none 让鼠标事件穿透到文本、不夺交互
+  // （与 CM6 cursorLayer 同纪律）；选区色改半透明强调色 var(--text-selection)（该 token 早在册却未接线，
+  // CM6 默认不透明色若置于文字上会挡字）——半透明置文字之上仍透光可读，且在任意底纹（代码块/行内代码/
+  // 活动行）上都清晰。源码/实时预览全模式生效，根治不透明行底纹遮选区通病。
+  '.cm-selectionLayer': { zIndex: '1 !important', pointerEvents: 'none' },
+  '.cm-selectionBackground, &.cm-focused .cm-selectionBackground': {
+    background: 'var(--text-selection) !important',
+  },
 });
 
 /**
