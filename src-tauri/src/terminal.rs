@@ -34,6 +34,21 @@ pub fn init(app: &tauri::App) {
     app.manage(TerminalManager::default());
 }
 
+/// 剥掉 Windows `canonicalize` 产生的 `\\?\` verbatim（扩展长度）前缀。
+///
+/// vault root 经 Rust `Path::canonicalize` 得到形如 `\\?\D:\Vault` 的路径；直接喂给 cmd.exe 当工作目录会被
+/// 当成 UNC 路径拒绝（"UNC 路径不受支持，默认值设为 Windows 目录"），终端遂起在错误目录。此处把前缀还原为
+/// 普通路径：`\\?\D:\x`→`D:\x`、`\\?\UNC\srv\shr`→`\\srv\shr`。非 Windows 路径无此前缀，原样返回（跨平台安全）。
+fn strip_verbatim_prefix(p: &str) -> String {
+    if let Some(rest) = p.strip_prefix(r"\\?\UNC\") {
+        format!(r"\\{rest}")
+    } else if let Some(rest) = p.strip_prefix(r"\\?\") {
+        rest.to_string()
+    } else {
+        p.to_string()
+    }
+}
+
 /// 开一个终端会话：在 `cwd`（缺省/非目录则继承当前目录）起系统默认 shell，返回会话 id。
 ///
 /// 释放 slave 句柄是 EOF 正确性关键——否则子进程退出后 master 的读端永不返回 EOF、读线程挂死。
@@ -60,8 +75,10 @@ pub fn terminal_open(
     let mut cmd = CommandBuilder::new_default_prog();
     cmd.env("TERM", "xterm-256color");
     if let Some(dir) = cwd.as_deref() {
-        if std::path::Path::new(dir).is_dir() {
-            cmd.cwd(dir);
+        // 剥 `\\?\` 前缀后再设工作目录：cmd.exe 不接受 verbatim 路径（否则回退到 Windows 目录）。
+        let dir = strip_verbatim_prefix(dir);
+        if std::path::Path::new(&dir).is_dir() {
+            cmd.cwd(&dir);
         }
     }
     let child = pair
@@ -183,4 +200,29 @@ pub fn terminal_close(app: tauri::AppHandle, id: u32) -> Result<(), String> {
         let _ = session.child.kill(); // best-effort：杀子进程触发读线程 EOF 退出。
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::strip_verbatim_prefix;
+
+    #[test]
+    fn strips_drive_verbatim_prefix() {
+        // canonicalize 产生的 `\\?\D:\Vault` 必须还原为 `D:\Vault`，否则 cmd.exe 当 UNC 拒绝、回退 Windows 目录。
+        assert_eq!(strip_verbatim_prefix(r"\\?\D:\InkStreamTestVault"), r"D:\InkStreamTestVault");
+        assert_eq!(strip_verbatim_prefix(r"\\?\C:\Users\a\b"), r"C:\Users\a\b");
+    }
+
+    #[test]
+    fn strips_unc_verbatim_prefix() {
+        assert_eq!(strip_verbatim_prefix(r"\\?\UNC\server\share\x"), r"\\server\share\x");
+    }
+
+    #[test]
+    fn leaves_plain_paths_untouched() {
+        // 无 verbatim 前缀（含 Unix 路径）原样返回，跨平台安全。
+        assert_eq!(strip_verbatim_prefix(r"D:\Vault"), r"D:\Vault");
+        assert_eq!(strip_verbatim_prefix("/home/user/vault"), "/home/user/vault");
+        assert_eq!(strip_verbatim_prefix(r"\\server\share"), r"\\server\share");
+    }
 }
