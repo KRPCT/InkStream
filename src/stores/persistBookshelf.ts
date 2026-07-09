@@ -16,8 +16,8 @@ let saveTimer: ReturnType<typeof setTimeout> | null = null;
 let unsubscribe: (() => void) | null = null;
 
 function snapshot(): PersistedBookshelf {
-  const { books, progress } = useBookshelfStore.getState();
-  return validateBookshelf({ version: 1, books, progress });
+  const { books, progress, bookmarks } = useBookshelfStore.getState();
+  return validateBookshelf({ version: 1, books, progress, bookmarks });
 }
 
 function scheduleSave(): void {
@@ -37,7 +37,7 @@ async function doInit(): Promise<void> {
   } catch {
     data = validateBookshelf(null);
   }
-  useBookshelfStore.getState().hydrate(data.books, data.progress);
+  useBookshelfStore.getState().hydrate(data.books, data.progress, data.bookmarks);
   // 订阅在 hydrate 之后建立：hydrate 本身不触发写盘。
   unsubscribe = useBookshelfStore.subscribe(scheduleSave);
 }

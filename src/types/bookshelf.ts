@@ -47,11 +47,25 @@ export interface ReadingProgress {
   updatedAt: number;
 }
 
-/** 书架盘契约（app-data/bookshelf.json，tauri-plugin-store）。progress 独立于 books（未上架也记）。 */
+/** 命名书签：文档内一个保存的阅读位置（与单点续读 ReadingProgress 不同——可多个、带标签、可跳转/删除）。 */
+export interface Bookmark {
+  /** 展示标签（默认取所在块文本片段，用户可辨识）。 */
+  label: string;
+  /** 内容块下标（跳转键，与 HtmlReader 块序列对齐）。 */
+  index: number;
+  /** 0..1 归一化进度（列表展示 + 按位置排序）。 */
+  fraction: number;
+  /** 创建时间戳（删除键 + 稳定标识）。 */
+  createdAt: number;
+}
+
+/** 书架盘契约（app-data/bookshelf.json，tauri-plugin-store）。progress / bookmarks 独立于 books（未上架也记）。 */
 export interface PersistedBookshelf {
   version: 1;
   books: Book[];
   progress: Record<string, ReadingProgress>;
+  /** 按文档路径键的命名书签列表（阅读器增强）。 */
+  bookmarks: Record<string, Bookmark[]>;
 }
 
 /** list_dir_tree 返回的目录树节点（Rust bookshelf::DirEntry 映射，文件夹导入用）。 */

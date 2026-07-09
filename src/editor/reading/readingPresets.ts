@@ -1,5 +1,5 @@
 import type { CSSProperties } from 'react';
-import type { ReadingGenre, ReadingTheme } from '../../types/reading';
+import type { ReadingGenre, ReadingMargin, ReadingTheme, ReadingWidth } from '../../types/reading';
 
 /**
  * 阅读排版预设（FEAT-READ，模式即数据：集中映射，不在组件里散判）。
@@ -43,4 +43,23 @@ export const READING_THEMES: Record<ReadingTheme, { bg: string; text: string }> 
   light: { bg: '#fdfcf8', text: '#23262b' },
   sepia: { bg: '#f3e9d3', text: '#4a3f2c' },
   dark: { bg: '#14171d', text: '#c4cad3' },
+};
+
+/** 字体族选择 → 具体字体栈（'auto' 由文体预设决定，不在此表）。与 GENRE_PRESETS 同栈以求一致。 */
+export const FONT_STACKS: Record<'serif' | 'sans', string> = {
+  serif: 'Georgia, "Noto Serif SC", "Songti SC", "SimSun", serif',
+  sans: '-apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", system-ui, sans-serif',
+};
+
+/** 版心宽度档位 → max-width（'auto' 用文体预设 measure，不在此表）。文本重排的宽度杠杆。 */
+export const WIDTH_MEASURES: Record<Exclude<ReadingWidth, 'auto'>, string> = {
+  narrow: '32rem',
+  wide: '56rem',
+};
+
+/** 页边距档位 → padding（上 左右 下）。'normal' 与旧硬编值一致，杜绝既有观感回归。 */
+export const MARGIN_PADDINGS: Record<ReadingMargin, string> = {
+  compact: '2rem 1rem 4rem',
+  normal: '3rem 1.5rem 6rem',
+  roomy: '4rem 3.5rem 8rem',
 };

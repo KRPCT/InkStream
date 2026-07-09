@@ -1,4 +1,11 @@
-import type { Book, BookChapter, BookVolume, PersistedBookshelf, ReadingProgress } from '../types/bookshelf';
+import type {
+  Book,
+  BookChapter,
+  Bookmark,
+  BookVolume,
+  PersistedBookshelf,
+  ReadingProgress,
+} from '../types/bookshelf';
 import type { ReadingFormat } from '../types/reading';
 
 /**
@@ -11,7 +18,7 @@ const str = (v: unknown): v is string => typeof v === 'string';
 const fmt = (v: unknown): v is ReadingFormat => FORMATS.includes(v as ReadingFormat);
 
 export function bookshelfDefaults(): PersistedBookshelf {
-  return { version: 1, books: [], progress: {} };
+  return { version: 1, books: [], progress: {}, bookmarks: {} };
 }
 
 function validChapter(raw: unknown): BookChapter | null {
@@ -55,6 +62,18 @@ function validProgress(raw: unknown): ReadingProgress | null {
   };
 }
 
+function validBookmark(raw: unknown): Bookmark | null {
+  if (!isRecord(raw)) return null;
+  const { label, index, fraction, createdAt } = raw;
+  if (!str(label) || typeof index !== 'number' || typeof fraction !== 'number') return null;
+  return {
+    label: label.slice(0, 80),
+    index: Math.max(0, Math.floor(index)),
+    fraction: Math.min(1, Math.max(0, fraction)),
+    createdAt: typeof createdAt === 'number' ? createdAt : Date.now(),
+  };
+}
+
 export function validateBookshelf(raw: unknown): PersistedBookshelf {
   if (!isRecord(raw) || raw.version !== 1) return bookshelfDefaults();
   const books = Array.isArray(raw.books) ? raw.books.map(validBook).filter((b): b is Book => b !== null) : [];
@@ -65,5 +84,13 @@ export function validateBookshelf(raw: unknown): PersistedBookshelf {
       if (p) progress[k] = p;
     }
   }
-  return { version: 1, books, progress };
+  const bookmarks: Record<string, Bookmark[]> = {};
+  if (isRecord(raw.bookmarks)) {
+    for (const [k, v] of Object.entries(raw.bookmarks)) {
+      if (!Array.isArray(v)) continue;
+      const list = v.map(validBookmark).filter((b): b is Bookmark => b !== null);
+      if (list.length) bookmarks[k] = list;
+    }
+  }
+  return { version: 1, books, progress, bookmarks };
 }

@@ -2,10 +2,11 @@ import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { buildReadingFrame } from '../../editor/reading/buildReadingFrame';
 import { detectGenre } from '../../editor/reading/detectGenre';
 import { loadReadingHtml } from '../../editor/reading/loadContent';
+import { setReadingNav } from '../../editor/reading/readingNav';
 import { readFraction, topVisibleIndex } from '../../editor/reading/readingPosition';
 import { useBookshelfStore } from '../../stores/useBookshelfStore';
 import { useReadingStore } from '../../stores/useReadingStore';
-import type { ReadingDoc } from '../../types/reading';
+import type { ReadingDoc, TocItem } from '../../types/reading';
 
 /**
  * txt / md / docx / epub 阅读渲染（FEAT-READ）：解析为 HTML 放进 iframe 排版，据正文识别文体。
@@ -25,6 +26,7 @@ export default function HtmlReader({ doc }: { doc: ReadingDoc }) {
   const genre = useReadingStore((s) => s.genre);
   const prefs = useReadingStore((s) => s.prefs);
   const setGenre = useReadingStore((s) => s.setGenre);
+  const setToc = useReadingStore((s) => s.setToc);
   const frameRef = useRef<HTMLIFrameElement>(null);
   const detachRef = useRef<(() => void) | null>(null);
 
@@ -32,6 +34,7 @@ export default function HtmlReader({ doc }: { doc: ReadingDoc }) {
     let alive = true;
     setContent(null);
     setFailed(false);
+    setToc([]); // 切文档先清空目录，避免旧目录闪现
     loadReadingHtml(doc.format as 'txt' | 'md' | 'docx' | 'epub', doc.path)
       .then(({ html, text }) => {
         if (!alive) return;
@@ -44,7 +47,7 @@ export default function HtmlReader({ doc }: { doc: ReadingDoc }) {
     return () => {
       alive = false;
     };
-  }, [doc.path, doc.format, setGenre]);
+  }, [doc.path, doc.format, setGenre, setToc]);
 
   // 切文档（doc.path 变）或卸载时摘除上一份滚动监听与待触发的去抖计时（onLoad 重建前也会先摘旧的）。
   useEffect(() => () => detachRef.current?.(), [doc.path]);
@@ -53,6 +56,7 @@ export default function HtmlReader({ doc }: { doc: ReadingDoc }) {
   const onFrameLoad = (): void => {
     detachRef.current?.();
     detachRef.current = null;
+    setReadingNav(null);
     const frame = frameRef.current;
     const win = frame?.contentWindow;
     const cdoc = frame?.contentDocument;
@@ -78,6 +82,26 @@ export default function HtmlReader({ doc }: { doc: ReadingDoc }) {
       });
     };
     restore();
+
+    // 目录：抽取标题块（h1–h6）→ store；点击经 readingNav 跳转（blockIndex 对齐 blocks/tops）。
+    const toc: TocItem[] = [];
+    blocks.forEach((b, i) => {
+      const m = /^H([1-6])$/.exec(b.tagName);
+      const text = (b.textContent ?? '').trim();
+      if (m && text) toc.push({ level: Number(m[1]), text: text.slice(0, 120), blockIndex: i });
+    });
+    setToc(toc);
+    // 命令桥（TOC/书签）：跳转到块 + 捕获当前位置。闭包持 `tops` 变量——recalibrate 重赋值后自动生效。
+    setReadingNav({
+      scrollToBlock: (i) => {
+        if (i < 0 || i >= tops.length) return;
+        userScrolled = true; // 视为用户导航，阻止图解码后 recalibrate 回跳到续读锚点
+        scroller.scrollTop = tops[i];
+      },
+      currentBlock: () => topVisibleIndex(tops, scroller.scrollTop),
+      totalBlocks: () => blocks.length,
+      blockLabel: (i) => (blocks[i]?.textContent ?? '').trim().slice(0, 40) || `第 ${i + 1} 段`,
+    });
 
     let timer: ReturnType<typeof setTimeout> | undefined;
     const save = (): void => {
@@ -131,6 +155,7 @@ export default function HtmlReader({ doc }: { doc: ReadingDoc }) {
       if (timer) clearTimeout(timer);
       if (recalTimer) clearTimeout(recalTimer);
       win.removeEventListener('scroll', onScroll);
+      setReadingNav(null);
     };
   };
 

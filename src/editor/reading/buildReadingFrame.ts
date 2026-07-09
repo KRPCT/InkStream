@@ -1,5 +1,11 @@
 import type { ReadingGenre, ReadingPrefs } from '../../types/reading';
-import { GENRE_PRESETS, READING_THEMES } from './readingPresets';
+import {
+  FONT_STACKS,
+  GENRE_PRESETS,
+  MARGIN_PADDINGS,
+  READING_THEMES,
+  WIDTH_MEASURES,
+} from './readingPresets';
 
 /**
  * 把正文 HTML 包成 sandbox iframe 的 srcdoc（FEAT-READ）：内联阅读排版 CSS（文体 + 偏好 + 主题）。
@@ -9,11 +15,15 @@ import { GENRE_PRESETS, READING_THEMES } from './readingPresets';
 export function buildReadingFrame(content: string, genre: ReadingGenre, prefs: ReadingPrefs): string {
   const g = GENRE_PRESETS[genre];
   const t = READING_THEMES[prefs.theme];
+  // 偏好覆盖文体预设：字体族 / 版心宽度（文本重排）显式选择时覆盖，'auto' 回落文体默认；页边距独立档位。
+  const fontFamily = prefs.fontFamily === 'auto' ? g.fontFamily : FONT_STACKS[prefs.fontFamily];
+  const measure = prefs.width === 'auto' ? g.measure : WIDTH_MEASURES[prefs.width];
+  const padding = MARGIN_PADDINGS[prefs.margin];
   const css = `
 html,body{margin:0;height:100%;}
 body{background:${t.bg};color:${t.text};overflow-y:auto;}
-.ink-reading{max-width:${g.measure};margin:0 auto;padding:3rem 1.5rem 6rem;
-  font-family:${g.fontFamily};font-size:${prefs.fontSize}px;line-height:${g.lineHeight};text-align:${g.textAlign};}
+.ink-reading{max-width:${measure};margin:0 auto;padding:${padding};
+  font-family:${fontFamily};font-size:${prefs.fontSize}px;line-height:${g.lineHeight};text-align:${g.textAlign};}
 .ink-reading p{margin:0 0 .35em;text-indent:${g.textIndent};}
 .ink-reading h1,.ink-reading h2,.ink-reading h3,.ink-reading h4{line-height:1.3;text-indent:0;margin:1.4em 0 .6em;}
 .ink-reading img{max-width:100%;height:auto;}

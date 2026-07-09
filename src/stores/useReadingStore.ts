@@ -1,6 +1,15 @@
 import { create } from 'zustand';
 import type { BookChapter } from '../types/bookshelf';
-import type { ReadingDoc, ReadingGenre, ReadingPrefs, ReadingTheme } from '../types/reading';
+import type {
+  ReadingDoc,
+  ReadingFontFamily,
+  ReadingGenre,
+  ReadingMargin,
+  ReadingPrefs,
+  ReadingTheme,
+  ReadingWidth,
+  TocItem,
+} from '../types/reading';
 
 /**
  * 从书架打开时的章节上下文（FEAT-SHELF）：当前书的扁平章节列表 + 当前章索引，
@@ -23,22 +32,30 @@ interface ReadingState {
   /** 当前生效文体（自动识别后写入；用户可经工具栏覆盖）。 */
   genre: ReadingGenre;
   prefs: ReadingPrefs;
+  /** 当前文档自动提取的目录（HtmlReader 载入后写入；切文档先清空）。 */
+  toc: TocItem[];
   /** 书架章节上下文（从书架打开时设置；直接打开文件为 null）。 */
   bookContext: BookContext | null;
   setDoc: (doc: ReadingDoc | null) => void;
+  setToc: (toc: TocItem[]) => void;
   setGenre: (genre: ReadingGenre) => void;
   setTheme: (theme: ReadingTheme) => void;
   /** 字号增量（px），夹到 14–28。 */
   bumpFontSize: (delta: number) => void;
+  setFontFamily: (family: ReadingFontFamily) => void;
+  setWidth: (width: ReadingWidth) => void;
+  setMargin: (margin: ReadingMargin) => void;
   setBookContext: (ctx: BookContext | null) => void;
 }
 
 export const useReadingStore = create<ReadingState>((set) => ({
   doc: null,
   genre: 'literature',
-  prefs: { fontSize: 19, theme: 'light' },
+  prefs: { fontSize: 19, theme: 'light', fontFamily: 'auto', width: 'auto', margin: 'normal' },
+  toc: [],
   bookContext: null,
   setDoc: (doc) => set({ doc }),
+  setToc: (toc) => set({ toc }),
   setGenre: (genre) => set({ genre }),
   setBookContext: (bookContext) => set({ bookContext }),
   setTheme: (theme) => set((s) => ({ prefs: { ...s.prefs, theme } })),
@@ -46,4 +63,7 @@ export const useReadingStore = create<ReadingState>((set) => ({
     set((s) => ({
       prefs: { ...s.prefs, fontSize: Math.max(14, Math.min(28, s.prefs.fontSize + delta)) },
     })),
+  setFontFamily: (fontFamily) => set((s) => ({ prefs: { ...s.prefs, fontFamily } })),
+  setWidth: (width) => set((s) => ({ prefs: { ...s.prefs, width } })),
+  setMargin: (margin) => set((s) => ({ prefs: { ...s.prefs, margin } })),
 }));

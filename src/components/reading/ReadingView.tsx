@@ -1,8 +1,10 @@
-import { BookOpen, ChevronLeft, ChevronRight, Library, Minus, Plus, X } from 'lucide-react';
+import { BookOpen, ChevronLeft, ChevronRight, Library, List, X } from 'lucide-react';
+import { useState } from 'react';
 import { exitReading } from '../../bookshelf/exitReading';
 import { addFileToShelf } from '../../bookshelf/importBooks';
 import { goChapter } from '../../bookshelf/openBook';
 import { isShelfFormat } from '../../editor/reading/openReading';
+import { readingScrollTo } from '../../editor/reading/readingNav';
 import { useBookshelfStore } from '../../stores/useBookshelfStore';
 import { useReadingStore } from '../../stores/useReadingStore';
 import { useSettingsStore } from '../../stores/useSettingsStore';
@@ -10,6 +12,10 @@ import { showToast } from '../../stores/useToastStore';
 import type { ReadingGenre, ReadingTheme } from '../../types/reading';
 import HtmlReader from './HtmlReader';
 import PdfReader from './PdfReader';
+import ReadingBookmarks from './ReadingBookmarks';
+import ReadingSettingsMenu from './ReadingSettingsMenu';
+import ReadingTocPanel from './ReadingTocPanel';
+import { ICON_BTN, NAV_BTN, Segmented } from './readingControls';
 
 /**
  * 阅读模式覆盖层（FEAT-READ）：顶部工具栏（文体 / 配色分段控件 + 字号 + 关闭）+ 正文区。
@@ -25,58 +31,16 @@ const THEMES: { id: ReadingTheme; label: string }[] = [
   { id: 'sepia', label: '护眼' },
   { id: 'dark', label: '夜间' },
 ];
-const ICON_BTN =
-  'rounded p-1 text-[var(--text-muted)] hover:bg-[var(--background-modifier-hover)] hover:text-[var(--text-normal)]';
-const NAV_BTN = `${ICON_BTN} disabled:opacity-30 disabled:cursor-default disabled:hover:bg-transparent`;
-
-/** 分段控件：一组互斥选项，当前项高亮（落地页阅读演示同款）。 */
-function Segmented<T extends string>({
-  label,
-  value,
-  options,
-  onPick,
-}: {
-  label: string;
-  value: T;
-  options: { id: T; label: string }[];
-  onPick: (v: T) => void;
-}) {
-  return (
-    <div
-      role="group"
-      aria-label={label}
-      className="inline-flex shrink-0 overflow-hidden rounded-[7px] border border-[var(--background-modifier-border)]"
-    >
-      {options.map((o, i) => (
-        <button
-          key={o.id}
-          type="button"
-          aria-pressed={value === o.id}
-          onClick={() => onPick(o.id)}
-          className={`px-2.5 py-1 text-[12px] transition-colors ${
-            i > 0 ? 'border-l border-[var(--background-modifier-border)]' : ''
-          } ${
-            value === o.id
-              ? 'bg-[var(--background-modifier-active)] font-medium text-[var(--text-normal)]'
-              : 'text-[var(--text-muted)] hover:bg-[var(--background-modifier-hover)]'
-          }`}
-        >
-          {o.label}
-        </button>
-      ))}
-    </div>
-  );
-}
-
 export default function ReadingView() {
   const doc = useReadingStore((s) => s.doc);
   const genre = useReadingStore((s) => s.genre);
   const theme = useReadingStore((s) => s.prefs.theme);
+  const toc = useReadingStore((s) => s.toc);
   const setGenre = useReadingStore((s) => s.setGenre);
   const setTheme = useReadingStore((s) => s.setTheme);
-  const bump = useReadingStore((s) => s.bumpFontSize);
   const ctx = useReadingStore((s) => s.bookContext);
   const bookshelfEnabled = useSettingsStore((s) => s.bookshelfEnabled);
+  const [tocOpen, setTocOpen] = useState(false);
   // 响应式订阅在架态：加入书架后即时隐藏「加入书架」按钮（doc 可能为 null，守卫后再判）。
   const shelved = useBookshelfStore((s) =>
     doc ? s.books.some((b) => b.rootPath === doc.path || b.volumes.some((v) => v.chapters.some((c) => c.path === doc.path))) : false,
@@ -109,25 +73,36 @@ export default function ReadingView() {
         ) : null}
         <Segmented label="文体" value={genre} options={GENRES} onPick={setGenre} />
         <Segmented label="配色" value={theme} options={THEMES} onPick={setTheme} />
-        <div className="flex shrink-0 items-center">
-          {canShelve ? (
-            <button type="button" className={ICON_BTN} title="加入书架" aria-label="加入书架" onClick={() => void shelveCurrent()}>
-              <Library size={15} aria-hidden="true" />
-            </button>
-          ) : null}
-          <button type="button" className={ICON_BTN} title="缩小字号" aria-label="缩小字号" onClick={() => bump(-1)}>
-            <Minus size={14} aria-hidden="true" />
+        {doc.format !== 'pdf' ? <ReadingSettingsMenu /> : null}
+        {doc.format !== 'pdf' && toc.length > 0 ? (
+          <button
+            type="button"
+            className={`shrink-0 ${ICON_BTN} ${tocOpen ? 'bg-[var(--background-modifier-active)] text-[var(--text-normal)]' : ''}`}
+            title="目录"
+            aria-label="目录"
+            aria-pressed={tocOpen}
+            onClick={() => setTocOpen((o) => !o)}
+          >
+            <List size={15} aria-hidden="true" />
           </button>
-          <button type="button" className={ICON_BTN} title="放大字号" aria-label="放大字号" onClick={() => bump(1)}>
-            <Plus size={14} aria-hidden="true" />
+        ) : null}
+        {doc.format !== 'pdf' ? <ReadingBookmarks path={doc.path} /> : null}
+        {canShelve ? (
+          <button type="button" className={`shrink-0 ${ICON_BTN}`} title="加入书架" aria-label="加入书架" onClick={() => void shelveCurrent()}>
+            <Library size={15} aria-hidden="true" />
           </button>
-        </div>
+        ) : null}
         <button type="button" className={ICON_BTN} title="关闭（回编辑器）" aria-label="关闭阅读" onClick={() => void exitReading()}>
           <X size={14} aria-hidden="true" />
         </button>
       </div>
-      <div className="min-h-0 flex-1">
-        {doc.format === 'pdf' ? <PdfReader doc={doc} /> : <HtmlReader doc={doc} />}
+      <div className="flex min-h-0 flex-1">
+        {doc.format !== 'pdf' && tocOpen && toc.length > 0 ? (
+          <ReadingTocPanel toc={toc} onJump={(i) => readingScrollTo(i)} onClose={() => setTocOpen(false)} />
+        ) : null}
+        <div className="min-h-0 flex-1">
+          {doc.format === 'pdf' ? <PdfReader doc={doc} /> : <HtmlReader doc={doc} />}
+        </div>
       </div>
     </div>
   );
