@@ -37,13 +37,23 @@ describe('buildVaultGraph', () => {
     expect(g.nodes.find((n) => n.id === 'sub/c.md')?.label).toBe('c');
   });
 
-  it('重名按路径排序确定性解析到首个', () => {
+  it('裸名存在歧义时不猜首个目标，与点击导航一致', () => {
     const g = buildVaultGraph(
       ['y/note.md', 'x/note.md'],
       [{ source_path: 'y/note.md', target_raw: 'note' }],
     );
-    // 'x/note.md' 排序在前，占据裸名键；y→note 解析到 x/note.md（非自环）
-    expect(g.edges).toEqual([{ source: 'y/note.md', target: 'x/note.md' }]);
+    expect(g.edges).toEqual([]);
+  });
+
+  it('显式目录缺失不能回退到别处同名文件', () => {
+    const graph = buildVaultGraph(['a.md', 'note.md'], [{ source_path: 'a.md', target_raw: 'missing/note' }]);
+    expect(graph.edges).toEqual([]);
+  });
+
+  it('片段剥离与NFC匹配保留实际文件身份', () => {
+    const path = 'Cafe\u0301.md';
+    const graph = buildVaultGraph(['a.md', path], [{ source_path: 'a.md', target_raw: 'Café#标题' }]);
+    expect(graph.edges).toEqual([{ source: 'a.md', target: path }]);
   });
 });
 

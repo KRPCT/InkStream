@@ -1,3 +1,5 @@
+import type { GitRemoteMode } from './settings';
+
 /**
  * git 相关类型（前端真相源镜像，与 Rust git/types.rs 的 serde camelCase 形状对齐）。Phase 6 GIT-01。
  */
@@ -183,4 +185,10 @@ export interface Review {
   state: string;
   url: string;
   submittedAt: string | null;
+}
+
+/** 每次 Git 传输的设置快照。Rust 校验实际 URL 与认证主机，不接受无配置的旧调用。 */
+export interface GitRemoteOptions {
+  mode: GitRemoteMode;
+  customServer: string;
 }

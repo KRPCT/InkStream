@@ -1,4 +1,5 @@
 import { invoke, invokeStreamed } from './invoke';
+import { gitRemoteOptions } from './gitRemoteOptions';
 import type {
   BranchInfo,
   Comment,
@@ -144,42 +145,42 @@ export function gitAbortOp(repoRoot: string): Promise<null> {
 
 // ── 远程操作（W4，SSH）。进度走 Channel（invokeStreamed 自动塞 channel 参数）──────────────
 
-/** fetch 远程（默认 refspec 更新 refs/remotes/<remote>/*）。 */
-export function gitFetch(
+/** 命名远程按原 refspec 获取；自定义地址按 Git 显式 URL 语义获取到 FETCH_HEAD。 */
+export async function gitFetch(
   repoRoot: string,
   remote: string,
   onProgress: (p: GitProgress) => void,
 ): Promise<null> {
-  return invokeStreamed('git_fetch', { repoRoot, remote }, onProgress);
+  return invokeStreamed('git_fetch', { repoRoot, remote, options: gitRemoteOptions() }, onProgress);
 }
 
 /** push 本地分支到远程同名分支。 */
-export function gitPush(
+export async function gitPush(
   repoRoot: string,
   remote: string,
   branch: string,
   onProgress: (p: GitProgress) => void,
 ): Promise<null> {
-  return invokeStreamed('git_push', { repoRoot, remote, branch }, onProgress);
+  return invokeStreamed('git_push', { repoRoot, remote, branch, options: gitRemoteOptions() }, onProgress);
 }
 
-/** pull = fetch + merge_analysis（up-to-date/fast-forward 自动；分叉返回 diverged）。 */
-export function gitPull(
+/** pull = fetch 选定目标 + ff-only merge（已最新/快进自动；分叉返回 diverged）。 */
+export async function gitPull(
   repoRoot: string,
   remote: string,
   branch: string,
   onProgress: (p: GitProgress) => void,
 ): Promise<PullOutcome> {
-  return invokeStreamed('git_pull', { repoRoot, remote, branch }, onProgress);
+  return invokeStreamed('git_pull', { repoRoot, remote, branch, options: gitRemoteOptions() }, onProgress);
 }
 
 /** clone 到 dest 目录，返回工作区路径。 */
-export function gitClone(
+export async function gitClone(
   url: string,
   dest: string,
   onProgress: (p: GitProgress) => void,
 ): Promise<string> {
-  return invokeStreamed('git_clone', { url, dest }, onProgress);
+  return invokeStreamed('git_clone', { url, dest, options: gitRemoteOptions() }, onProgress);
 }
 
 // ── GitHub 登录（簇④，Personal Access Token 存 OS 凭据库）──────────────────────

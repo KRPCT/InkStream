@@ -4,9 +4,11 @@ import { showToast } from '../stores/useToastStore';
 import { useEditorStore } from '../stores/useEditorStore';
 import { useVaultStore } from '../stores/useVaultStore';
 import { nextDraft } from './draftPath';
-import { disposeState, getDocForPath, openFile, snapshotBeforeSwitch } from './editorState';
+import { getDocForPath, openFile, reapplyImageContext, rekeyState, snapshotBeforeSwitch } from './editorState';
 import { baseExtensions } from './extensions';
-import { openFileByPath } from './fileOpenFlow';
+import { queueAfterComposition } from './composition';
+import { scheduleAutosave } from '../stores/autosave';
+import { stripVerbatim } from './pathUtil';
 import { refreshTree } from './fileTreeData';
 import { parentDir, relativeWithinVault, switchVault } from './vaultFlow';
 import { getView } from './viewHandle';
@@ -33,9 +35,8 @@ export function newDraftDocument(): void {
   const active = useEditorStore.getState().activePath;
   if (active) snapshotBeforeSwitch(view, active);
   const draft = nextDraft();
-  openFile(view, draft.path, '', baseExtensions('markdown'));
   useEditorStore.getState().openTab(draft);
-  useEditorStore.getState().setActive(draft.path);
+  void openFile(view, draft.path, '', baseExtensions('markdown'));
 }
 
 /**
@@ -48,11 +49,21 @@ export function newDraftDocument(): void {
  * 真实文件 tab 激活后才关草稿 tab + disposeState（先开后关：快照永不串 path）。
  */
 export async function saveDraftAs(draftPath: string): Promise<void> {
+  const tab = useEditorStore.getState().tabs.find((t) => t.path === draftPath);
+  if (!tab) return;
+  const suggestedName = draftPath.includes('/', 'draft://'.length) ? fileName(draftPath) : `${tab.name}.md`;
+  const absPath = await pickSavePath(suggestedName);
+  if (absPath === null) return; // 取消：草稿保留
+  if (!useEditorStore.getState().tabs.includes(tab)) return;
   const content = getDocForPath(draftPath);
   if (content === null) return;
-  const tab = useEditorStore.getState().tabs.find((t) => t.path === draftPath);
-  const absPath = await pickSavePath(`${tab?.name ?? '未命名'}.md`);
-  if (absPath === null) return; // 取消：草稿保留
+  const initialRoot = useVaultStore.getState().vault?.root ?? null;
+  const relative = initialRoot ? relativeWithinVault(absPath, initialRoot) : null;
+  const target = relative ?? stripVerbatim(absPath);
+  if (useEditorStore.getState().tabs.some((item) => item.path === target && item !== tab)) {
+    showToast('error', '目标文件已在编辑器中打开，请先关闭它或选择其他保存位置。');
+    return;
+  }
   try {
     await writeFileToPath(absPath, content);
   } catch {
@@ -61,17 +72,32 @@ export async function saveDraftAs(draftPath: string): Promise<void> {
   }
   const root = useVaultStore.getState().vault?.root ?? null;
   const rel = root !== null ? relativeWithinVault(absPath, root) : null;
-  if (rel !== null) {
-    await openFileByPath(rel);
-    void refreshTree();
-  } else {
+  if (rel === null) {
     try {
-      await switchVault(parentDir(absPath), { confirmLeave: false }); // 另存为转正：不提示提交旧库
+      if (await switchVault(parentDir(absPath), { confirmLeave: false }) === false) return;
     } catch {
       return; // 切 vault 失败（已弹 toast）：内容已落盘，草稿保留供重试
     }
-    await openFileByPath(fileName(absPath));
   }
-  disposeState(draftPath);
-  useEditorStore.getState().closeTab(draftPath);
+  const finalize = () => {
+    if (!useEditorStore.getState().tabs.includes(tab)) return;
+    const currentRoot = useVaultStore.getState().vault?.root ?? null;
+    const key = currentRoot ? relativeWithinVault(absPath, currentRoot) : null;
+    const savedPath = key ?? stripVerbatim(absPath);
+    if (useEditorStore.getState().tabs.some((item) => item.path === savedPath && item !== tab)) {
+      showToast('warning', '文件已保存，但目标文件已另行打开；草稿与目标编辑内容均已保留。');
+      return;
+    }
+    const view = getView();
+    if (view && useEditorStore.getState().activePath === draftPath) snapshotBeforeSwitch(view, draftPath);
+    rekeyState(draftPath, savedPath);
+    useEditorStore.getState().rehomeTab(draftPath, savedPath, key === null, fileName(absPath));
+    reapplyImageContext(savedPath);
+    if (getDocForPath(savedPath) === content) useEditorStore.getState().clearDirty(savedPath);
+    else { useEditorStore.getState().markDirty(savedPath); scheduleAutosave(savedPath); }
+    void refreshTree();
+  };
+  const view = getView();
+  if (view) await new Promise<void>((resolve) => queueAfterComposition(view, 'save-as:' + draftPath, () => { finalize(); resolve(); }));
+  else finalize();
 }

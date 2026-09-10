@@ -6,7 +6,7 @@
 -- 也供后续反链解析 / 断链 lint / 高亮回显复用。rowid 显式整数主键，供 files_fts 的 content_rowid 关联。
 CREATE TABLE IF NOT EXISTS files (
   rowid        INTEGER PRIMARY KEY,
-  path         TEXT NOT NULL UNIQUE,          -- NFC 规范化的 vault 相对路径（'/' 分隔，跨平台键统一）
+  path         TEXT NOT NULL UNIQUE,          -- 保留真实 Unicode 身份的 vault 相对路径（'/' 分隔）
   content      TEXT NOT NULL DEFAULT '',
   mtime        INTEGER NOT NULL DEFAULT 0,     -- 文件 mtime（秒），增量判脏
   size         INTEGER NOT NULL DEFAULT 0,
@@ -43,7 +43,7 @@ END;
 -- idx_links_resolved 支撑「谁引用我」反链查询；target_resolved IS NULL = 断链（lint）；idx_links_raw 供重命名重解析。
 CREATE TABLE IF NOT EXISTS links (
   id              INTEGER PRIMARY KEY,
-  source_path     TEXT NOT NULL,               -- 引用方文件（NFC 相对路径），随 source 重索引整体替换
+  source_path     TEXT NOT NULL,               -- 引用方真实相对路径，随 source 重索引整体替换
   target_raw      TEXT NOT NULL,               -- 原始目标内核（[[A/B|别名#标题^块]] 的 'A/B'）
   target_resolved TEXT,                         -- 解析到的真实文件 path；NULL = 断链
   alias           TEXT,

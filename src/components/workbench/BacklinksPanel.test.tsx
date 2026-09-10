@@ -6,20 +6,30 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 const queryBacklinks = vi.fn<(p: string) => Promise<string[]>>(() => Promise.resolve([]));
 const queryUnlinkedMentions = vi.fn<(p: string) => Promise<string[]>>(() => Promise.resolve([]));
 vi.mock('../../ipc/indexService', () => ({
-  queryBacklinks: (p: string) => queryBacklinks(p),
+  queryBacklinkReferences: async (p: string) => (await queryBacklinks(p)).map((sourcePath) => ({
+    sourcePath, targetPath: '当前', from: 0, to: 6, contextFrom: 0, context: '[[当前]]', linkText: '[[当前]]',
+  })),
   queryUnlinkedMentions: (p: string) => queryUnlinkedMentions(p),
+  indexRebuild: vi.fn().mockResolvedValue(null),
 }));
 const openFileByPath = vi.fn<(p: string) => Promise<void>>(() => Promise.resolve());
-vi.mock('../../editor/fileOpenFlow', () => ({ openFileByPath: (p: string) => openFileByPath(p) }));
+const openFileAndLocate = vi.fn().mockResolvedValue(true);
+vi.mock('../../editor/fileOpenFlow', () => ({
+  openFileByPath: (p: string) => openFileByPath(p),
+  openFileAndLocate: (...args: unknown[]) => openFileAndLocate(...args),
+}));
 
 const { default: BacklinksPanel } = await import('./BacklinksPanel');
 const { useEditorStore } = await import('../../stores/useEditorStore');
+const { useIndexStore } = await import('../../stores/useIndexStore');
 
 beforeEach(() => {
   queryBacklinks.mockReset().mockResolvedValue([]);
   queryUnlinkedMentions.mockReset().mockResolvedValue([]);
   openFileByPath.mockClear();
+  openFileAndLocate.mockClear();
   useEditorStore.setState({ activePath: 'notes/当前.md' });
+  useIndexStore.setState({ scope: { root: '/fixture', sessionId: 'fixture' }, status: 'ready', revision: 1, error: null });
 });
 
 describe('BacklinksPanel', () => {
@@ -43,11 +53,11 @@ describe('BacklinksPanel', () => {
     expect(await screen.findByText('暂无反向链接')).toBeInTheDocument();
   });
 
-  it('点击反链行 → openFileByPath(相对路径)', async () => {
+  it('点击反链行 → 来源相对路径与当前正文定位回调', async () => {
     queryBacklinks.mockResolvedValue(['a/引用甲.md']);
     render(<BacklinksPanel />);
     fireEvent.click(await screen.findByText('引用甲.md'));
-    expect(openFileByPath).toHaveBeenCalledWith('a/引用甲.md');
+    expect(openFileAndLocate).toHaveBeenCalledWith('a/引用甲.md', expect.any(Function));
   });
 
   it('无活动文件 → 空态且不查询', async () => {

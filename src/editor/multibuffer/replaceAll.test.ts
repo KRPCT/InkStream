@@ -32,14 +32,14 @@ beforeEach(() => {
   docFor.mockReset();
   applyOpen.mockReset();
   read.mockReset();
-  flush.mockReset().mockResolvedValue(undefined);
+  flush.mockReset().mockResolvedValue({ kind: 'saved' });
   writeFile.mockReset().mockResolvedValue(true);
   view.mockReset().mockReturnValue(null); // 默认无 view：组合期分支不触发
   composing.mockReset().mockReturnValue(false);
   queue.mockReset();
   useVaultStore.setState({ vault: { root: 'D:/v', repoRoot: null, name: 'v' }, files: [] });
   useEditorStore.setState({ frozen: {}, externalChanged: {}, dirty: {}, activePath: null });
-  useProjectSearchStore.setState({ results: [], query: '', totalMatches: 0, truncated: false, status: 'done' });
+  useProjectSearchStore.setState({ results: [], query: '', totalMatches: 0, truncated: false, status: 'done', scope: useVaultStore.getState().vault });
 });
 
 describe('replaceAllInProject', () => {
@@ -134,10 +134,13 @@ describe('replaceAllInProject', () => {
     queue.mockImplementation((_v, _k, cb) => {
       deferred = cb as () => void;
     });
-    const report = await replaceAllInProject('foo', 'X');
-    expect(queue).toHaveBeenCalledWith(fakeView, 'mb-write:act.md', expect.any(Function));
+    const pending = replaceAllInProject('foo', 'X');
+    expect(queue).toHaveBeenCalledWith(fakeView, expect.stringMatching(/^mb-write:act\.md:/), expect.any(Function));
     expect(applyOpen).not.toHaveBeenCalled(); // 组合期不当场改 doc
-    expect(report.files).toBe(1); // 乐观计入，drain 时落地
     expect(deferred).toBeTypeOf('function');
+    await deferred!();
+    const report = await pending;
+    expect(flush).toHaveBeenCalledWith('act.md');
+    expect(report.files).toBe(1);
   });
 });

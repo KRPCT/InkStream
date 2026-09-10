@@ -4,6 +4,7 @@ import { searchFile, type FileMatches } from '../editor/multibuffer/projectSearc
 import { readFile } from '../ipc/files';
 import { queryContentPaths } from '../ipc/indexService';
 import { useVaultStore } from './useVaultStore';
+import type { VaultInfo } from '../types/vault';
 
 /**
  * 全库搜索结果镜像（#2c multibuffer 的数据驱动层，仿 useContentSearchStore 的 seq 防乱序）。
@@ -23,7 +24,9 @@ interface ProjectSearchState {
   totalMatches: number;
   /** 候选名单触顶（结果可能不全，replace-all 据此提示收窄）。 */
   truncated: boolean;
-  status: 'idle' | 'searching' | 'done';
+  status: 'idle' | 'searching' | 'done' | 'error';
+  error: string | null;
+  scope: VaultInfo | null;
   run: (query: string) => Promise<void>;
   clear: () => void;
 }
@@ -36,18 +39,28 @@ export const useProjectSearchStore = create<ProjectSearchState>((set) => ({
   totalMatches: 0,
   truncated: false,
   status: 'idle',
+  error: null,
+  scope: null,
   run: async (query) => {
     const mine = ++seq;
     const term = query.trim();
-    set({ query: term, status: 'searching' });
-    const root = useVaultStore.getState().vault?.root ?? null;
+    const scope = useVaultStore.getState().vault;
+    set({ query: term, status: 'searching', error: null, scope });
+    const root = scope?.root ?? null;
+    const stale = () => {
+      if (mine !== seq) return true;
+      if (useVaultStore.getState().vault === scope) return false;
+      set({ query: '', results: [], totalMatches: 0, truncated: false, status: 'idle', scope: null });
+      return true;
+    };
     if (term.length < 3 || root === null) {
       // 短词（trigram 下限）/ 无 vault：不召回，直接收敛空结果（UI 据 status+query 提示）。
       if (mine === seq) set({ results: [], totalMatches: 0, truncated: false, status: 'done' });
       return;
     }
+    try {
     const paths = await queryContentPaths(term, CANDIDATE_CAP);
-    if (mine !== seq) return; // 已被更晚查询取代。
+    if (stale()) return;
     const truncated = paths.length >= CANDIDATE_CAP;
     const settled = await Promise.all(
       paths.map(async (path) => {
@@ -56,14 +69,17 @@ export const useProjectSearchStore = create<ProjectSearchState>((set) => ({
         return content === null ? null : searchFile(path, content, term, { contextLines: CONTEXT_LINES });
       }),
     );
-    if (mine !== seq) return;
+    if (stale()) return;
     const results = settled.filter((r): r is FileMatches => r !== null);
     results.sort((a, b) => a.path.localeCompare(b.path));
     const totalMatches = results.reduce((n, r) => n + r.matchCount, 0);
     set({ results, totalMatches, truncated, status: 'done' });
+    } catch (error) {
+      if (!stale()) set({ results: [], totalMatches: 0, status: 'error', error: error instanceof Error ? error.message : '搜索失败，请重试' });
+    }
   },
   clear: () => {
     seq++; // 作废在途查询。
-    set({ query: '', results: [], totalMatches: 0, truncated: false, status: 'idle' });
+    set({ query: '', results: [], totalMatches: 0, truncated: false, status: 'idle', scope: null, error: null });
   },
 }));

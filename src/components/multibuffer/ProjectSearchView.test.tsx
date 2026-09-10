@@ -73,7 +73,7 @@ beforeEach(() => {
   act(() => useVaultStore.setState({ vault: { root: 'D:/v', repoRoot: null, name: 'v' }, files: [] }));
   act(() => useWorkbenchStore.setState({ centralView: 'multibuffer' }));
   act(() =>
-    useProjectSearchStore.setState({ query: '', results: [], totalMatches: 0, truncated: false, status: 'idle', run }),
+    useProjectSearchStore.setState({ query: '', results: [], totalMatches: 0, truncated: false, status: 'idle', scope: useVaultStore.getState().vault, error: null, run }),
   );
 });
 
@@ -198,7 +198,7 @@ describe('ProjectSearchView', () => {
     fireEvent.click(screen.getAllByLabelText('行内编辑此处')[0]);
     fireEvent.click(screen.getByText('mock-保存'));
     await waitFor(() =>
-      expect(commitExcerptEdit).toHaveBeenCalledWith('notes/a.md', 0, '前foo后', '前foo后!'),
+      expect(commitExcerptEdit).toHaveBeenCalledWith('notes/a.md', 0, '前foo后', '前foo后!', useVaultStore.getState().vault),
     );
     await waitFor(() => expect(run).toHaveBeenCalledWith('foo'));
     expect(screen.queryByTestId('excerpt-editor')).not.toBeInTheDocument(); // 成功后关闭

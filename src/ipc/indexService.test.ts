@@ -1,13 +1,14 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const select = vi.hoisted(() => vi.fn());
+vi.mock('./invoke', () => ({ invoke: vi.fn().mockResolvedValue(null) }));
 vi.mock('@tauri-apps/plugin-sql', () => ({
-  default: { load: vi.fn(async () => ({ select })) },
+  default: { load: vi.fn(async () => ({ select, close: vi.fn().mockResolvedValue(true) })) },
 }));
 
 import { useSettingsStore } from '../stores/useSettingsStore';
 import { useVaultStore } from '../stores/useVaultStore';
-import { indexDbUrl, isIndexable, queryContent, queryContentPaths } from './indexService';
+import { indexDbUrl, isIndexable, queryBacklinkReferences, queryContent, queryContentPaths } from './indexService';
 
 /** 索引库连接串构造（Phase 4 W4 修：剥 Windows \\?\ 扩展前缀，反链恒空真因回归门）。 */
 describe('indexDbUrl', () => {
@@ -72,9 +73,9 @@ describe('queryContent', () => {
     expect(select).toHaveBeenCalledWith(expect.any(String), ['"a""b""c"']);
   });
 
-  it('查询失败弃连接返空，不抛', async () => {
+  it('查询失败明确报告，不伪装零结果', async () => {
     select.mockRejectedValue(new Error('db gone'));
-    await expect(queryContent('研究方法')).resolves.toEqual([]);
+    await expect(queryContent('研究方法')).rejects.toThrow('索引查询失败');
   });
 });
 
@@ -106,5 +107,26 @@ describe('queryContentPaths', () => {
     select.mockResolvedValue([]);
     await queryContentPaths('研究方法', 42.9);
     expect(select.mock.calls[0][0]).toContain('LIMIT 42');
+  });
+});
+
+describe('queryBacklinkReferences', () => {
+  beforeEach(() => {
+    select.mockReset();
+    useSettingsStore.setState({ simpleMode: false });
+    useVaultStore.setState({ vault: { root: 'D:/paragraphs', repoRoot: null, name: 'paragraphs' }, files: [] });
+  });
+
+  it('一个 SQL statement 读取身份与候选正文，裸名歧义不产生段落引用', async () => {
+    const content = '😀[[dup]]、[[b/dup|正确引用]]、[[missing/dup]]。';
+    select.mockResolvedValue([
+      { path: 'a/dup.md', content: null },
+      { path: 'b/dup.md', content: null },
+      { path: 'source.md', content },
+    ]);
+    const refs = await queryBacklinkReferences('b/dup.md');
+    expect(select).toHaveBeenCalledTimes(1);
+    expect(refs).toHaveLength(1);
+    expect(refs[0]).toMatchObject({ sourcePath: 'source.md', context: content, from: content.indexOf('[[b/dup'), linkText: '[[b/dup|正确引用]]' });
   });
 });

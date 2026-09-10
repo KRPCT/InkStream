@@ -1,7 +1,7 @@
 import { history } from '@codemirror/commands';
 import { EditorSelection, EditorState } from '@codemirror/state';
 import { EditorView } from '@codemirror/view';
-import { readText } from '@tauri-apps/plugin-clipboard-manager';
+import { readText } from '../ipc/clipboard';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { doPaste, doRedo, doSelectAll, doUndo } from './editCommands';
 import { useEditorStore } from '../stores/useEditorStore';

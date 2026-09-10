@@ -33,11 +33,21 @@ describe('wikiLinkSource', () => {
     );
   });
 
-  it('[[中文 fuzzy 命中中文页，apply 插入去 .md 的裸名 wiki-link', () => {
+  it('[[中文 fuzzy 命中中文页，插入确定路径并以文件名作显示别名', () => {
     const r = wikiLinkSource(ctxAt('[[中文'));
     expect(r!.options[0].label).toBe('中文页.md');
-    expect(r!.options[0].apply).toBe('[[中文页]]');
+    expect(r!.options[0].apply).toBe('[[笔记/中文页|中文页]]');
     expect(r!.options[0].detail).toBe('笔记/中文页.md');
+  });
+
+  it('同名候选按所选目录插入链接，不丢失文件身份', () => {
+    useVaultStore.getState().setFiles([
+      { name: '重复.md', path: '甲/重复.md' },
+      { name: '重复.md', path: '乙/重复.md' },
+    ]);
+    const result = wikiLinkSource(ctxAt('[[重复'));
+    const selected = result?.options.find((option) => option.detail === '乙/重复.md');
+    expect(selected?.apply).toBe('[[乙/重复|重复]]');
   });
 
   it('非 [[ 上下文 / 单括号 → null', () => {

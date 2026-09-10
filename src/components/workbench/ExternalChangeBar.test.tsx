@@ -10,9 +10,11 @@ import type { VaultInfo } from '../../types/vault';
 import ExternalChangeBar from './ExternalChangeBar';
 
 const reloadFromDisk = vi.fn().mockResolvedValue(undefined);
+const invalidateDocumentState = vi.fn();
 
 vi.mock('../../editor/editorState', () => ({
   reloadFromDisk: (path: string) => reloadFromDisk(path),
+  invalidateDocumentState: (path: string) => invalidateDocumentState(path),
 }));
 
 const refreshTree = vi.fn().mockResolvedValue(undefined);
@@ -22,7 +24,7 @@ vi.mock('../../editor/fileTreeData', () => ({
 }));
 
 const freezeAutosave = vi.fn();
-const flushAutosave = vi.fn().mockResolvedValue(undefined);
+const flushAutosave = vi.fn().mockResolvedValue({ kind: 'saved' });
 const consumeSuppressedWatch = vi.fn().mockReturnValue(false);
 
 vi.mock('../../stores/autosave', () => ({
@@ -99,6 +101,7 @@ describe('arbitrateVaultChange (D-04 双路径)', () => {
     });
     await arbitrateVaultChange({ path: '/v/b.md', kind: 'modify' });
     // 后台脏文件必须冻结 + 标记冲突，切回 b.md 时呈现 ExternalChangeBar（FILE-02/SC#4）。
+    expect(invalidateDocumentState).not.toHaveBeenCalled();
     expect(freezeAutosave).toHaveBeenCalledWith('b.md');
     expect(useEditorStore.getState().externalChanged['b.md']).toBe(true);
     expect(reloadFromDisk).not.toHaveBeenCalled();
@@ -117,6 +120,7 @@ describe('arbitrateVaultChange (D-04 双路径)', () => {
     });
     await arbitrateVaultChange({ path: '/v/b.md', kind: 'modify' });
     expect(refreshTree).toHaveBeenCalled();
+    expect(invalidateDocumentState).toHaveBeenCalledWith('b.md');
     expect(freezeAutosave).not.toHaveBeenCalled();
     expect(useEditorStore.getState().externalChanged['b.md']).toBeFalsy();
   });

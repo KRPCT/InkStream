@@ -21,10 +21,8 @@ import { applyRangeEdits } from './multibufferWrite';
  */
 
 export interface ReplaceReport {
-  /**
-   * 成功改动的文件数。已打开文件计入即表示「已改入编辑器缓冲」——磁盘持久化由 autosave 串行链负责，
-   * 其写失败会由 autosave 自身保脏 + error toast 上报（故此处不重复计入 failed）；未打开文件则真实反映落盘结果。
-   */
+  error?: string;
+  /** 编辑及对应保存均成功的文件数；保存失败保留缓冲并计入 failed。 */
   files: number;
   /** 替换的命中总数。 */
   replaced: number;
@@ -43,12 +41,15 @@ export async function replaceAllInProject(term: string, replacement: string): Pr
   const report = emptyReport();
   const t = term.trim();
   if (t.length < 3) return report;
-  const root = useVaultStore.getState().vault?.root ?? null;
+  const scope = useVaultStore.getState().vault;
+  const root = scope?.root ?? null;
   if (root === null) return report;
   const results = useProjectSearchStore.getState().results;
+  if (useProjectSearchStore.getState().scope !== scope) return { ...report, error: '工作区已变化，请重新搜索。' };
 
   for (const fm of results) {
     const path = fm.path;
+    if (useVaultStore.getState().vault !== scope) { report.skipped.push(path); report.error = '工作区已变化，未继续替换。'; continue; }
     // 写盘时刻实时判定冲突态（非循环开始的快照）：堵 TOCTOU——某文件在循环中途被冻结/标外部变更，
     // 此处仍能跳过，绝不覆盖用户未和解的外部变更（CR-03）。
     const { frozen, externalChanged } = useEditorStore.getState();
@@ -58,6 +59,7 @@ export async function replaceAllInProject(term: string, replacement: string): Pr
     }
     // 当前真相源（优先主编辑器内存内容），命中即时重算——不信搜索时旧偏移。
     const truth = getDocForPath(path) ?? (await readFile(root, path).catch(() => null));
+    if (useVaultStore.getState().vault !== scope) { report.skipped.push(path); continue; }
     if (truth === null) {
       report.failed.push(path);
       continue;

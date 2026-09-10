@@ -11,6 +11,7 @@
     "preview": "vite preview",
     "tauri": "tauri",
     "test": "vitest run",
+    "test:acceptance": "node scripts/acceptance/run.mjs",
     "lint": "eslint .",
     "format": "prettier --write .",
     "typecheck": "tsc --noEmit"

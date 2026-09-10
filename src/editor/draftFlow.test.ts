@@ -8,9 +8,8 @@ import { useEditorStore } from '../stores/useEditorStore';
 import { useVaultStore } from '../stores/useVaultStore';
 import { newDraftDocument, saveDraftAs } from './draftFlow';
 import { __resetDraftCounterForTest } from './draftPath';
-import { __clearCacheForTest } from './editorState';
+import { __clearCacheForTest, getDocForPath } from './editorState';
 import { baseExtensions } from './extensions';
-import { openFileByPath } from './fileOpenFlow';
 import { refreshTree } from './fileTreeData';
 import { switchVault } from './vaultFlow';
 import { setView } from './viewHandle';
@@ -25,11 +24,13 @@ vi.mock('../ipc/files', () => ({
   readFile: vi.fn(),
 }));
 vi.mock('../stores/useToastStore', () => ({ showToast: vi.fn() }));
-vi.mock('./fileOpenFlow', () => ({ openFileByPath: vi.fn().mockResolvedValue(undefined) }));
 vi.mock('./fileTreeData', () => ({ refreshTree: vi.fn().mockResolvedValue(undefined) }));
 vi.mock('./vaultFlow', async (importOriginal) => ({
   ...(await importOriginal<typeof import('./vaultFlow')>()),
-  switchVault: vi.fn().mockResolvedValue(undefined),
+  switchVault: vi.fn().mockImplementation(async (root: string) => {
+    useVaultStore.setState({ vault: { root, name: root, repoRoot: null } });
+    return true;
+  }),
 }));
 
 const mockPick = vi.mocked(pickSavePath);
@@ -101,7 +102,9 @@ describe('draftFlow', () => {
     expect(mockPick).toHaveBeenCalledWith('未命名-1.md');
     // 落盘内容是 live view 真相源
     expect(mockWrite).toHaveBeenCalledWith('/v/notes/新文.md', '草稿内容');
-    expect(openFileByPath).toHaveBeenCalledWith('notes/新文.md');
+    expect(useEditorStore.getState().activePath).toBe('notes/新文.md');
+    expect(getDocForPath('notes/新文.md')).toBe('草稿内容');
+    expect(view.state.doc.toString()).toBe('草稿内容');
     expect(refreshTree).toHaveBeenCalledTimes(1);
     expect(switchVault).not.toHaveBeenCalled();
     // 草稿 tab 已关闭
@@ -115,7 +118,8 @@ describe('draftFlow', () => {
     await saveDraftAs('draft://1');
     expect(mockWrite).toHaveBeenCalledWith('D:\\docs\\草稿.md', 'x');
     expect(switchVault).toHaveBeenCalledWith('D:/docs', { confirmLeave: false });
-    expect(openFileByPath).toHaveBeenCalledWith('草稿.md');
+    expect(useEditorStore.getState().activePath).toBe('草稿.md');
+    expect(getDocForPath('草稿.md')).toBe('x');
     expect(useEditorStore.getState().tabs.some((t) => t.path === 'draft://1')).toBe(false);
   });
 
@@ -125,7 +129,7 @@ describe('draftFlow', () => {
     mockWrite.mockRejectedValueOnce(new Error('disk full'));
     await saveDraftAs('draft://1');
     expect(showToast).toHaveBeenCalledWith('error', expect.stringContaining('保存失败'));
-    expect(openFileByPath).not.toHaveBeenCalled();
+    expect(useEditorStore.getState().activePath).toBe('draft://1');
     expect(useEditorStore.getState().tabs.map((t) => t.path)).toEqual(['draft://1']);
   });
 });

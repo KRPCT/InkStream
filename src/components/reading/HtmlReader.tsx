@@ -32,10 +32,11 @@ export default function HtmlReader({ doc }: { doc: ReadingDoc }) {
 
   useEffect(() => {
     let alive = true;
+    const transfer = new AbortController();
     setContent(null);
     setFailed(false);
     setToc([]); // 切文档先清空目录，避免旧目录闪现
-    loadReadingHtml(doc.format as 'txt' | 'md' | 'docx' | 'epub', doc.path)
+    loadReadingHtml(doc.format as 'txt' | 'md' | 'docx' | 'epub', doc.path, { signal: transfer.signal })
       .then(({ html, text }) => {
         if (!alive) return;
         setContent(html);
@@ -46,6 +47,7 @@ export default function HtmlReader({ doc }: { doc: ReadingDoc }) {
       });
     return () => {
       alive = false;
+      transfer.abort();
     };
   }, [doc.path, doc.format, setGenre, setToc]);
 

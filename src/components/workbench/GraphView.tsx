@@ -1,12 +1,13 @@
 import { Network, RefreshCw, X } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { useCallback, useState } from 'react';
 import { openFileByPath } from '../../editor/fileOpenFlow';
 import { buildVaultGraph } from '../../graph/buildGraph';
 import GraphCanvas from '../../graph/GraphCanvas';
-import type { VaultGraph } from '../../graph/types';
 import { queryGraphData } from '../../ipc/indexService';
 import { useEditorStore } from '../../stores/useEditorStore';
 import { useWorkbenchStore } from '../../stores/useWorkbenchStore';
+import IndexQueryMessage from './IndexQueryMessage';
+import { useIndexQuery } from './useIndexQuery';
 
 /**
  * 全库知识 Graph View（Phase 10 / LINK-06）。中央区覆盖层（Ctrl+G / 命令打开，再按回编辑器）。
@@ -14,21 +15,16 @@ import { useWorkbenchStore } from '../../stores/useWorkbenchStore';
  * 编辑器；活动文件节点高亮。覆盖层不卸载编辑器（保 CM 实例与 IME），打开图谱不抢编辑器焦点。
  */
 export default function GraphView() {
-  const [graph, setGraph] = useState<VaultGraph | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
   const activePath = useEditorStore((s) => s.activePath);
   const setCentralView = useWorkbenchStore((s) => s.setCentralView);
 
-  useEffect(() => {
-    let alive = true;
-    setGraph(null);
-    void queryGraphData().then((data) => {
-      if (alive) setGraph(buildVaultGraph(data.files, data.links));
-    });
-    return () => {
-      alive = false;
-    };
-  }, [reloadKey]);
+  const load = useCallback(async () => {
+    const data = await queryGraphData();
+    return buildVaultGraph(data.files, data.links);
+  }, []);
+  const query = useIndexQuery(load, true, reloadKey);
+  const graph = query.loading || query.error || query.disabled ? null : query.data;
 
   const open = (id: string): void => {
     void openFileByPath(id);
@@ -45,7 +41,7 @@ export default function GraphView() {
           <Network size={14} aria-hidden="true" className="shrink-0" />
           <span>
             知识图谱 ·{' '}
-            {graph ? `${graph.nodes.length} 节点 / ${graph.edges.length} 链接` : '加载中…'}
+            {query.error ? '暂不可用' : query.disabled ? '未启用' : graph ? `${graph.nodes.length} 节点 / ${graph.edges.length} 链接` : '加载中…'}
           </span>
         </div>
         <div className="flex items-center gap-1">
@@ -58,11 +54,13 @@ export default function GraphView() {
         </div>
       </div>
       <div className="relative min-h-0 flex-1">
-        {graph && graph.nodes.length > 0 ? (
+        {query.loading || query.error || query.disabled ? (
+          <IndexQueryMessage {...query} />
+        ) : graph && graph.nodes.length > 0 ? (
           <GraphCanvas graph={graph} activeId={activePath} onOpen={open} />
         ) : (
           <div className="flex h-full items-center justify-center text-[13px] text-[var(--text-muted)]">
-            {graph ? '工作区暂无可索引的文件，或尚未建立链接。' : '正在构建图谱…'}
+            工作区暂无可索引的 Markdown 文件。
           </div>
         )}
       </div>

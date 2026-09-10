@@ -26,9 +26,11 @@ import { getAppVersion } from './ipc/app';
 import { loadLastSeenVersion } from './ipc/settings';
 import { initPersistence } from './stores/persistSettings';
 import { initVaultPersistence } from './stores/persistVault';
+import { initIndexLifecycle } from './ipc/indexService';
 
 export default function App() {
   useEffect(() => {
+    const stopIndex = initIndexLifecycle();
     // 持久化 hydrate 先于 show() 发起、不阻塞首帧：首帧由 boot.js 镜像保证，
     // settings.json 到达后校正（Pattern 6 第 3 步）。initPersistence 幂等。
     // 持久化 hydrate（幂等，不阻塞首帧）。restoreLastVault 须等 settings（含 simpleMode）已 apply，
@@ -56,6 +58,7 @@ export default function App() {
     // 首次引导（簇③）：延迟到布局渲染后再开，spotlight 才能命中侧栏/状态栏元素。seen 标记防重复弹。
     const onboardingTimer = setTimeout(() => initOnboarding(), 1000);
     return () => {
+      stopIndex();
       clearTimeout(onboardingTimer);
       stopExternalChangeArbiter();
       stopExitGuard();

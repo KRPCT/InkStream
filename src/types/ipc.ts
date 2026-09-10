@@ -6,6 +6,7 @@ import type {
   FileDiff,
   GitOpResult,
   GitRef,
+  GitRemoteOptions,
   GitStatus,
   Issue,
   MergeMethod,
@@ -18,6 +19,7 @@ import type {
   StashEntry,
 } from './git';
 import type { DirTreeEntry } from './bookshelf';
+import type { FileReadTarget } from './fileTransfer';
 import type { FileEntry, TreeEntry, VaultInfo } from './vault';
 import type { CslItem, ZoteroCredStatus, ZoteroItem, ZoteroSyncResult } from './zotero';
 
@@ -39,6 +41,10 @@ export interface IpcCommands {
   list_files: { args: { root: string }; result: FileEntry[] };
   find_repo_root: { args: { path: string }; result: string | null };
   read_file: { args: { root: string; path: string }; result: string };
+  // 文件读取：Raw帧经Channel，JSON只承载小控制消息；ack/cancel共享本次requestId。
+  read_file_stream: { args: { requestId: string; target: FileReadTarget }; result: null };
+  ack_file_read: { args: { requestId: string; receivedBytes: number }; result: null };
+  cancel_file_read: { args: { requestId: string }; result: null };
   // 写侧 command（02-03）。均经 path_guard 校验落在 vault 根内；同名拒绝绝不覆盖（D-12）。
   write_file_atomic: { args: { root: string; path: string; content: string }; result: null };
   // 草稿另存为：原生保存对话框给出的绝对路径（用户显式授权边界，不经 path_guard）。
@@ -72,10 +78,10 @@ export interface IpcCommands {
   start_watch: { args: { root: string }; result: null };
   stop_watch: { args: undefined; result: null };
   // Phase 4 W1 FTS5 索引写侧（投递到 Rust 单写入队列；前端只读查询走 plugin-sql Database API，不登记于此）。
-  index_upsert_doc: { args: { path: string; content: string }; result: null };
-  index_remove_doc: { args: { path: string }; result: null };
-  index_rebuild: { args: { root: string }; result: null };
-  index_switch_vault: { args: { root: string }; result: null };
+  index_upsert_doc: { args: { root: string; sessionId: string; path: string; content: string }; result: null };
+  index_remove_doc: { args: { root: string; sessionId: string; path: string }; result: null };
+  index_rebuild: { args: { root: string; sessionId: string }; result: null };
+  index_switch_vault: { args: { root: string; sessionId: string; enabled: boolean }; result: null };
   // Phase 6 GIT-01：git 读命令（Rust spawn_blocking；仓库根 = VaultInfo.repoRoot）。
   git_status: { args: { repoRoot: string }; result: GitStatus };
   git_branch_list: { args: { repoRoot: string }; result: BranchInfo[] };
@@ -111,10 +117,10 @@ export interface IpcCommands {
   git_stash_list: { args: { repoRoot: string }; result: StashEntry[] };
   git_abort_op: { args: { repoRoot: string }; result: null };
   // Phase 6 W4 远程（SSH）。进度走 Channel（invokeStreamed 追加 channel 参数，args 不含 channel）。
-  git_fetch: { args: { repoRoot: string; remote: string }; result: null };
-  git_push: { args: { repoRoot: string; remote: string; branch: string }; result: null };
-  git_pull: { args: { repoRoot: string; remote: string; branch: string }; result: PullOutcome };
-  git_clone: { args: { url: string; dest: string }; result: string };
+  git_fetch: { args: { repoRoot: string; remote: string; options: GitRemoteOptions }; result: null };
+  git_push: { args: { repoRoot: string; remote: string; branch: string; options: GitRemoteOptions }; result: null };
+  git_pull: { args: { repoRoot: string; remote: string; branch: string; options: GitRemoteOptions }; result: PullOutcome };
+  git_clone: { args: { url: string; dest: string; options: GitRemoteOptions }; result: string };
   // 簇④ GitHub 登录（PAT 存 keyring）。
   git_login_github: { args: { token: string }; result: null };
   git_logout_github: { args: undefined; result: null };

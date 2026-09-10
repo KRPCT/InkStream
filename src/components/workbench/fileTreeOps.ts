@@ -1,5 +1,8 @@
-import { createDir, createFile, movePath, renamePath, trashPath } from '../../ipc/files';
+import { createDir, createFile } from '../../ipc/files';
+import { moveDocumentPath, removeDocumentPath, renameDocumentPath } from '../../editor/documentFileMutations';
 import { openFileByPath } from '../../editor/fileOpenFlow';
+import { serializeDocumentTransition } from '../../editor/documentTransitions';
+import { beginDocumentNavigation, isCurrentDocumentNavigation } from '../../editor/editorState.navigation';
 import { refreshTree } from '../../editor/fileTreeData';
 import { confirmDestructive } from '../../stores/useConfirmStore';
 import { showToast } from '../../stores/useToastStore';
@@ -7,8 +10,8 @@ import { useVaultStore } from '../../stores/useVaultStore';
 import type { TreeNode } from '../../types/vault';
 
 /**
- * 文件树写操作纯逻辑（FILE-01）：新建/重命名/删除/移动，各自下发 ipc/files IPC，
- * 成功后回流 useVaultStore.tree（refreshTree）。
+ * 文件树操作入口（FILE-01）：新建下发 IPC；重命名/删除/移动由 documentFileMutations
+ * 协调已打开文档、在途保存与磁盘路径。成功后回流 useVaultStore.tree（refreshTree）。
  *
  * 从 FileTree.tsx 抽离以便单测（不依赖 react-arborist 虚拟化渲染）；FileTree 把
  * react-arborist 的 onCreate/onRename/onMove/onDelete 接到这些方法。
@@ -71,25 +74,24 @@ export interface FileTreeOps {
   move: (node: TreeNode, targetDir: string) => Promise<void>;
 }
 
-/** 构造文件树写操作集合（绑定当前 vault 根，绑定时 vault 缺失则各操作 no-op）。 */
+/** 构造文件树操作集合；每次操作捕获目标 vault，再由 mutation 边界校验其是否仍有效。 */
 export function createFileTreeOps(): FileTreeOps {
   const root = (): string | null => useVaultStore.getState().vault?.root ?? null;
 
   return {
     async create({ parentPath, name, isDir }) {
-      const r = root();
-      if (r === null) return;
-      if (isDir) {
-        await createDir(r, join(parentPath, name));
+      const vault = useVaultStore.getState().vault;
+      if (!vault) return;
+      const request = beginDocumentNavigation();
+      return serializeDocumentTransition(async () => {
+        if (useVaultStore.getState().vault !== vault) return;
+        const path = join(parentPath, isDir ? name : ensureMdExtension(name));
+        if (isDir) await createDir(vault.root, path);
+        else await createFile(vault.root, path);
+        if (useVaultStore.getState().vault !== vault) return;
         await refreshTree();
-        return;
-      }
-      const fileName = ensureMdExtension(name);
-      const path = join(parentPath, fileName);
-      await createFile(r, path);
-      await refreshTree();
-      // 新建文件成功后在编辑器打开（D-10）
-      await openFileByPath(path);
+        if (!isDir && isCurrentDocumentNavigation(request)) await openFileByPath(path, request);
+      });
     },
 
     async rename(node, newName) {
@@ -98,7 +100,7 @@ export function createFileTreeOps(): FileTreeOps {
       const to = join(parentOf(node.id), ensureRenameName(node, newName));
       if (to === node.id) return { conflict: false };
       try {
-        await renamePath(r, node.id, to);
+        if (!await renameDocumentPath(r, node.id, to)) return { conflict: false };
         await refreshTree();
         return { conflict: false };
       } catch {
@@ -117,10 +119,10 @@ export function createFileTreeOps(): FileTreeOps {
       });
       if (!ok) return;
       try {
-        await trashPath(r, node.id);
+        if (!await removeDocumentPath(r, node.id)) return;
         await refreshTree();
-      } catch {
-        showToast('error', `无法删除「${node.name}」，请重试。`);
+      } catch (error) {
+        showToast('error', `无法删除「${node.name}」${error instanceof Error ? `：${error.message}` : '，请重试。'}`);
       }
     },
 
@@ -130,7 +132,7 @@ export function createFileTreeOps(): FileTreeOps {
       const to = join(targetDir, node.name);
       if (to === node.id) return;
       try {
-        await movePath(r, node.id, to);
+        if (!await moveDocumentPath(r, node.id, to)) return;
         await refreshTree();
         const target = targetDir === '' ? '根目录' : baseName(targetDir);
         showToast('warning', `已移动到「${target}」，可点此撤销。`, () => {
@@ -149,10 +151,13 @@ function ensureRenameName(node: TreeNode, newName: string): string {
   return node.isDir ? newName : ensureMdExtension(newName);
 }
 
-/** 撤销移动：反向 movePath（失败则提示）。 */
+/** 撤销移动复用同一文档迁移边界，不绕过在途写和工作区身份检查。 */
 async function undoMove(root: string, from: string, to: string): Promise<void> {
   try {
-    await movePath(root, from, to);
+    if (!await moveDocumentPath(root, from, to)) {
+      showToast('warning', '当前工作区已变化，未执行撤销移动。');
+      return;
+    }
     await refreshTree();
   } catch {
     showToast('error', '撤销移动失败，目标位置可能已变化。');

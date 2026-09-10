@@ -42,7 +42,7 @@ interface EditorStoreState {
    * 同步迁移 dirty/frozen/externalChanged/activePath（保未落盘脏标记不丢、活动 tab 不变）。
    * 仅在 key 变化时调用（库内相对 ↔ 库外绝对）。
    */
-  rehomeTab: (oldPath: string, newPath: string, external: boolean) => void;
+  rehomeTab: (oldPath: string, newPath: string, external: boolean, name?: string) => void;
   setActive: (path: string) => void;
   markDirty: (path: string) => void;
   clearDirty: (path: string) => void;
@@ -85,12 +85,12 @@ export const useEditorStore = create<EditorStoreState>((set) => ({
       const activePath = s.activePath === path ? (tabs[0]?.path ?? null) : s.activePath;
       return { tabs, dirty, frozen, externalChanged, activePath };
     }),
-  rehomeTab: (oldPath, newPath, external) =>
+  rehomeTab: (oldPath, newPath, external, name) =>
     set((s) => {
       if (oldPath === newPath) return s;
       if (!s.tabs.some((t) => t.path === oldPath)) return s;
       const tabs = s.tabs.map((t) =>
-        t.path === oldPath ? { ...t, path: newPath, external } : t,
+        t.path === oldPath ? { ...t, path: newPath, external, ...(name === undefined ? {} : { name }) } : t,
       );
       // 迁移每文件布尔映射的键（保留旧值）。
       const move = (m: Record<string, boolean>): Record<string, boolean> => {

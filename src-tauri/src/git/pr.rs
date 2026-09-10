@@ -4,8 +4,8 @@
 //! 安全：token 取自 keyring（auth::github_token），**绝不下发前端**——app 渲染用户 markdown 有 XSS 面，
 //! 令牌进 webview JS 即暴露。reqwest 在 Rust 侧直连 api.github.com，同 Zotero 范式（绕 CORS + 令牌不出 Rust）。
 //!
-//! owner/repo 由 origin 远程 URL 解析（支持 https / scp-like ssh / ssh:// 三式）。host=github.com→api.github.com，
-//! 其余 host→`https://<host>/api/v3`（GitHub Enterprise 约定，顺带支持「自定义服务器」）。
+//! owner/repo 由 origin 远程 URL 解析（支持 https / scp-like ssh / ssh:// 三式）。
+//! 应用保存的是 github.com 专用凭据，因此 REST 目标只允许 api.github.com；不能猜测 GHE 地址后复用该凭据。
 //! HTTP 异步（commands 直接 async，无需 spawn_blocking——纯网络不占阻塞线程）。
 
 use super::types::{DiffHunk, DiffLine, FileDiff};
@@ -14,6 +14,10 @@ use std::process::Command;
 
 const UA: &str = "InkStream";
 const API_VERSION: &str = "2022-11-28";
+
+#[cfg(test)]
+#[path = "pr_scope_tests.rs"]
+mod scope_tests;
 
 /// 前端用 PR DTO（camelCase）。从 GitHub 响应映射的精简视图。
 #[derive(Serialize)]
@@ -135,12 +139,12 @@ fn non_empty(host: &str, owner: &str, repo: &str) -> Option<(String, String, Str
     Some((host.to_string(), owner.to_string(), repo.to_string()))
 }
 
-/// API base：github.com→api.github.com；其余→`https://<host>/api/v3`（GHE）。
-fn api_base(host: &str) -> String {
-    if host == "github.com" || host == "www.github.com" {
-        "https://api.github.com".to_string()
+/// 当前凭据只绑定 github.com；未提供独立主机账户之前，拒绝第三方/GHE REST 认证。
+fn api_base(host: &str) -> Result<String, String> {
+    if host.eq_ignore_ascii_case("github.com") || host.eq_ignore_ascii_case("www.github.com") {
+        Ok("https://api.github.com".to_string())
     } else {
-        format!("https://{host}/api/v3")
+        Err("当前 GitHub 账户功能仅支持 github.com；第三方服务器请使用 Git 同步，不会向其发送 GitHub 凭据。".into())
     }
 }
 
@@ -157,9 +161,8 @@ fn origin_url(repo_root: &str) -> Option<String> {
 /// 解析当前仓库的 (api_base, owner, repo)。
 fn repo_target(repo_root: &str) -> Result<(String, String, String), String> {
     let url = origin_url(repo_root).ok_or("这个仓库没有配置 origin 远程")?;
-    let (host, owner, repo) =
-        parse_remote(&url).ok_or_else(|| format!("无法从远程 URL 解析仓库：{url}"))?;
-    Ok((api_base(&host), owner, repo))
+    let (host, owner, repo) = parse_remote(&url).ok_or("无法从远程 URL 解析 GitHub 仓库")?;
+    Ok((api_base(&host)?, owner, repo))
 }
 
 fn token() -> Result<String, String> {
@@ -682,8 +685,8 @@ mod tests {
 
     #[test]
     fn api_base_github_vs_ghe() {
-        assert_eq!(api_base("github.com"), "https://api.github.com");
-        assert_eq!(api_base("ghe.corp.com"), "https://ghe.corp.com/api/v3");
+        assert_eq!(api_base("github.com").unwrap(), "https://api.github.com");
+        assert!(api_base("ghe.corp.com").is_err());
     }
 
     #[test]

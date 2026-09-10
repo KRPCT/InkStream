@@ -93,15 +93,12 @@ describe('editorState 滚动位置缓存/还原（D-03）', () => {
   beforeEach(() => {
     __clearCacheForTest();
     // jsdom 无真实布局：用可写桩替换 view.scrollDOM.scrollTop 的 getter/setter，
-    // 并同步刷新 requestAnimationFrame（openFile 推迟一帧设置滚动）。
-    vi.stubGlobal('requestAnimationFrame', (cb: FrameRequestCallback) => {
-      cb(0);
-      return 0;
-    });
+    // 在 EditorView 构造完成后推进帧，避免同步 rAF 令插件提前访问尚未初始化的 observer。
+    vi.useFakeTimers({ toFake: ['requestAnimationFrame', 'cancelAnimationFrame'] });
   });
 
   afterEach(() => {
-    vi.unstubAllGlobals();
+    vi.useRealTimers();
   });
 
   /** 给 view.scrollDOM.scrollTop 装可读写桩。 */
@@ -129,6 +126,7 @@ describe('editorState 滚动位置缓存/还原（D-03）', () => {
     view.scrollDOM.scrollTop = 0;
     // 切回 long.md：缓存命中 + scrollTop 被还原为离开时的 250（D-03 滚动位置恢复）
     openFile(view, 'long.md', 'x'.repeat(100), baseExtensions());
+    vi.advanceTimersToNextFrame();
     expect(scroll.get()).toBe(250);
     view.destroy();
   });
@@ -137,6 +135,7 @@ describe('editorState 滚动位置缓存/还原（D-03）', () => {
     const view = mountView();
     const scroll = stubScrollTop(view, 999);
     openFile(view, 'fresh.md', 'hi', baseExtensions());
+    vi.advanceTimersToNextFrame();
     expect(scroll.get()).toBe(0);
     view.destroy();
   });
@@ -150,6 +149,7 @@ describe('editorState 滚动位置缓存/还原（D-03）', () => {
     disposeState('d.md');
     // 释放后重开：滚动缓存已清，回到 0（不残留 120）
     openFile(view, 'd.md', 'ddd', baseExtensions());
+    vi.advanceTimersToNextFrame();
     expect(scroll.get()).toBe(0);
     view.destroy();
   });
@@ -181,10 +181,6 @@ describe('scrollContainer 选真实滚动容器（#17：.cm-scroller 恒 0，真
 describe('openFile 注入 imageVaultFacet（WR-07 注入侧，per-view vault 上下文）', () => {
   beforeEach(() => {
     __clearCacheForTest();
-    vi.stubGlobal('requestAnimationFrame', (cb: FrameRequestCallback) => {
-      cb(0);
-      return 0;
-    });
   });
 
   afterEach(() => {
@@ -214,11 +210,6 @@ describe('openFile 注入 imageVaultFacet（WR-07 注入侧，per-view vault 上
 describe('openFile 不程序化抢焦点（WebView2 IME 平台限制，点击编辑器再输入）', () => {
   beforeEach(() => {
     __clearCacheForTest();
-    // openFile 内 restoreScroll 仍走 rAF：同步桩让其立即执行，便于断言焦点自始至终未被调用。
-    vi.stubGlobal('requestAnimationFrame', (cb: FrameRequestCallback) => {
-      cb(0);
-      return 0;
-    });
   });
 
   afterEach(() => {
@@ -245,10 +236,6 @@ describe('换装过统一冻结门（§4.1：组合期排队、compositionend �
     view = mountView();
     setView(view);
     useEditorStore.setState({ activePath: null });
-    vi.stubGlobal('requestAnimationFrame', (cb: FrameRequestCallback) => {
-      cb(0);
-      return 0;
-    });
   });
 
   afterEach(() => {
@@ -297,15 +284,16 @@ describe('换装过统一冻结门（§4.1：组合期排队、compositionend �
     useEditorStore.setState({ activePath: 'B.md' });
     snapshotBeforeSwitch(view, 'B.md');
 
-    // 组合期点回 A（缓存命中）：setActive 门外同步、换装排队、doc 仍是 B。
+    // 组合期尚未换装时，活动身份必须仍指向可编辑的 B。
     dispatchComposition(view, { phase: 'compositionstart', data: '你' });
     switchToTab('A.md');
-    expect(useEditorStore.getState().activePath).toBe('A.md');
+    expect(useEditorStore.getState().activePath).toBe('B.md');
     expect(view.state.doc.toString()).toBe('BBB');
 
     dispatchComposition(view, { phase: 'compositionend', data: '你好' });
     await Promise.resolve();
     expect(view.state.doc.toString()).toBe('AAA');
+    expect(useEditorStore.getState().activePath).toBe('A.md');
   });
 
   it('非组合期 openFile：换装立即执行（行为同今天，不排队）', () => {
@@ -372,10 +360,6 @@ describe('换装镜像光标到 store（#2b：面包屑/大纲活动项不沿用
   beforeEach(() => {
     __clearCacheForTest();
     useEditorStore.setState({ cursor: 0, activePath: null });
-    vi.stubGlobal('requestAnimationFrame', (cb: FrameRequestCallback) => {
-      cb(0);
-      return 0;
-    });
   });
 
   afterEach(() => {

@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 vi.mock('../ipc/indexService', () => ({ queryContent: vi.fn() }));
 import { queryContent, type ContentHit } from '../ipc/indexService';
 import { useContentSearchStore } from './useContentSearchStore';
+import { useVaultStore } from './useVaultStore';
 
 const qc = vi.mocked(queryContent);
 
@@ -17,10 +18,27 @@ function deferred<T>() {
 
 beforeEach(() => {
   qc.mockReset();
-  useContentSearchStore.setState({ term: '', hits: [], loading: false });
+  useContentSearchStore.setState({ term: '', hits: [], loading: false, error: null });
 });
 
 describe('useContentSearchStore', () => {
+  it('查询错误成为明确状态并结束loading，不抛出未处理拒绝', async () => {
+    qc.mockRejectedValue(new Error('索引暂不可用'));
+    await expect(useContentSearchStore.getState().run('研究方法')).resolves.toBeUndefined();
+    expect(useContentSearchStore.getState()).toMatchObject({ hits: [], loading: false, error: '索引暂不可用' });
+  });
+
+  it('查询在途换库后不能接纳旧库结果，即使没有发起下一次查询', async () => {
+    useVaultStore.setState({ vault: { root: '/a', name: 'a', repoRoot: null } });
+    const pending = deferred<ContentHit[]>();
+    qc.mockReturnValue(pending.promise);
+    const request = useContentSearchStore.getState().run('研究方法');
+    useVaultStore.setState({ vault: { root: '/b', name: 'b', repoRoot: null } });
+    pending.resolve([{ path: 'from-a.md', snippet: '旧库命中' }]);
+    await request;
+    expect(useContentSearchStore.getState()).toMatchObject({ hits: [], loading: false });
+  });
+
   it('run 落地 hits 并复位 loading', async () => {
     qc.mockResolvedValue([{ path: 'a.md', snippet: 's' }]);
     await useContentSearchStore.getState().run('abc');

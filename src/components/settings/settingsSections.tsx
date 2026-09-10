@@ -295,7 +295,7 @@ export function GitSection() {
         <span />
       </SettingRow>
       {mode === 'custom' ? (
-        <SettingRow label="自定义服务器地址" description="自建或第三方 git 服务器（如 git.example.com）。">
+        <SettingRow label="自定义仓库地址" description="填写完整的 HTTPS 或 SSH 仓库地址；本次传输使用该目标，不修改现有远程配置。">
           <input
             type="text"
             value={server}
@@ -310,10 +310,10 @@ export function GitSection() {
 }
 
 const MODE_DESC: Record<GitRemoteMode, string> = {
-  local: '仅在本机做版本管理（提交/分支/回滚），不连任何远程。',
-  ssh: '用 SSH 密钥与远程同步（推荐，支持 ed25519）。需把公钥加入 GitHub/服务器。',
-  oauth: '用 GitHub 令牌经 HTTPS 同步。在「账户」分区登录后，HTTPS 远程会自动带上令牌。',
-  custom: '连接自建或第三方 git 服务器。',
+  local: '仅做本地 Git 操作，不执行获取、拉取、推送或克隆；GitHub 资料浏览是独立功能。',
+  ssh: '使用仓库已配置的 SSH 地址和本机密钥。目标是 HTTPS 时会提示切换方式，不自动改写地址。',
+  oauth: '仅用于 github.com 的 HTTPS 仓库。在「账户」保存 GitHub 凭据后使用，不向其他服务器发送令牌。',
+  custom: '本次 Git 传输使用下面的完整仓库地址，通过系统凭据认证，不使用应用保存的 GitHub 令牌。',
 };
 
 function errText(e: unknown): string {
@@ -377,7 +377,7 @@ export function AccountSection() {
       {loggedIn === null ? (
         <p className="py-3 text-[13px] text-[var(--text-muted)]">检查登录状态…</p>
       ) : loggedIn ? (
-        <SettingRow label="GitHub" description="已登录。HTTPS 远程会自动带上令牌，可推送/拉取/克隆。">
+        <SettingRow label="GitHub" description="已保存凭据。选择「GitHub 登录」远程方式后用于 github.com 的 HTTPS 仓库。">
           <button
             type="button"
             disabled={busy}
@@ -459,6 +459,7 @@ export function ZoteroSection() {
     setBusy(true);
     try {
       await zoteroSetCredentials(apiKey.trim(), userId.trim());
+      setSyncMsg('');
       setApiKey('');
       setUserId('');
       refresh();
@@ -472,6 +473,7 @@ export function ZoteroSection() {
     setBusy(true);
     try {
       await zoteroClearCredentials();
+      setSyncMsg('');
       setConfigured(false);
       setSavedUserId('');
     } catch (e) {
@@ -499,7 +501,8 @@ export function ZoteroSection() {
     <div>
       <p className="py-3 text-[12px] leading-snug text-[var(--text-muted)]">
         配置 Zotero Web API 后，可把文献库同步到本地缓存——Zotero 未运行时，文献库与参考文献仍可离线读取。
-        API Key 仅保存在本机 OS 凭据库，不会上传或回传界面。
+        每个账户的离线文献分别保存。旧版离线数据会保留，需要为当前账户重新同步。
+        API Key 保存在本机 OS 凭据库，仅用于 Zotero API 认证，不回显到界面。
       </p>
       {configured ? (
         <>

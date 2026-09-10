@@ -1,5 +1,6 @@
 import { flushAutosave, writeProjectFile } from '../../stores/autosave';
 import { useEditorStore } from '../../stores/useEditorStore';
+import { useVaultStore } from '../../stores/useVaultStore';
 import { isComposing, queueAfterComposition } from '../composition';
 import { applyEditsToOpenDoc } from '../editorState';
 import { getView } from '../viewHandle';
@@ -30,7 +31,9 @@ export async function applyRangeEdits(
   path: string,
   diskContent: string,
   edits: RangeEdit[],
+  scope = useVaultStore.getState().vault,
 ): Promise<boolean> {
+  if (scope !== useVaultStore.getState().vault) return false;
   if (edits.length === 0) return true;
   const view = getView();
   if (view && isComposing(view) && useEditorStore.getState().activePath === path) {
@@ -38,24 +41,25 @@ export async function applyRangeEdits(
     // 故捕获各区间「期望旧值」，drain 时逐条核对仍在原偏移、未越界——任一不符即整体放弃（宁可不写，
     // 绝不按陈旧偏移错位写，数据安全优先；对齐 commitSub「drain 时按 live 重解析」纪律，RULE 4）。
     const expected = edits.map((e) => view.state.doc.sliceString(e.from, e.to));
-    queueAfterComposition(view, 'mb-write:' + path, () => {
+    return new Promise<boolean>((resolve) => queueAfterComposition(view, 'mb-write:' + path + ':' + ++requestId, async () => {
+      if (scope !== useVaultStore.getState().vault || useEditorStore.getState().activePath !== path) return resolve(false);
       const doc = view.state.doc;
       const intact = edits.every((e, i) => e.to <= doc.length && doc.sliceString(e.from, e.to) === expected[i]);
-      if (!intact) return; // 组合期 doc 已变：放弃这笔回写，避免错位覆盖。
+      if (!intact) return resolve(false);
       view.dispatch({ changes: edits });
       useEditorStore.getState().markDirty(path);
-      void flushAutosave(path);
-    });
-    return true;
+      resolve((await flushAutosave(path)).kind === 'saved');
+    }));
   }
   if (applyEditsToOpenDoc(path, edits)) {
     // 活动文件 dispatch 由 mirrorListener markDirty；后台缓存更新无监听，统一在此补 markDirty。
     useEditorStore.getState().markDirty(path);
-    await flushAutosave(path);
-    return true;
+    return (await flushAutosave(path)).kind === 'saved';
   }
   return writeProjectFile(path, applyEditsToString(diskContent, edits));
 }
+
+let requestId = 0;
 
 /** 自后向前把区间编辑应用到字符串（互不重叠前提，免前序替换移位后序偏移）。 */
 export function applyEditsToString(content: string, edits: RangeEdit[]): string {

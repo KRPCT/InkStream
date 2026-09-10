@@ -64,9 +64,10 @@ libsqlite3-sys = { version = "=0.30.1", features = ["bundled"] }
 tokio = { version = "=1.52.3", default-features = false, features = ["sync"] }
 # 前端只读 SQL 查询通道（写全在 Rust，capability 仅授 sql:default 只读集）。
 tauri-plugin-sql = { version = "=2.4.0", features = ["sqlite"] }
-# 索引 path 键 NFC 规范化（跨平台一致：macOS 分解形与 Win/Linux 合成形统一）。
-# rebuild 在 Rust 侧枚举文件，故 NFC 收口于 Rust（单一真相，autosave/watcher 路径同样经此）。纯数据表 crate。
+# 链接匹配键采用 NFC 规范化；索引中的物理文件路径保留实际 Unicode 形式，避免合并不同文件。
 unicode-normalization = "=0.1.24"
+# Markdown 上下文与原生 wiki-link 事件供索引使用；不启用 CLI、HTML 输出或生成测试的 build 分支。
+pulldown-cmark = { version = "=0.13.4", default-features = false }
 # Phase 6：原生 git（libgit2 绑定）。git2 0.21.0 实查 default= []，仅开 vendored-libgit2
 # （cc 构建无需 cmake/make，跨机确定无系统依赖）。**不开 ssh/https**：
 # - 实测 Windows 上 libgit2 vendored 的 libssh2（WinCNG backend）不支持 ed25519 密钥（用户密钥即 ed25519），

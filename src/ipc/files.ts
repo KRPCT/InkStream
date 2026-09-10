@@ -1,5 +1,7 @@
 import type { DirTreeEntry } from '../types/bookshelf';
+import type { FileReadOptions } from '../types/fileTransfer';
 import { invoke } from './invoke';
+import { readBytesStream, readTextStream } from './fileStream';
 
 /**
  * 文件读写 command 前端通道。全项目唯一接触 files 相关 Rust command 的文件之一
@@ -9,11 +11,10 @@ import { invoke } from './invoke';
 /**
  * 读取 vault 内某文件为 UTF-8 文本（root 为 vault 根绝对路径，path 相对 root）。
  *
- * 红线：负载 > 1MB（1,048,576 字节）应改走 invokeStreamed（Channel 流式，见 invoke.ts）。
- * 本阶段以普通 invoke 实现，Channel 流式留待 02-03 出现真实大文件时落地。
+ * 使用有界Raw分块，UTF-8/长度/顺序全部验证完成才返回；取消不会返回部分正文。
  */
-export function readFile(root: string, path: string): Promise<string> {
-  return invoke('read_file', { root, path });
+export function readFile(root: string, path: string, options?: FileReadOptions): Promise<string> {
+  return readTextStream({ kind: 'text', root, path }, options);
 }
 
 /**
@@ -42,18 +43,18 @@ export function writeBytesToPath(path: string, content: Uint8Array): Promise<nul
 
 /**
  * 阅读模式：读绝对路径文件为字节（DOCX/EPUB/PDF 二进制）。readFile 仅 UTF-8 文本，二进制经其会损坏。
- * 大文件（>1MB）一次性过 IPC 有主线程成本（红线见本文件头）；阅读期一次读入可接受，超大文档后续可下沉 Channel。
+ * 原始字节按块传输并组装；原生端仍限制阅读格式与100MiB上限。
  */
-export async function readFileBytes(path: string): Promise<Uint8Array> {
-  return new Uint8Array(await invoke('read_file_bytes', { path }));
+export function readFileBytes(path: string, options?: FileReadOptions): Promise<Uint8Array> {
+  return readBytesStream({ kind: 'reading', path }, options);
 }
 
 /**
  * 导出内嵌：读绝对路径图片为字节（→ data URI 内嵌进 HTML/PDF/DOCX 导出产物）。
  * 调用前须经 resolveVaultImage 判定路径在 vault 内（承 ImageWidget 安全边界）；Rust 侧再以图片扩展名白名单兜底。
  */
-export async function readImageBytes(path: string): Promise<Uint8Array> {
-  return new Uint8Array(await invoke('read_image_bytes', { path }));
+export function readImageBytes(path: string, options?: FileReadOptions): Promise<Uint8Array> {
+  return readBytesStream({ kind: 'image', path }, options);
 }
 
 /** 新建空文件：同名已存在则 Rust 侧返回错误，绝不覆盖（D-12）。 */

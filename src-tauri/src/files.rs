@@ -2,27 +2,29 @@ use crate::path_guard::{canonicalize_in_root, resolve_new_target_in_root};
 use std::io::{ErrorKind, Write};
 use std::path::{Path, PathBuf};
 
+mod read_target;
+pub(crate) mod stream;
+mod stream_control;
+
+#[cfg(test)]
+#[path = "files/stream_tests.rs"]
+mod stream_tests;
+
 /// 单次 invoke 负载红线阈值（字节）。
 ///
-/// 超过此阈值的文件应改走 Channel 流式回传以避免阻塞 webview 主线程（RESEARCH
-/// Open Question 3 / T-02-03）。本阶段 `read_file` 以普通 invoke 实现，Channel
-/// 流式留待 02-03 出现真实大文件时落地——此处仅文档化红线判定阈值。
-// 本阶段仅在 #[cfg(test)] 与文档中引用；02-03 接 Channel 时进入运行时路径。
-#[allow(dead_code)]
+/// 旧JSON读取同时检查原始大小和实际编码大小；常规前端读取统一走有界Raw通道。
 pub const READ_FILE_INLINE_LIMIT_BYTES: u64 = 1_048_576;
 
 /// 读取 vault 内某文件为 UTF-8 文本（路径经 path_guard 收口校验，T-02-01）。
 ///
 /// `root` 为 vault 根绝对路径，`path` 为相对 vault 根的文件路径。返回文件全文。
-/// 负载 > [`READ_FILE_INLINE_LIMIT_BYTES`]（1,048,576 字节 = 1MB）属红线：本阶段
-/// 仍以普通 invoke 返回，02-03 接 Channel 流式（见常量文档）。
+/// 旧JSON入口拒绝超过inline阈值的回复；前端readFile使用异步Raw读取。
 #[tauri::command]
 pub fn read_file(root: String, path: String) -> Result<String, String> {
-    let canon_root = Path::new(&root)
-        .canonicalize()
-        .map_err(|e| format!("无法解析工作区根: {e}"))?;
-    let target = canonicalize_in_root(&canon_root, &path)?;
-    std::fs::read_to_string(&target).map_err(|e| format!("无法读取文件: {e}"))
+    let bytes = read_target::legacy_bytes(read_target::FileReadTarget::Text { root, path })?;
+    let text = String::from_utf8(bytes).map_err(|e| format!("文件不是有效的UTF-8文本: {e}"))?;
+    read_target::check_inline(&text)?;
+    Ok(text)
 }
 
 /// 同目录隐藏 temp 文件名（A5：同卷 rename 才原子）。
@@ -59,12 +61,32 @@ pub(crate) fn write_atomic(target: &Path, content: &str) -> Result<(), String> {
 /// 二进制原子写：与 write_atomic 同核（temp + sync_all + rename + Unix 父目录 fsync），但写任意字节而非
 /// UTF-8 文本——导出 DOCX 等二进制产物经此（write_file_to_path 仅接 String，二进制经其会被 UTF-8 破坏）。
 pub(crate) fn write_atomic_bytes(target: &Path, content: &[u8]) -> Result<(), String> {
+    // rename 会替换 inode；保留既有文件 mode，避免私有文档变得可公开读取或脚本丢失执行位。
+    #[cfg(unix)]
+    let existing_permissions = match std::fs::metadata(target) {
+        Ok(metadata) => Some(metadata.permissions()),
+        Err(error) if error.kind() == ErrorKind::NotFound => None,
+        Err(error) => return Err(format!("无法读取目标文件权限: {error}")),
+    };
     let tmp = temp_sibling(target);
 
     // temp 写入 + 数据块刷盘（sync_all）。任一步失败清理 temp 再返回。
     let write_result = (|| -> std::io::Result<()> {
-        let mut f = std::fs::File::create(&tmp)?;
+        let mut options = std::fs::OpenOptions::new();
+        options.write(true).create(true).truncate(true);
+        #[cfg(unix)]
+        if let Some(permissions) = &existing_permissions {
+            use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
+            // 创建时已限制权限，不能先写入私有内容再从默认权限收紧。
+            options.mode(permissions.mode() & 0o7777);
+        }
+        let mut f = options.open(&tmp)?;
         f.write_all(content)?;
+        #[cfg(unix)]
+        if let Some(permissions) = existing_permissions {
+            // 创建权限受 umask 影响；写入完成后按原 mode 精确恢复，再一并刷盘。
+            f.set_permissions(permissions)?;
+        }
         f.sync_all()?;
         Ok(())
     })();
@@ -126,7 +148,7 @@ pub fn write_file_bytes(path: String, content: Vec<u8>) -> Result<(), String> {
     write_atomic_bytes(&target, &content)
 }
 
-/// 阅读模式一次性读上限（100MB）：超大文档 number[] 过 IPC 会撑爆主线程，拒之并提示（红线见本文件头注释）。
+/// 文本与阅读文件的总读取上限（100MiB）；传输按Raw块进行，前端仍需保留完整结果。
 const READ_BYTES_MAX: u64 = 100 * 1024 * 1024;
 
 /// 阅读模式：读绝对路径文件为字节（DOCX/EPUB/PDF 二进制——read_file 的 read_to_string 会破坏二进制）。
@@ -134,25 +156,12 @@ const READ_BYTES_MAX: u64 = 100 * 1024 * 1024;
 /// 信任边界（与 HtmlReader sandbox XSS 模型同一处收口）：仅放行阅读支持的扩展名 + 限大小，钝化任意机密读取。
 #[tauri::command]
 pub fn read_file_bytes(path: String) -> Result<Vec<u8>, String> {
-    let target = PathBuf::from(&path);
-    if !target.is_absolute() {
-        return Err("读取路径必须是绝对路径".to_string());
-    }
-    let ext = target
-        .extension()
-        .and_then(|e| e.to_str())
-        .map(|s| s.to_ascii_lowercase());
-    if !matches!(ext.as_deref(), Some("txt" | "docx" | "epub" | "pdf")) {
-        return Err("仅支持读取 txt / docx / epub / pdf".to_string());
-    }
-    let meta = std::fs::metadata(&target).map_err(|e| format!("无法读取文件: {e}"))?;
-    if meta.len() > READ_BYTES_MAX {
-        return Err("文件过大（超过 100MB），暂不支持在阅读模式打开".to_string());
-    }
-    std::fs::read(&target).map_err(|e| format!("无法读取文件: {e}"))
+    let bytes = read_target::legacy_bytes(read_target::FileReadTarget::Reading { path })?;
+    read_target::check_inline(&bytes)?;
+    Ok(bytes)
 }
 
-/// 导出内嵌图片一次性读上限（25MB）：单张图字节经 number[] 过 IPC，过大撑主线程，超限拒之内嵌。
+/// 图片总读取上限（25MiB），与原有导出内嵌限制一致。
 const READ_IMAGE_MAX: u64 = 25 * 1024 * 1024;
 
 /// 导出内嵌：读绝对路径图片为字节（→ data URI 内嵌进 HTML/PDF/DOCX 导出产物，使产物脱离 vault 也能显示）。
@@ -160,25 +169,9 @@ const READ_IMAGE_MAX: u64 = 25 * 1024 * 1024;
 /// ImageWidget 安全边界纪律）；此处再以「仅绝对路径 + 仅图片扩展名 + 限大小」兜底，钝化经此通道的任意机密读取。
 #[tauri::command]
 pub fn read_image_bytes(path: String) -> Result<Vec<u8>, String> {
-    let target = PathBuf::from(&path);
-    if !target.is_absolute() {
-        return Err("读取路径必须是绝对路径".to_string());
-    }
-    let ext = target
-        .extension()
-        .and_then(|e| e.to_str())
-        .map(|s| s.to_ascii_lowercase());
-    if !matches!(
-        ext.as_deref(),
-        Some("png" | "jpg" | "jpeg" | "gif" | "bmp" | "webp" | "svg" | "avif" | "ico")
-    ) {
-        return Err("仅支持读取图片文件".to_string());
-    }
-    let meta = std::fs::metadata(&target).map_err(|e| format!("无法读取图片: {e}"))?;
-    if meta.len() > READ_IMAGE_MAX {
-        return Err("图片过大（超过 25MB），暂不内嵌".to_string());
-    }
-    std::fs::read(&target).map_err(|e| format!("无法读取图片: {e}"))
+    let bytes = read_target::legacy_bytes(read_target::FileReadTarget::Image { path })?;
+    read_target::check_inline(&bytes)?;
+    Ok(bytes)
 }
 
 /// 新建空文件：已存在则 Err，绝不覆盖（D-12 同名拒绝）。
@@ -259,8 +252,8 @@ pub fn trash_path(root: String, path: String) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::{
-        create_dir, create_file, move_path, read_file, read_image_bytes, rename_path,
-        temp_sibling, trash_path, read_file_bytes, write_file_atomic, write_file_bytes,
+        create_dir, create_file, move_path, read_file, read_file_bytes, read_image_bytes,
+        rename_path, temp_sibling, trash_path, write_file_atomic, write_file_bytes,
         write_file_to_path, READ_FILE_INLINE_LIMIT_BYTES,
     };
     use std::fs;
@@ -330,8 +323,38 @@ mod tests {
         let leftover = fs::read_dir(&root)
             .unwrap()
             .filter_map(|e| e.ok())
-            .any(|e| e.file_name().to_string_lossy().starts_with(".inkstream-tmp-"));
+            .any(|e| {
+                e.file_name()
+                    .to_string_lossy()
+                    .starts_with(".inkstream-tmp-")
+            });
         assert!(!leftover, "原子写成功后不应残留 temp 文件");
+        fs::remove_dir_all(&root).ok();
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn write_file_atomic_preserves_existing_unix_permissions() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let root = temp_dir("write-permissions");
+        let root_str = root.to_string_lossy().into_owned();
+        for (name, mode) in [("private.md", 0o600), ("run.sh", 0o751)] {
+            let target = root.join(name);
+            fs::write(&target, "old").unwrap();
+            fs::set_permissions(&target, fs::Permissions::from_mode(mode)).unwrap();
+
+            write_file_atomic(root_str.clone(), name.to_string(), "新版本".to_string()).unwrap();
+
+            assert_eq!(
+                read_file(root_str.clone(), name.to_string()).unwrap(),
+                "新版本"
+            );
+            assert_eq!(
+                fs::metadata(&target).unwrap().permissions().mode() & 0o7777,
+                mode
+            );
+        }
         fs::remove_dir_all(&root).ok();
     }
 
@@ -359,7 +382,11 @@ mod tests {
         let leftover = fs::read_dir(&root)
             .unwrap()
             .filter_map(|e| e.ok())
-            .any(|e| e.file_name().to_string_lossy().starts_with(".inkstream-tmp-"));
+            .any(|e| {
+                e.file_name()
+                    .to_string_lossy()
+                    .starts_with(".inkstream-tmp-")
+            });
         assert!(!leftover, "另存为成功后不应残留 temp 文件");
         fs::remove_dir_all(&root).ok();
     }
@@ -382,7 +409,11 @@ mod tests {
         let leftover = fs::read_dir(&root)
             .unwrap()
             .filter_map(|e| e.ok())
-            .any(|e| e.file_name().to_string_lossy().starts_with(".inkstream-tmp-"));
+            .any(|e| {
+                e.file_name()
+                    .to_string_lossy()
+                    .starts_with(".inkstream-tmp-")
+            });
         assert!(!leftover, "二进制导出成功后不应残留 temp 文件");
         fs::remove_dir_all(&root).ok();
     }
@@ -402,6 +433,19 @@ mod tests {
         let bytes = vec![0x50u8, 0x4B, 0x03, 0x04, 0x00, 0xFF, 0x80];
         write_file_bytes(target_str.clone(), bytes.clone()).unwrap();
         assert_eq!(read_file_bytes(target_str).unwrap(), bytes);
+        fs::remove_dir_all(&root).ok();
+    }
+
+    #[test]
+    fn read_file_bytes_accepts_markdown_extensions() {
+        let root = temp_dir("read-markdown");
+        let content = "# 墨流\n\n阅读模式保留 Markdown 原始字节。\n";
+        for name in ["note.md", "note.markdown", "UPPER.MD", "UPPER.MARKDOWN"] {
+            let target = root.join(name);
+            fs::write(&target, content).unwrap();
+            let path = target.to_string_lossy().into_owned();
+            assert_eq!(read_file_bytes(path).unwrap(), content.as_bytes());
+        }
         fs::remove_dir_all(&root).ok();
     }
 
@@ -495,12 +539,7 @@ mod tests {
         fs::write(root.join("x.md"), "x").unwrap();
         fs::write(root.join("dir").join("x.md"), "y").unwrap();
         // 移到已存在同名项 → Err。
-        assert!(move_path(
-            root_str.clone(),
-            "x.md".to_string(),
-            "dir/x.md".to_string()
-        )
-        .is_err());
+        assert!(move_path(root_str.clone(), "x.md".to_string(), "dir/x.md".to_string()).is_err());
         // 移到空位成功。
         move_path(root_str, "x.md".to_string(), "dir/moved.md".to_string()).unwrap();
         assert!(root.join("dir").join("moved.md").exists());

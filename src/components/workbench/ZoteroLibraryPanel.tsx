@@ -1,7 +1,7 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { BookMarked, CloudOff, RefreshCw } from 'lucide-react';
 import { insertCitekey } from '../../editor/academicActions';
-import { zoteroItemsResilient } from '../../ipc/zotero';
+import { onZoteroLibraryChanged, zoteroItemsResilient } from '../../ipc/zotero';
 import type { ZoteroItem } from '../../types/zotero';
 
 /**
@@ -20,25 +20,39 @@ export default function ZoteroLibraryPanel() {
   const [loading, setLoading] = useState(false);
   const [offline, setOffline] = useState(false);
   const [filter, setFilter] = useState('');
+  const requestId = useRef(0);
 
   const load = useCallback(async () => {
+    const currentRequest = ++requestId.current;
     setLoading(true);
     setError(null);
     try {
       const { items: list, offline: fromCache } = await zoteroItemsResilient();
+      if (currentRequest !== requestId.current) return;
       setItems(list);
       setOffline(fromCache);
     } catch (e) {
+      if (currentRequest !== requestId.current) return;
       setError(errText(e));
       setItems([]);
       setOffline(false);
     } finally {
-      setLoading(false);
+      if (currentRequest === requestId.current) setLoading(false);
     }
   }, []);
 
   useEffect(() => {
+    const unsubscribe = onZoteroLibraryChanged(() => {
+      setItems([]);
+      setOffline(false);
+      setFilter('');
+      void load();
+    });
     void load();
+    return () => {
+      requestId.current += 1;
+      unsubscribe();
+    };
   }, [load]);
 
   const q = filter.trim().toLowerCase();

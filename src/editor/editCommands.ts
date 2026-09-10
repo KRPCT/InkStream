@@ -1,6 +1,6 @@
 import { selectAll, undo, redo } from '@codemirror/commands';
 import { openSearchPanel } from '@codemirror/search';
-import { readText } from '@tauri-apps/plugin-clipboard-manager';
+import { readText } from '../ipc/clipboard';
 import type { EditorView } from '@codemirror/view';
 import { getView } from './viewHandle';
 import { isMarkdownFamily } from './markdownCommands';

@@ -1,4 +1,6 @@
 import type { EditorView } from '@codemirror/view';
+import type { EditorState } from '@codemirror/state';
+import { beginDocumentNavigation, documentNavigationSignal, isCurrentDocumentNavigation } from './editorState.navigation';
 import { readFile } from '../ipc/files';
 import { showToast } from '../stores/useToastStore';
 import { useEditorStore } from '../stores/useEditorStore';
@@ -6,7 +8,7 @@ import { useVaultStore } from '../stores/useVaultStore';
 import type { TreeNode } from '../types/vault';
 import { baseExtensions } from './extensions';
 import { openFile, snapshotBeforeSwitch, switchToTab } from './editorState';
-import { languageFromDoc, markAppliedLanguage } from './languages';
+import { languageFromDoc } from './languages';
 import { basename, parentDir, relativeWithin, stripVerbatim } from './pathUtil';
 import { getView, revealRange } from './viewHandle';
 
@@ -18,21 +20,21 @@ import { getView, revealRange } from './viewHandle';
  */
 
 /** 点击文件树文件：快照当前 → readFile → openFile 换装 → openTab/setActive。 */
-export async function openFileInEditor(view: EditorView, node: TreeNode): Promise<void> {
+export async function openFileInEditor(view: EditorView, node: TreeNode, request = beginDocumentNavigation()): Promise<void> {
   const vault = useVaultStore.getState().vault;
   if (!vault || node.isDir) return;
   const active = useEditorStore.getState().activePath;
   if (active) snapshotBeforeSwitch(view, active);
   try {
-    const doc = await readFile(vault.root, node.id);
+    const doc = await readFile(vault.root, node.id, { signal: documentNavigationSignal(request) });
+    if (!isCurrentDocumentNavigation(request) || useVaultStore.getState().vault !== vault) return;
     // 初始语言：frontmatter `language:` 优先于扩展名（D-13 文档单一真相源，EDIT-05），
     // 否则按扩展名解析（.py/.rs/.css 即得高亮，EDIT-04）。
     const lang = languageFromDoc(doc, node.id);
-    openFile(view, node.id, doc, baseExtensions(lang));
-    markAppliedLanguage(view, lang);
     useEditorStore.getState().openTab({ path: node.id, name: node.name });
-    useEditorStore.getState().setActive(node.id);
+    await openFile(view, node.id, doc, baseExtensions(lang), request);
   } catch {
+    if (!isCurrentDocumentNavigation(request) || useVaultStore.getState().vault !== vault) return;
     showToast('error', `无法读取「${node.name}」，文件可能已被删除或没有访问权限。`);
   }
 }
@@ -43,11 +45,27 @@ export async function openFileInEditor(view: EditorView, node: TreeNode): Promis
  * 复用点击文件树的打开链路（openFileInEditor）。文件名取相对路径 basename（与文件树 node.name
  * 同义）。无 vault / 无 view（未挂载）静默返回。
  */
-export async function openFileByPath(path: string): Promise<void> {
+export async function openFileByPath(path: string, request = beginDocumentNavigation()): Promise<void> {
   const view = getView();
   const name = path.split('/').pop() ?? path;
   if (!view) return;
-  await openFileInEditor(view, { id: path, name, isDir: false });
+  await openFileInEditor(view, { id: path, name, isDir: false }, request);
+}
+
+/** Locate against the accepted document after its scroll restoration, without racing newer navigation. */
+export async function openFileAndLocate(path: string, locate: (state: EditorState) => { from: number; to: number } | null): Promise<boolean> {
+  const request = beginDocumentNavigation();
+  const vault = useVaultStore.getState().vault;
+  if (useEditorStore.getState().activePath !== path) await openFileByPath(path, request);
+  const view = getView();
+  if (!view || !isCurrentDocumentNavigation(request) || useEditorStore.getState().activePath !== path) return false;
+  return new Promise((resolve) => requestAnimationFrame(() => {
+    if (getView() !== view || vault !== useVaultStore.getState().vault || !isCurrentDocumentNavigation(request) || useEditorStore.getState().activePath !== path) return resolve(false);
+    const range = locate(view.state);
+    if (!range) return resolve(false);
+    revealRange(view, range.from, range.to);
+    resolve(true);
+  }));
 }
 
 /** 正文中定位搜索词首个出现（大小写不敏感，对齐 FTS5 trigram `case_sensitive 0`）；未命中返 -1。 */
@@ -64,11 +82,10 @@ export function findMatchOffset(doc: string, term: string): number {
  * 直接选中并滚到该处。跳转排在 openFile 的滚动还原（rAF 回填）之后一帧，否则被覆盖。
  */
 export async function openFileAtOffset(path: string, offset: number): Promise<void> {
-  await openFileByPath(path);
-  const view = getView();
-  if (!view) return;
-  const at = Math.min(Math.max(offset, 0), view.state.doc.length);
-  requestAnimationFrame(() => revealRange(view, at, at));
+  await openFileAndLocate(path, (state) => {
+    const at = Math.min(Math.max(offset, 0), state.doc.length);
+    return { from: at, to: at };
+  });
 }
 
 /**
@@ -79,12 +96,10 @@ export async function openFileAtOffset(path: string, offset: number): Promise<vo
  * （requestAnimationFrame 回填）之后一帧执行，否则定位会被滚动还原覆盖。
  */
 export async function openFileAndFind(path: string, term: string): Promise<void> {
-  await openFileByPath(path);
-  const view = getView();
-  if (!view) return;
-  const at = findMatchOffset(view.state.doc.toString(), term);
-  if (at < 0) return;
-  requestAnimationFrame(() => revealRange(view, at, at + term.trim().length));
+  await openFileAndLocate(path, (state) => {
+    const at = findMatchOffset(state.doc.toString(), term);
+    return at < 0 ? null : { from: at, to: at + term.trim().length };
+  });
 }
 
 /**
@@ -100,6 +115,8 @@ export async function openExternalFile(absPath: string): Promise<void> {
   const view = getView();
   if (!view) return;
   const norm = stripVerbatim(absPath); // 干净形绝对键（去 Windows \\?\），与 readFile/写盘/relativeWithin 一致。
+  const request = beginDocumentNavigation();
+  const vault = useVaultStore.getState().vault;
   // 其实在当前 vault 内 → 库内相对打开（不产生 external tab）。
   const root = useVaultStore.getState().vault?.root ?? null;
   if (root) {
@@ -111,20 +128,20 @@ export async function openExternalFile(absPath: string): Promise<void> {
   }
   // 已开同一 external tab → 直接切过去。
   if (useEditorStore.getState().tabs.some((t) => t.path === norm)) {
-    switchToTab(norm);
+    await switchToTab(norm);
     return;
   }
   const active = useEditorStore.getState().activePath;
   if (active) snapshotBeforeSwitch(view, active);
   const name = basename(norm);
   try {
-    const doc = await readFile(parentDir(norm), name); // 绝对读：父目录作 root、文件名作 rel。
+    const doc = await readFile(parentDir(norm), name, { signal: documentNavigationSignal(request) });
+    if (!isCurrentDocumentNavigation(request) || vault !== useVaultStore.getState().vault) return;
     const lang = languageFromDoc(doc, norm);
-    openFile(view, norm, doc, baseExtensions(lang));
-    markAppliedLanguage(view, lang);
     useEditorStore.getState().openTab({ path: norm, name, external: true });
-    useEditorStore.getState().setActive(norm);
+    await openFile(view, norm, doc, baseExtensions(lang), request);
   } catch {
+    if (!isCurrentDocumentNavigation(request) || vault !== useVaultStore.getState().vault) return;
     showToast('error', `无法打开「${name}」，文件可能不存在或没有访问权限。`);
   }
 }
