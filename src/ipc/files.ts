@@ -2,6 +2,7 @@ import type { DirTreeEntry } from '../types/bookshelf';
 import type { FileReadOptions } from '../types/fileTransfer';
 import { invoke } from './invoke';
 import { readBytesStream, readTextStream } from './fileStream';
+import { writeBytesRaw, writeTextRaw } from './fileWrite';
 
 /**
  * 文件读写 command 前端通道。全项目唯一接触 files 相关 Rust command 的文件之一
@@ -22,7 +23,7 @@ export function readFile(root: string, path: string, options?: FileReadOptions):
  * 自动保存防抖落盘与 Ctrl+S 立即落盘均经此。
  */
 export function writeFileAtomic(root: string, path: string, content: string): Promise<null> {
-  return invoke('write_file_atomic', { root, path, content });
+  return writeTextRaw({ kind: 'vault', root, path }, content);
 }
 
 /**
@@ -30,15 +31,15 @@ export function writeFileAtomic(root: string, path: string, content: string): Pr
  * path 来自原生保存对话框，属用户显式授权边界，Rust 侧不经 vault path_guard（无 root 语义）。
  */
 export function writeFileToPath(path: string, content: string): Promise<null> {
-  return invoke('write_file_to_path', { path, content });
+  return writeTextRaw({ kind: 'absolute', path }, content);
 }
 
 /**
  * 导出二进制文件到绝对路径（DOCX 等）：path 来自原生保存对话框（用户显式授权边界）。
- * content 为字节，序列化为 number[] 过 IPC（Tauri → Rust Vec<u8>）。文本导出（HTML）仍走 writeFileToPath。
+ * content 保留视图范围并作为 Raw 正文传输。文本导出（HTML）仍走 writeFileToPath。
  */
 export function writeBytesToPath(path: string, content: Uint8Array): Promise<null> {
-  return invoke('write_file_bytes', { path, content: Array.from(content) });
+  return writeBytesRaw({ kind: 'absolute', path }, content);
 }
 
 /**

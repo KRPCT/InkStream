@@ -6,7 +6,9 @@ import { useVaultStore } from '../stores/useVaultStore';
 import { queueAfterComposition, refreshLivePreview } from './composition';
 import { baseExtensions } from './extensions';
 import { readLanguage } from './frontmatter';
-import { languageFromDoc, markAppliedLanguage } from './languages';
+import { initialLanguageForDocument, languageFromDoc, markAppliedLanguage } from './languages';
+import { documentLanguageHint, isBasicEditing } from './documentBudget';
+import { syncDocumentBudget } from './documentBudgetMirror';
 import { syncCitations } from './citations';
 import { getView, scrollContainer } from './viewHandle';
 import { syncOutline } from './outline';
@@ -53,7 +55,7 @@ export { getRenderModeForPath } from './editorState.renderMode';
  * 显式调用；docChanged 路径由 useCodeMirror 的 updateListener 调用。store 永不回写 CM。
  */
 export function syncRichtext(view: EditorView): void {
-  const isRichtext = readLanguage(view.state.doc.toString()) === 'richtext';
+  const isRichtext = !isBasicEditing(view.state) && readLanguage(view.state.doc.toString()) === 'richtext';
   if (useEditorStore.getState().isRichtext !== isRichtext) {
     useEditorStore.getState().setRichtext(isRichtext);
   }
@@ -153,12 +155,13 @@ export function openFile(view: EditorView, path: string, doc: string, ext: Exten
     view.setState(latest);
     useEditorStore.getState().setActive(path);
     cache.set(path, latest);
+    syncDocumentBudget(view);
     restoreScroll(view, scrollCache.get(path) ?? 0);
     syncRichtext(view);
     applyRenderMode(view, path);
     // IN-06：换装后把语言 diff 基线对齐到新文件的实际语言——否则 lastAppliedLanguage 仍是上一文件的，
     // 下一次 docChanged 会按错基线多切一次 reconfigure（或漏切）。
-    markAppliedLanguage(view, languageFromDoc(latest.doc.toString(), path));
+    markAppliedLanguage(view, isBasicEditing(latest) ? latest.facet(documentLanguageHint) : languageFromDoc(latest.doc.toString(), path));
     // 大纲镜像（RightPanel 大纲 tab）：换装不触发 updateListener，故同 syncRichtext 在此显式同步。
     syncOutline(view);
     // 光标镜像（#2b）：setState 换装不触发 updateListener，须在此把恢复后的选区头同步给 store，
@@ -190,11 +193,11 @@ export async function reloadFromDisk(path: string): Promise<void> {
   const request = currentDocumentNavigation();
   const doc = await readFile(external ? parentDir(path) : vault!.root, external ? basename(path) : path, { signal: documentNavigationSignal(request) });
   if (vault !== useVaultStore.getState().vault || getDocForPath(path) !== before) throw new Error('文档已变化，请重新处理外部冲突');
-  const lang = languageFromDoc(doc, path);
+  const lang = initialLanguageForDocument(doc, path);
   cache.delete(path);
   scrollCache.delete(path);
   if (useEditorStore.getState().activePath !== path) return;
-  if (!await openFile(view, path, doc, baseExtensions(lang), request)) throw new Error('重载已被新的导航取代');
+  if (!await openFile(view, path, doc, baseExtensions(lang, doc.length), request)) throw new Error('重载已被新的导航取代');
   useEditorStore.getState().clearDirty(path);
 }
 
@@ -222,7 +225,7 @@ export async function switchToTab(path: string): Promise<boolean> {
     try {
       const doc = await readFile(tab.external ? parentDir(path) : vault!.root, tab.external ? basename(path) : path, { signal: documentNavigationSignal(request) });
       if (!isCurrentDocumentNavigation(request) || useVaultStore.getState().vault !== vault || !useEditorStore.getState().tabs.includes(tab)) return false;
-      return openFile(view, path, doc, baseExtensions(languageFromDoc(doc, path)), request);
+      return openFile(view, path, doc, baseExtensions(initialLanguageForDocument(doc, path), doc.length), request);
     } catch { return false; }
   }
   return swapState(view, path, () => {
@@ -233,11 +236,12 @@ export async function switchToTab(path: string): Promise<boolean> {
     const latest = cache.get(path) ?? cached;
     view.setState(latest);
     useEditorStore.getState().setActive(path);
+    syncDocumentBudget(view);
     restoreScroll(view, scrollCache.get(path) ?? 0);
     syncRichtext(view);
     applyRenderMode(view, path);
     // IN-06：换装后对齐语言 diff 基线到目标文件实际语言（同 openFile，防多余/漏 reconfigure）。
-    markAppliedLanguage(view, languageFromDoc(latest.doc.toString(), path));
+    markAppliedLanguage(view, isBasicEditing(latest) ? latest.facet(documentLanguageHint) : languageFromDoc(latest.doc.toString(), path));
     syncOutline(view);
     // 光标镜像（#2b）：缓存态恢复的选区头同步给 store（同 openFile，防面包屑/大纲活动项沿用上一文件偏移）。
     useEditorStore.getState().setCursor(view.state.selection.main.head);
@@ -316,7 +320,7 @@ export async function releaseDocumentState(path: string, discard = false): Promi
       if (useEditorStore.getState().activePath !== next.path) return false;
     } else {
       view.setState(EditorState.create({ extensions: baseExtensions() }));
-      useEditorStore.setState({ activePath: null, cursor: 0, isRichtext: false, activeRenderMode: null });
+      useEditorStore.setState({ activePath: null, cursor: 0, isRichtext: false, activeRenderMode: null, documentBudget: null });
       syncOutline(view);
       syncCitations(view);
       syncSceneSummary(view);

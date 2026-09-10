@@ -1,8 +1,12 @@
 import { GFM, parser as baseParser } from '@lezer/markdown';
 import type { SyntaxNode } from '@lezer/common';
+import { EditorState } from '@codemirror/state';
 import { bodyStart } from '../frontmatter';
 import { inlineMath } from '../livepreview/inlineMath';
 import { wikiLink } from '../livepreview/wikiLink';
+import { typstBlockSyntax } from '../livepreview/typstBlockSyntax';
+import { buildEquationCatalog, type EquationCatalog } from '../equations/catalog';
+import { equationAnchorId, equationNumberText, equationReferenceLabel, equationReferenceText, isHiddenAcademicComment } from '../equations/markers';
 
 /**
  * 文档导出用 markdown → 语义 HTML 串（FEAT-EXPORT 基石）。HTML / PDF / DOCX 三导出共用此一次解析输出。
@@ -13,7 +17,7 @@ import { wikiLink } from '../livepreview/wikiLink';
  * frontmatter（YAML 头）按 bodyStart 剔除，不进正文。
  */
 
-const parser = baseParser.configure([GFM, wikiLink, inlineMath]);
+const parser = baseParser.configure([GFM, wikiLink, inlineMath, typstBlockSyntax]);
 
 export type MathRenderer = (src: string, display: boolean) => string;
 export interface MdToHtmlOptions {
@@ -30,6 +34,7 @@ export interface MdToHtmlOptions {
 interface Ctx {
   src: string;
   opts: MdToHtmlOptions;
+  equations?: EquationCatalog;
 }
 
 function esc(s: string): string {
@@ -133,7 +138,16 @@ function renderInline(node: SyntaxNode, ctx: Ctx): string {
       return `<a href="${escAttr(u)}">${esc(u)}</a>`;
     }
     case 'WikiLink': {
-      const display = childText(node, 'WikiLinkAlias', ctx) || childText(node, 'WikiLinkTarget', ctx);
+      const target = childText(node, 'WikiLinkTarget', ctx);
+      const alias = childText(node, 'WikiLinkAlias', ctx);
+      if (ctx.equations?.enabled && target.startsWith('#eq:')) {
+        const label = equationReferenceLabel(target);
+        const entry = label === null ? undefined : ctx.equations.byLabel.get(label);
+        if (entry && label !== null) return `<a data-equation-reference="${escAttr(label)}" href="#${escAttr(equationAnchorId(label))}">${esc(alias || equationReferenceText(entry.ordinal))}</a>`;
+        const unresolved = label ?? target.slice(4);
+        return `<span class="equation-reference-error" data-equation-reference="${escAttr(unresolved)}">${esc('未解析：eq:' + unresolved)}</span>`;
+      }
+      const display = alias || target;
       return `<span class="wikilink">${esc(display)}</span>`;
     }
     case 'InlineMath': {
@@ -185,6 +199,17 @@ function renderFence(node: SyntaxNode, ctx: Ctx): string {
 }
 
 function renderBlock(node: SyntaxNode, ctx: Ctx): string {
+  const formula = ctx.equations?.enabled && (node.name === 'FencedCode' || node.name === 'BlockMath' || node.name === 'TypstBlock')
+    ? ctx.equations.byFrom.get(node.from) : undefined;
+  if (formula) {
+    const label = formula.label && ctx.equations?.byLabel.has(formula.label) ? formula.label : null;
+    const attributes = label ? ` id="${escAttr(equationAnchorId(label))}" data-equation-label="${escAttr(label)}"` : '';
+    return `<figure class="equation"${attributes}>${renderBlockContent(node, ctx)}<figcaption class="equation-number" data-equation-number="${formula.ordinal}">${equationNumberText(formula.ordinal)}</figcaption></figure>`;
+  }
+  return renderBlockContent(node, ctx);
+}
+
+function renderBlockContent(node: SyntaxNode, ctx: Ctx): string {
   const h = HEADING_RE.exec(node.name);
   if (h) return `<h${h[1]}>${inlineChildren(node, node.from, node.to, ctx).trim()}</h${h[1]}>`;
   switch (node.name) {
@@ -194,6 +219,7 @@ function renderBlock(node: SyntaxNode, ctx: Ctx): string {
     case 'BulletList': return `<ul>${listItems(node, ctx)}</ul>`;
     case 'OrderedList': return `<ol>${listItems(node, ctx)}</ol>`;
     case 'FencedCode': return renderFence(node, ctx);
+    case 'TypstBlock': return `<pre><code class="language-typst">${esc(childText(node, 'TypstBlockContent', ctx))}</code></pre>`;
     case 'CodeBlock': return `<pre><code>${esc(text(node, ctx))}</code></pre>`;
     case 'HorizontalRule': return '<hr>';
     case 'Table': return renderTable(node, ctx);
@@ -201,7 +227,8 @@ function renderBlock(node: SyntaxNode, ctx: Ctx): string {
       const c = childText(node, 'BlockMathContent', ctx);
       return ctx.opts.renderMath ? ctx.opts.renderMath(c, true) : `<pre><code>${esc(c)}</code></pre>`;
     }
-    case 'HTMLBlock': return `<pre>${esc(text(node, ctx))}</pre>`; // 原样 HTML 一律 escape（守 XSS）
+    case 'CommentBlock': return isHiddenAcademicComment(text(node, ctx)) ? '' : `<pre>${esc(text(node, ctx))}</pre>`;
+    case 'HTMLBlock': return isHiddenAcademicComment(text(node, ctx)) ? '' : `<pre>${esc(text(node, ctx))}</pre>`;
     default:
       if (HIDDEN.has(node.name)) return '';
       return node.firstChild ? blockChildren(node, ctx) : '';
@@ -212,7 +239,8 @@ function renderBlock(node: SyntaxNode, ctx: Ctx): string {
 export function markdownToHtml(markdown: string, opts: MdToHtmlOptions = {}): string {
   const src = markdown.slice(bodyStart(markdown));
   const tree = parser.parse(src);
-  return renderBlock(tree.topNode, { src, opts });
+  const equations = buildEquationCatalog(EditorState.create({ doc: src }), tree);
+  return renderBlock(tree.topNode, { src, opts, equations });
 }
 
 /**

@@ -18,10 +18,16 @@
 pub(crate) mod auth;
 pub(crate) mod branch;
 pub(crate) mod commit;
+pub(crate) mod clone;
 pub(crate) mod conflict;
 pub(crate) mod diff;
 pub(crate) mod log;
 pub(crate) mod pr;
+pub(crate) mod rebase;
+mod rebase_process;
+mod rebase_registry;
+mod rebase_state;
+mod rebase_types;
 pub(crate) mod refops;
 pub(crate) mod refs;
 pub(crate) mod remote;
@@ -31,6 +37,10 @@ mod types;
 
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod rebase_test_support;
+#[cfg(test)]
+mod rebase_tests;
 
 /// 统一 git 错误 → 前端友好串。git2::Error 的 message 含 libgit2 英文原文，
 /// 关键类别（非仓库 / 无提交）单独中文友好化，其余透传原文加前缀。

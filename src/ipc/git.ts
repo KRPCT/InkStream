@@ -9,6 +9,9 @@ import type {
   GitOpResult,
   GitProgress,
   GitRef,
+  GitRebaseAction,
+  GitRebaseResult,
+  GitRebaseStatus,
   GitStatus,
   Issue,
   MergeMethod,
@@ -17,6 +20,7 @@ import type {
   PullRequest,
   ResetMode,
   Review,
+  ReviewComment,
   ReviewEvent,
   StashEntry,
 } from '../types/git';
@@ -124,13 +128,13 @@ export function gitStashSave(repoRoot: string, message: string): Promise<null> {
 }
 
 /** 恢复并删除指定 stash。 */
-export function gitStashPop(repoRoot: string, index: number): Promise<null> {
-  return invoke('git_stash_pop', { repoRoot, index });
+export function gitStashPop(repoRoot: string, index: number, expectedOid?: string): Promise<null> {
+  return invoke('git_stash_pop', { repoRoot, index, expectedOid });
 }
 
 /** 删除指定 stash（不恢复）。 */
-export function gitStashDrop(repoRoot: string, index: number): Promise<null> {
-  return invoke('git_stash_drop', { repoRoot, index });
+export function gitStashDrop(repoRoot: string, index: number, expectedOid?: string): Promise<null> {
+  return invoke('git_stash_drop', { repoRoot, index, expectedOid });
 }
 
 /** 列出全部 stash。 */
@@ -141,6 +145,18 @@ export function gitStashList(repoRoot: string): Promise<StashEntry[]> {
 /** 中止进行中的 merge/cherry-pick/revert，还原到操作前（冲突卡死时的安全出口）。 */
 export function gitAbortOp(repoRoot: string): Promise<null> {
   return invoke('git_abort_op', { repoRoot });
+}
+
+export function gitRebaseStatus(repoRoot: string): Promise<GitRebaseStatus> {
+  return invoke('git_rebase_status', { repoRoot });
+}
+
+export function gitRebase(repoRoot: string, requestId: string, action: GitRebaseAction): Promise<GitRebaseResult> {
+  return invoke('git_rebase', { repoRoot, requestId, action });
+}
+
+export function gitCancelRebase(repoRoot: string, requestId: string): Promise<boolean> {
+  return invoke('git_cancel_rebase', { repoRoot, requestId });
 }
 
 // ── 远程操作（W4，SSH）。进度走 Channel（invokeStreamed 自动塞 channel 参数）──────────────
@@ -179,8 +195,13 @@ export async function gitClone(
   url: string,
   dest: string,
   onProgress: (p: GitProgress) => void,
+  requestId = crypto.randomUUID(),
 ): Promise<string> {
-  return invokeStreamed('git_clone', { url, dest, options: gitRemoteOptions() }, onProgress);
+  return invokeStreamed('git_clone_owned', { url, dest, requestId, options: gitRemoteOptions() }, onProgress);
+}
+
+export function gitCancelClone(requestId: string): Promise<boolean> {
+  return invoke('git_cancel_clone', { requestId });
 }
 
 // ── GitHub 登录（簇④，Personal Access Token 存 OS 凭据库）──────────────────────
@@ -239,6 +260,14 @@ export function ghPrReviews(repoRoot: string, prNumber: number): Promise<Review[
   return invoke('gh_pr_reviews', { repoRoot, number: prNumber });
 }
 
+export function ghPrReviewComments(repoRoot: string, number: number): Promise<ReviewComment[]> {
+  return invoke('gh_pr_review_comments', { repoRoot, number });
+}
+
+export function ghPrReply(repoRoot: string, number: number, commentId: number, body: string): Promise<ReviewComment> {
+  return invoke('gh_pr_reply', { repoRoot, number, commentId, body });
+}
+
 /** 提交 PR review（approve / request-changes / comment）。 */
 export function ghPrReviewCreate(
   repoRoot: string,
@@ -289,6 +318,6 @@ export function gitReadConflict(repoRoot: string, path: string): Promise<string>
 }
 
 /** 写回解决后内容并 git add 标记 resolved。 */
-export function gitResolveConflict(repoRoot: string, path: string, content: string): Promise<null> {
-  return invoke('git_resolve_conflict', { repoRoot, path, content });
+export function gitResolveConflict(repoRoot: string, path: string, content: string, expectedContent?: string): Promise<null> {
+  return invoke('git_resolve_conflict', { repoRoot, path, content, expectedContent });
 }

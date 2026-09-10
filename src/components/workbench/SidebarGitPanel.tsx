@@ -17,7 +17,10 @@ import {
 } from '../../editor/gitActions';
 import { useGitGraphStore } from '../../stores/useGitGraphStore';
 import { useGitStore } from '../../stores/useGitStore';
+import { useGitRebaseStore } from '../../stores/useGitRebaseStore';
+import { useVaultStore } from '../../stores/useVaultStore';
 import { useWorkbenchStore } from '../../stores/useWorkbenchStore';
+import RebaseControls from '../git/RebaseControls';
 import '../../styles/git-graph.css';
 
 /**
@@ -63,11 +66,15 @@ function IconBtn({
 export default function SidebarGitPanel() {
   const repoRoot = useGitStore((s) => s.repoRoot);
   const status = useGitStore((s) => s.status);
+  const vault = useVaultStore((s) => s.vault);
+  const rebase = useGitRebaseStore();
   const [expanded, setExpanded] = useState(true);
   const [message, setMessage] = useState('');
 
-  if (!repoRoot || !status?.branch) return null;
-  const files = status.files;
+  if (!repoRoot) return null;
+  const files = status?.files ?? [];
+  const branch = status?.branch ?? '未在分支上';
+  const rebasing = rebase.scope?.vault === vault && rebase.scope?.repoRoot === repoRoot && (rebase.busy || rebase.status?.inProgress);
 
   return (
     <div data-onboarding="git-panel" className="shrink-0 border-t border-[var(--background-modifier-border)]">
@@ -78,8 +85,8 @@ export default function SidebarGitPanel() {
       >
         {expanded ? <ChevronDown size={14} aria-hidden="true" /> : <ChevronRight size={14} aria-hidden="true" />}
         <span className="font-medium">源代码管理</span>
-        <span className="ml-auto min-w-0 truncate text-[var(--text-faint)]" title={status.branch}>
-          {status.branch}
+        <span className="ml-auto min-w-0 truncate text-[var(--text-faint)]" title={branch}>
+          {branch}
         </span>
         {files.length > 0 ? (
           <span className="shrink-0 rounded-full bg-[var(--background-modifier-active)] px-1.5 text-[11px] text-[var(--text-muted)]">
@@ -90,6 +97,7 @@ export default function SidebarGitPanel() {
 
       {expanded ? (
         <div className="px-2 pb-2">
+          <RebaseControls compact />
           <div className="flex items-center gap-0.5 pb-1">
             <IconBtn icon={Download} title="获取（fetch）" onClick={() => void fetchRemote()} />
             <IconBtn icon={ArrowDownToLine} title="拉取（pull）" onClick={() => void pullCurrent()} />
@@ -114,6 +122,7 @@ export default function SidebarGitPanel() {
           </div>
 
           <textarea
+            disabled={rebasing}
             value={message}
             onChange={(e) => setMessage(e.target.value)}
             rows={2}
@@ -122,7 +131,7 @@ export default function SidebarGitPanel() {
           />
           <button
             type="button"
-            disabled={!message.trim() || files.length === 0}
+            disabled={rebasing || !message.trim() || files.length === 0}
             onClick={async () => {
               if (await commitWithMessage(message)) setMessage('');
             }}

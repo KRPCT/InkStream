@@ -10,6 +10,7 @@ use git2::{build::CheckoutBuilder, BranchType, Oid, ResetType};
 pub async fn git_checkout(repo_root: String, target: String, force: bool) -> Result<(), String> {
     super::blocking(move || {
         let repo = super::open_repo(&repo_root)?;
+        let _lease = super::rebase_registry::lock_worktree(&repo)?;
         let (obj, reference) = repo
             .revparse_ext(&target)
             .map_err(|_| GitError::Git(format!("找不到「{target}」")))?;
@@ -44,6 +45,7 @@ pub async fn git_create_branch(
 ) -> Result<(), String> {
     super::blocking(move || {
         let repo = super::open_repo(&repo_root)?;
+        let _lease = super::rebase_registry::lock_worktree(&repo)?;
         let commit = match target_oid {
             Some(s) => repo
                 .find_commit(Oid::from_str(&s).map_err(GitError::from)?)
@@ -79,6 +81,7 @@ pub async fn git_create_branch(
 pub async fn git_delete_branch(repo_root: String, name: String) -> Result<(), String> {
     super::blocking(move || {
         let repo = super::open_repo(&repo_root)?;
+        let _lease = super::rebase_registry::lock_worktree(&repo)?;
         let mut b = repo
             .find_branch(&name, BranchType::Local)
             .map_err(|_| GitError::Git(format!("分支不存在: {name}")))?;
@@ -102,6 +105,7 @@ pub async fn git_reset(
 ) -> Result<(), String> {
     super::blocking(move || {
         let repo = super::open_repo(&repo_root)?;
+        let _lease = super::rebase_registry::lock_worktree(&repo)?;
         let obj = repo
             .find_object(Oid::from_str(&target_oid).map_err(GitError::from)?, None)
             .map_err(GitError::from)?;
@@ -132,6 +136,7 @@ pub async fn git_tag_create(
 ) -> Result<(), String> {
     super::blocking(move || {
         let repo = super::open_repo(&repo_root)?;
+        let _lease = super::rebase_registry::lock_worktree(&repo)?;
         let oid = match target_oid {
             Some(s) => Oid::from_str(&s).map_err(GitError::from)?,
             None => repo.head().and_then(|h| h.peel_to_commit()).map_err(GitError::from)?.id(),
@@ -158,6 +163,7 @@ pub async fn git_tag_create(
 pub async fn git_tag_delete(repo_root: String, name: String) -> Result<(), String> {
     super::blocking(move || {
         let repo = super::open_repo(&repo_root)?;
+        let _lease = super::rebase_registry::lock_worktree(&repo)?;
         repo.tag_delete(&name)
             .map_err(|e| GitError::Git(format!("删除标签失败: {}", e.message())))?;
         Ok(())

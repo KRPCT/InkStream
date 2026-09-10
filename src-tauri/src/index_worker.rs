@@ -1,4 +1,4 @@
-use super::db;
+use super::{db, file};
 use sqlx::SqlitePool;
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
@@ -31,6 +31,7 @@ pub(super) enum Operation {
     Prepare { rebuild: bool },
     Stop,
     Upsert { path: String, content: String },
+    Refresh { path: String },
     Remove { path: String },
 }
 
@@ -120,6 +121,12 @@ async fn execute(
     let mut tx = pool.begin().await.map_err(|e| e.to_string())?;
     match operation {
         Operation::Upsert { path, content } => db::upsert(&mut tx, &db::relative_path(&path)?, &content).await?,
+        Operation::Refresh { path } => {
+            let root = scope.root.clone();
+            let (path, content) = tauri::async_runtime::spawn_blocking(move || file::read_saved(&root, &path))
+                .await.map_err(|error| format!("索引读取任务失败: {error}"))??;
+            db::upsert(&mut tx, &path, &content).await?;
+        }
         Operation::Remove { path } => db::remove(&mut tx, &db::relative_path(&path)?).await?,
         _ => unreachable!(),
     }

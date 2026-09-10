@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { RenderMode } from '../types/editor';
+import type { DocumentBudget, RenderMode } from '../types/editor';
 
 /** tab 元数据（可序列化；EditorState 实例不在此，缓存于 editor/editorState.ts）。 */
 export interface TabMeta {
@@ -35,6 +35,8 @@ interface EditorStoreState {
    * 权威 per-file 记忆在 editorState 的 renderModeCache（不可序列化态不进 store，T-03-10）。
    */
   activeRenderMode: RenderMode | null;
+  /** 当前文档的派生预算镜像；无活动文档为 null。 */
+  documentBudget: DocumentBudget | null;
   openTab: (tab: TabMeta) => void;
   closeTab: (path: string) => void;
   /**
@@ -70,6 +72,7 @@ export const useEditorStore = create<EditorStoreState>((set) => ({
   cursor: 0,
   isRichtext: false,
   activeRenderMode: 'live',
+  documentBudget: null,
   openTab: (tab) =>
     set((s) => (s.tabs.some((t) => t.path === tab.path) ? s : { tabs: [...s.tabs, tab] })),
   closeTab: (path) =>

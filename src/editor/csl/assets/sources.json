@@ -1,0 +1,59 @@
+{
+  "retrieved": "2026-09-11",
+  "assets": [
+    {
+      "file": "gbt7714-2015.csl",
+      "url": "https://raw.githubusercontent.com/citation-style-language/styles/baa973a801cefe884aa37105927b3e24ccc07daf/china-national-standard-gb-t-7714-2015-numeric.csl",
+      "sha256": "6cc69a7c401ed4b6b83c5457ef42259079406de9a177d3c5f32605ef67f2a8a0",
+      "bytes": 15530,
+      "license": "CC-BY-SA-3.0",
+      "modified": false
+    },
+    {
+      "file": "apa7.csl",
+      "url": "https://raw.githubusercontent.com/citation-style-language/styles/baa973a801cefe884aa37105927b3e24ccc07daf/apa.csl",
+      "sha256": "17bc430cf931767d551a894129b3a705e1feee91090295c09674e370ccdef5d9",
+      "bytes": 85658,
+      "license": "CC-BY-SA-3.0",
+      "modified": false
+    },
+    {
+      "file": "vancouver-nlm.csl",
+      "url": "https://raw.githubusercontent.com/citation-style-language/styles/baa973a801cefe884aa37105927b3e24ccc07daf/nlm-citation-sequence.csl",
+      "sha256": "42759650b00306c02aa5786db843c8ed67128a86b2ec0a1825a1f4e6387d51cc",
+      "bytes": 18126,
+      "license": "CC-BY-SA-3.0",
+      "modified": false
+    },
+    {
+      "file": "locales-zh-CN.xml",
+      "url": "https://raw.githubusercontent.com/citation-style-language/locales/ada9b9dcf13e9032ac25bcd002073b37cdbfc386/locales-zh-CN.xml",
+      "sha256": "f63dd0134ccd95523b3bd5216c4f43e6542595a1fcef0390678aaf6a9df5e2ef",
+      "bytes": 18641,
+      "license": "CC-BY-SA-3.0",
+      "modified": false
+    },
+    {
+      "file": "locales-en-US.xml",
+      "url": "https://raw.githubusercontent.com/citation-style-language/locales/ada9b9dcf13e9032ac25bcd002073b37cdbfc386/locales-en-US.xml",
+      "sha256": "6f2cd3d1d5527ff07a2981f7ec237753e3b6787568d053c08485802cc3d04ac0",
+      "bytes": 32649,
+      "license": "CC-BY-SA-3.0",
+      "modified": false
+    },
+    {
+      "file": "../../../../public/third-party/CPAL-1.0.txt",
+      "url": "https://raw.githubusercontent.com/spdx/license-list-data/v3.25.0/text/CPAL-1.0.txt",
+      "sha256": "54cef60295bdffd5d41904338632538db1f3cdcd4c5f7ea5bb021d04eef14d92",
+      "bytes": 28319,
+      "modified": false
+    },
+    {
+      "file": "../../../../public/third-party/CC-BY-SA-3.0.txt",
+      "url": "https://raw.githubusercontent.com/spdx/license-list-data/v3.25.0/text/CC-BY-SA-3.0.txt",
+      "sha256": "3f941b3b89cf7b8370ceb83cc76d2120d471b58735d8ca60238a751a48d7f72f",
+      "bytes": 22240,
+      "modified": false
+    }
+  ]
+}

@@ -14,6 +14,7 @@ use std::process::Command;
 
 const UA: &str = "InkStream";
 const API_VERSION: &str = "2022-11-28";
+pub(crate) mod review_comments;
 
 #[cfg(test)]
 #[path = "pr_scope_tests.rs"]
@@ -165,8 +166,8 @@ fn repo_target(repo_root: &str) -> Result<(String, String, String), String> {
     Ok((api_base(&host)?, owner, repo))
 }
 
-fn token() -> Result<String, String> {
-    super::auth::github_token().ok_or("未登录 GitHub：请先在设置里登录".to_string())
+async fn token() -> Result<String, String> {
+    super::auth::github_token().await?.ok_or("未登录 GitHub：请先在设置里登录".to_string())
 }
 
 fn client() -> reqwest::Client {
@@ -200,7 +201,7 @@ async fn read<T: serde::de::DeserializeOwned>(resp: reqwest::Response) -> Result
 #[tauri::command]
 pub async fn gh_pr_list(repo_root: String) -> Result<Vec<PullRequest>, String> {
     let (api, owner, repo) = repo_target(&repo_root)?;
-    let tok = token()?;
+    let tok = token().await?;
     let url = format!("{api}/repos/{owner}/{repo}/pulls?state=open&sort=updated&direction=desc&per_page=50");
     let resp = with_headers(client().get(&url), &tok)
         .send()
@@ -223,7 +224,7 @@ pub async fn gh_pr_create(
         return Err("PR 标题不能为空".into());
     }
     let (api, owner, repo) = repo_target(&repo_root)?;
-    let tok = token()?;
+    let tok = token().await?;
     let url = format!("{api}/repos/{owner}/{repo}/pulls");
     let payload = serde_json::json!({ "title": title, "body": body, "base": base, "head": head });
     let resp = with_headers(client().post(&url), &tok)
@@ -247,7 +248,7 @@ pub async fn gh_pr_merge(
         _ => return Err(format!("不支持的合并方式：{method}")),
     };
     let (api, owner, repo) = repo_target(&repo_root)?;
-    let tok = token()?;
+    let tok = token().await?;
     let url = format!("{api}/repos/{owner}/{repo}/pulls/{number}/merge");
     let payload = serde_json::json!({ "merge_method": m });
     let resp = with_headers(client().put(&url), &tok)
@@ -323,7 +324,7 @@ pub async fn gh_issue_list(repo_root: String, state: String) -> Result<Vec<Issue
         _ => "open",
     };
     let (api, owner, repo) = repo_target(&repo_root)?;
-    let tok = token()?;
+    let tok = token().await?;
     let url = format!(
         "{api}/repos/{owner}/{repo}/issues?state={s}&sort=updated&direction=desc&per_page=50"
     );
@@ -350,7 +351,7 @@ pub async fn gh_issue_create(
         return Err("Issue 标题不能为空".into());
     }
     let (api, owner, repo) = repo_target(&repo_root)?;
-    let tok = token()?;
+    let tok = token().await?;
     let url = format!("{api}/repos/{owner}/{repo}/issues");
     let payload = serde_json::json!({ "title": title, "body": body });
     let resp = with_headers(client().post(&url), &tok)
@@ -400,7 +401,7 @@ impl From<GhComment> for Comment {
 #[tauri::command]
 pub async fn gh_comment_list(repo_root: String, number: u64) -> Result<Vec<Comment>, String> {
     let (api, owner, repo) = repo_target(&repo_root)?;
-    let tok = token()?;
+    let tok = token().await?;
     let url = format!("{api}/repos/{owner}/{repo}/issues/{number}/comments?per_page=100");
     let resp = with_headers(client().get(&url), &tok)
         .send()
@@ -421,7 +422,7 @@ pub async fn gh_comment_create(
         return Err("评论内容不能为空".into());
     }
     let (api, owner, repo) = repo_target(&repo_root)?;
-    let tok = token()?;
+    let tok = token().await?;
     let url = format!("{api}/repos/{owner}/{repo}/issues/{number}/comments");
     let payload = serde_json::json!({ "body": body });
     let resp = with_headers(client().post(&url), &tok)
@@ -533,7 +534,7 @@ fn parse_patch(patch: &str) -> Vec<DiffHunk> {
 #[tauri::command]
 pub async fn gh_pr_diff(repo_root: String, number: u64) -> Result<Vec<FileDiff>, String> {
     let (api, owner, repo) = repo_target(&repo_root)?;
-    let tok = token()?;
+    let tok = token().await?;
     let url = format!("{api}/repos/{owner}/{repo}/pulls/{number}/files?per_page=100");
     let resp = with_headers(client().get(&url), &tok)
         .send()
@@ -611,7 +612,7 @@ impl From<GhReview> for Review {
 #[tauri::command]
 pub async fn gh_pr_reviews(repo_root: String, number: u64) -> Result<Vec<Review>, String> {
     let (api, owner, repo) = repo_target(&repo_root)?;
-    let tok = token()?;
+    let tok = token().await?;
     let url = format!("{api}/repos/{owner}/{repo}/pulls/{number}/reviews?per_page=100");
     let resp = with_headers(client().get(&url), &tok)
         .send()
@@ -637,7 +638,7 @@ pub async fn gh_pr_review_create(
         return Err("该 review 类型需要填写评论内容".into());
     }
     let (api, owner, repo) = repo_target(&repo_root)?;
-    let tok = token()?;
+    let tok = token().await?;
     let url = format!("{api}/repos/{owner}/{repo}/pulls/{number}/reviews");
     let payload = serde_json::json!({ "event": ev, "body": body });
     let resp = with_headers(client().post(&url), &tok)

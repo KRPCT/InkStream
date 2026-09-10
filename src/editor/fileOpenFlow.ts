@@ -8,9 +8,13 @@ import { useVaultStore } from '../stores/useVaultStore';
 import type { TreeNode } from '../types/vault';
 import { baseExtensions } from './extensions';
 import { openFile, snapshotBeforeSwitch, switchToTab } from './editorState';
-import { languageFromDoc } from './languages';
+import { initialLanguageForDocument } from './languages';
 import { basename, parentDir, relativeWithin, stripVerbatim } from './pathUtil';
 import { getView, revealRange } from './viewHandle';
+
+function readFailure(error: unknown): string {
+  return error instanceof Error ? error.message : typeof error === 'string' ? error : '读取失败，请检查文件是否可访问。';
+}
 
 /**
  * 文件打开编排（从 vaultFlow 析出，289 行超限拆分）。
@@ -30,12 +34,12 @@ export async function openFileInEditor(view: EditorView, node: TreeNode, request
     if (!isCurrentDocumentNavigation(request) || useVaultStore.getState().vault !== vault) return;
     // 初始语言：frontmatter `language:` 优先于扩展名（D-13 文档单一真相源，EDIT-05），
     // 否则按扩展名解析（.py/.rs/.css 即得高亮，EDIT-04）。
-    const lang = languageFromDoc(doc, node.id);
+    const lang = initialLanguageForDocument(doc, node.id);
     useEditorStore.getState().openTab({ path: node.id, name: node.name });
-    await openFile(view, node.id, doc, baseExtensions(lang), request);
-  } catch {
+    await openFile(view, node.id, doc, baseExtensions(lang, doc.length), request);
+  } catch (error) {
     if (!isCurrentDocumentNavigation(request) || useVaultStore.getState().vault !== vault) return;
-    showToast('error', `无法读取「${node.name}」，文件可能已被删除或没有访问权限。`);
+    showToast('error', `无法读取「${node.name}」：${readFailure(error)}`);
   }
 }
 
@@ -137,11 +141,11 @@ export async function openExternalFile(absPath: string): Promise<void> {
   try {
     const doc = await readFile(parentDir(norm), name, { signal: documentNavigationSignal(request) });
     if (!isCurrentDocumentNavigation(request) || vault !== useVaultStore.getState().vault) return;
-    const lang = languageFromDoc(doc, norm);
+    const lang = initialLanguageForDocument(doc, norm);
     useEditorStore.getState().openTab({ path: norm, name, external: true });
-    await openFile(view, norm, doc, baseExtensions(lang), request);
-  } catch {
+    await openFile(view, norm, doc, baseExtensions(lang, doc.length), request);
+  } catch (error) {
     if (!isCurrentDocumentNavigation(request) || vault !== useVaultStore.getState().vault) return;
-    showToast('error', `无法打开「${name}」，文件可能不存在或没有访问权限。`);
+    showToast('error', `无法打开「${name}」：${readFailure(error)}`);
   }
 }

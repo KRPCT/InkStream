@@ -17,6 +17,14 @@ const gitBranchList = vi.fn().mockResolvedValue([]);
 const gitLog = vi.fn().mockResolvedValue([]);
 const gitRefs = vi.fn().mockResolvedValue([]);
 const gitDiff = vi.fn().mockResolvedValue([]);
+const gitCommit = vi.fn().mockResolvedValue(undefined);
+const gitFetch = vi.fn().mockResolvedValue(undefined);
+const prompt = vi.hoisted(() => ({ input: vi.fn() }));
+vi.mock('../stores/usePromptStore', () => ({ promptInput: prompt.input }));
+vi.mock('./gitWorktreeMutation', async (load) => {
+  const actual = await load<typeof import('./gitWorktreeMutation')>();
+  return { ...actual, runGitWorktreeMutation: vi.fn(async (_scope: unknown, write: () => Promise<unknown>) => ({ kind: 'executed', value: await write() })) };
+});
 
 vi.mock('../ipc/git', () => ({
   gitStatus: (...a: unknown[]) => gitStatus(...a),
@@ -24,16 +32,48 @@ vi.mock('../ipc/git', () => ({
   gitLog: (...a: unknown[]) => gitLog(...a),
   gitRefs: (...a: unknown[]) => gitRefs(...a),
   gitDiff: (...a: unknown[]) => gitDiff(...a),
+  gitCommit: (...a: unknown[]) => gitCommit(...a),
+  gitFetch: (...a: unknown[]) => gitFetch(...a),
 }));
 
-const { refreshGitAll } = await import('./gitActions');
+const { refreshGitAll, commitChanges, fetchRemote } = await import('./gitActions');
 const { useGitStore } = await import('../stores/useGitStore');
 const { useGitGraphStore } = await import('../stores/useGitGraphStore');
+const { useVaultStore } = await import('../stores/useVaultStore');
+const { useWorkbenchStore } = await import('../stores/useWorkbenchStore');
 
 beforeEach(() => {
   vi.clearAllMocks();
   useGitStore.setState({ repoRoot: '/repo', status: null, branches: [] });
+  useVaultStore.setState({ vault: { root: '/repo', repoRoot: '/repo', name: 'repo' } });
   useGitGraphStore.setState({ repoRoot: null, commits: [], refs: [] });
+  useWorkbenchStore.setState({ centralView: 'editor' });
+});
+
+it('旧仓库 fetch 迟到完成不能把新工作区图谱切回旧仓库', async () => {
+  let finish!: () => void;
+  gitFetch.mockReturnValue(new Promise<void>((resolve) => { finish = resolve; }));
+  const pending = fetchRemote();
+  useVaultStore.setState({ vault: { root: '/repo-b', repoRoot: '/repo-b', name: 'b' } });
+  useGitStore.setState({ repoRoot: '/repo-b' });
+  useGitGraphStore.setState({ repoRoot: '/repo-b', remoteBusy: 'B workspace operation' });
+  useWorkbenchStore.setState({ centralView: 'gitGraph' });
+  finish();
+  await pending;
+  expect(useGitGraphStore.getState().repoRoot).toBe('/repo-b');
+  expect(useGitGraphStore.getState().remoteBusy).toBe('B workspace operation');
+  expect(gitRefs).not.toHaveBeenCalledWith('/repo');
+});
+
+it('旧工作区提交弹窗的结果不能提交后来打开的工作区', async () => {
+  let reply!: (value: string) => void;
+  prompt.input.mockReturnValue(new Promise<string>((resolve) => { reply = resolve; }));
+  const pending = commitChanges();
+  useVaultStore.setState({ vault: { root: '/repo-b', repoRoot: '/repo-b', name: 'b' } });
+  useGitStore.setState({ repoRoot: '/repo-b' });
+  reply('feat: old workspace message');
+  await pending;
+  expect(gitCommit).not.toHaveBeenCalled();
 });
 
 describe('refreshGitAll', () => {

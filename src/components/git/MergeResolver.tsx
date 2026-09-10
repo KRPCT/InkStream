@@ -9,10 +9,16 @@ import {
 } from '../../diff/parseConflicts';
 import { proseDiff, type ProseStatus } from '../../diff/proseDiff';
 import { abortOp } from '../../editor/gitActions';
-import { gitReadConflict, gitResolveConflict } from '../../ipc/git';
+import { resolveGitConflict } from '../../editor/gitConflictActions';
+import { captureGitWorktreeScope, isCurrentGitScope, type GitWorktreeScope } from '../../editor/gitWorktreeMutation';
+import { gitReadConflict } from '../../ipc/git';
 import { useGitStore } from '../../stores/useGitStore';
+import { useGitRebaseStore } from '../../stores/useGitRebaseStore';
+import { useVaultStore } from '../../stores/useVaultStore';
 import { useWorkbenchStore } from '../../stores/useWorkbenchStore';
 import { showToast } from '../../stores/useToastStore';
+import type { GitFileStatus } from '../../types/git';
+import RebaseControls from './RebaseControls';
 
 function segStyle(status: ProseStatus): React.CSSProperties {
   if (status === 'insert') return { background: 'var(--graph-diff-add-bg)' };
@@ -32,22 +38,27 @@ function ConflictCard({
   part,
   choice,
   onChoose,
+  rebasing,
+  disabled,
 }: {
   part: Extract<MergePart, { kind: 'conflict' }>;
   choice: ConflictChoice;
   onChoose: (c: ConflictChoice) => void;
+  rebasing: boolean;
+  disabled: boolean;
 }) {
   const segs = useMemo(() => proseDiff(part.ours, part.theirs), [part.ours, part.theirs]);
   return (
     <div className="my-2 rounded-[4px] border border-[var(--accent)] p-2">
       <div className="mb-1.5 flex items-center gap-1 text-[12px] text-[var(--text-muted)]">
         <GitMerge size={12} aria-hidden="true" />
-        <span>冲突（本方 ↔ 对方）</span>
+        <span>{rebasing ? '冲突（目标分支及已重放提交 ↔ 正在重放的原提交）' : '冲突（本方 ↔ 对方）'}</span>
         <div className="ml-auto flex gap-1">
           {CHOICES.map((c) => (
             <button
               key={c.key}
               type="button"
+              disabled={disabled}
               onClick={() => onChoose(c.key)}
               className={`rounded-[3px] px-1.5 py-0.5 text-[11px] ${
                 choice === c.key
@@ -55,7 +66,7 @@ function ConflictCard({
                   : 'text-[var(--text-muted)] hover:bg-[var(--background-modifier-hover)]'
               }`}
             >
-              {c.label}
+              {rebasing && c.key === 'ours' ? '采纳目标分支' : rebasing && c.key === 'theirs' ? '采纳正在重放的提交' : c.label}
             </button>
           ))}
         </div>
@@ -76,16 +87,38 @@ function ConflictCard({
  * 标记切成干净段（原样）与冲突块，对每块用句级 diff 呈现本方↔对方差异并按块采纳，组装写回 + git add。
  * 全部解决后该文件离开冲突列表；列表空 → 提示去 git 面板提交。打开不抢编辑器焦点（IME 安全）。
  */
+const NO_FILES: GitFileStatus[] = [];
+interface LoadedConflict {
+  scope: GitWorktreeScope;
+  path: string;
+  revision: number;
+  operation: string;
+  content: string;
+  parts: MergePart[];
+  choices: ConflictChoice[];
+}
+
 export default function MergeResolver() {
   const repoRoot = useGitStore((s) => s.repoRoot);
-  const files = useGitStore((s) => s.status?.files ?? []);
+  const vault = useVaultStore((s) => s.vault);
+  const files = useGitStore((s) => s.status?.files ?? NO_FILES);
+  const rebaseStatus = useGitRebaseStore((s) => s.status);
+  const rebaseScope = useGitRebaseStore((s) => s.scope);
+  const rebaseBusy = useGitRebaseStore((s) => s.busy);
+  const rebasing = rebaseScope?.vault === vault && rebaseScope?.repoRoot === repoRoot && rebaseStatus?.inProgress === true;
+  const operation = rebasing ? `${rebaseStatus.originalHead}:${rebaseStatus.onto}:${rebaseStatus.currentCommit}:${rebaseStatus.step}` : '';
   const conflicted = useMemo(() => files.filter((f) => f.status === 'conflicted'), [files]);
   const setCentralView = useWorkbenchStore((s) => s.setCentralView);
 
   const [selected, setSelected] = useState<string | null>(null);
-  const [parts, setParts] = useState<MergePart[]>([]);
-  const [choices, setChoices] = useState<ConflictChoice[]>([]);
+  const [loaded, setLoaded] = useState<LoadedConflict | null>(null);
+  const [revision, setRevision] = useState(0);
+  const [loadError, setLoadError] = useState<{ scope: GitWorktreeScope; path: string; revision: number; operation: string; error: string } | null>(null);
   const [busy, setBusy] = useState(false);
+  const document = loaded && loaded.scope.repoRoot === repoRoot && loaded.scope.vault === vault && loaded.path === selected && loaded.revision === revision && loaded.operation === operation ? loaded : null;
+  const parts = document?.parts ?? [];
+  const choices = document?.choices ?? [];
+  const error = loadError?.scope.repoRoot === repoRoot && loadError.scope.vault === vault && loadError.path === selected && loadError.revision === revision && loadError.operation === operation ? loadError.error : null;
 
   // 默认选中首个冲突文件；冲突列表变化时若当前选中已解决则换选。
   useEffect(() => {
@@ -101,36 +134,37 @@ export default function MergeResolver() {
   // 读取并解析选中文件。
   useEffect(() => {
     if (!repoRoot || !selected) {
-      setParts([]);
-      setChoices([]);
+      setLoaded(null);
+      setLoadError(null);
       return;
     }
+    const scope = captureGitWorktreeScope();
+    if (!scope || scope.repoRoot !== repoRoot) { setLoaded(null); return; }
     let cancelled = false;
+    setLoaded(null);
+    setLoadError(null);
     void gitReadConflict(repoRoot, selected)
       .then((content) => {
-        if (cancelled) return;
+        if (cancelled || !isCurrentGitScope(scope)) return;
         const p = parseConflicts(content);
-        setParts(p);
-        setChoices(Array.from({ length: conflictCount(p) }, () => 'ours'));
+        setLoaded({ scope, path: selected, revision, operation, content, parts: p, choices: Array.from({ length: conflictCount(p) }, () => 'ours') });
       })
       .catch((e) => {
-        if (!cancelled) showToast('error', e instanceof Error ? e.message : String(e));
+        if (!cancelled && isCurrentGitScope(scope)) setLoadError({ scope, path: selected, revision, operation, error: e instanceof Error ? e.message : String(e) });
       });
     return () => {
       cancelled = true;
     };
-  }, [repoRoot, selected]);
+  }, [repoRoot, selected, vault, revision, operation]);
 
   const save = async (): Promise<void> => {
-    if (!repoRoot || !selected || busy) return;
+    if (!document || busy || rebaseBusy) return;
     // 入口快照路径与内容，贯穿整个 await——避免期间冲突列表变化改写 selected/parts 致写错文件。
-    const path = selected;
-    const content = assembleResolution(parts, choices);
+    const snapshot = document;
+    const content = assembleResolution(snapshot.parts, snapshot.choices);
     setBusy(true);
     try {
-      await gitResolveConflict(repoRoot, path, content);
-      await useGitStore.getState().refresh();
-      setSelected(null); // 该文件离开冲突列表即为反馈（ToastKind 仅 error/warning）
+      if (await resolveGitConflict(snapshot.scope, snapshot.path, snapshot.content, content)) setSelected(null);
     } catch (e) {
       showToast('error', e instanceof Error ? e.message : String(e));
     } finally {
@@ -152,20 +186,21 @@ export default function MergeResolver() {
 
   return (
     <div className="flex h-full flex-col bg-[var(--background-primary)]">
+      <RebaseControls showResolve={false} />
       <div className="flex h-8 shrink-0 items-center justify-between border-b border-[var(--background-modifier-border)] px-2">
         <div className="flex items-center gap-1.5 text-[12px] text-[var(--text-muted)]">
           <GitMerge size={14} aria-hidden="true" />
-          <span>合并冲突解决 · {conflicted.length} 个文件待解决</span>
+          <span>{rebasing ? '变基冲突解决' : '合并冲突解决'} · {conflicted.length} 个文件待解决</span>
         </div>
         <div className="flex items-center gap-1">
-          <button
+          {!rebasing ? <button
             type="button"
             disabled={busy}
             onClick={() => void abortMerge()}
             className="rounded px-2 py-0.5 text-[12px] text-[var(--text-muted)] hover:bg-[var(--background-modifier-hover)] hover:text-[var(--text-normal)] disabled:opacity-50"
           >
             中止合并
-          </button>
+          </button> : null}
           <button
             type="button"
             title="关闭（回编辑器）"
@@ -178,7 +213,7 @@ export default function MergeResolver() {
       </div>
       {conflicted.length === 0 ? (
         <div className="flex h-full items-center justify-center text-[13px] text-[var(--text-muted)]">
-          全部冲突已解决，请在左下角 git 面板提交合并结果。
+          {rebasing ? '全部冲突已标记解决，请继续变基。' : '全部冲突已解决，请在左下角 git 面板提交合并结果。'}
         </div>
       ) : (
         <div className="flex min-h-0 flex-1">
@@ -202,6 +237,7 @@ export default function MergeResolver() {
           </div>
           <div className="flex min-w-0 flex-1 flex-col">
             <div className="min-h-0 flex-1 overflow-auto p-3">
+              {!document ? <p role={error ? 'alert' : 'status'} className="text-[13px] text-[var(--text-muted)]">{error ?? '正在读取当前冲突文件…'}</p> : null}
               {parts.map((p, i) => {
                 if (p.kind === 'clean') {
                   if (!p.text.trim()) return null;
@@ -220,12 +256,15 @@ export default function MergeResolver() {
                   <ConflictCard
                     key={i}
                     part={p}
+                    rebasing={rebasing}
+                    disabled={busy || rebaseBusy}
                     choice={choices[idx] ?? 'ours'}
                     onChoose={(c) =>
-                      setChoices((prev) => {
-                        const next = [...prev];
+                      setLoaded((prev) => {
+                        if (!prev || !document || prev.scope.vault !== document.scope.vault || prev.path !== document.path || prev.revision !== document.revision || prev.operation !== document.operation) return prev;
+                        const next = [...prev.choices];
                         next[idx] = c;
-                        return next;
+                        return { ...prev, choices: next };
                       })
                     }
                   />
@@ -236,9 +275,10 @@ export default function MergeResolver() {
               <span className="text-[12px] text-[var(--text-muted)]">
                 {conflictCount(parts)} 处冲突
               </span>
+              <button type="button" disabled={busy || rebaseBusy || !selected} className="text-[12px] text-[var(--text-muted)] underline disabled:opacity-50" onClick={() => setRevision((value) => value + 1)}>重新读取冲突</button>
               <button
                 type="button"
-                disabled={busy || !selected}
+                disabled={busy || rebaseBusy || !document}
                 onClick={() => void save()}
                 className="rounded-[4px] bg-[var(--accent)] px-3 py-1 text-[12px] font-medium text-[var(--background-primary)] disabled:opacity-50"
               >

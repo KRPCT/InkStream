@@ -1,5 +1,6 @@
-import type { EditorView } from '@codemirror/view';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { EditorState } from '@codemirror/state';
+import { EditorView } from '@codemirror/view';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 /** TypstWidget 回归门（Phase 5 W3）。typstClient 经 mock 控制就绪态/缓存，避免真 Worker + wasm。 */
 
@@ -17,13 +18,22 @@ vi.mock('../typst/typstClient', () => ({
 }));
 
 const { TypstWidget } = await import('./TypstWidget');
-const fakeView = {} as EditorView;
+let fakeView: EditorView;
+let editorHost: HTMLDivElement;
 
 beforeEach(() => {
+  editorHost = document.createElement('div');
+  document.body.appendChild(editorHost);
+  fakeView = new EditorView({ state: EditorState.create({ doc: ' '.repeat(64) }), parent: editorHost });
   ready = false;
   cache.clear();
   ensureTypst.mockClear();
   requestCompile.mockClear();
+});
+
+afterEach(() => {
+  fakeView.destroy();
+  editorHost.remove();
 });
 
 describe('TypstWidget', () => {

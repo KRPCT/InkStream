@@ -61,7 +61,7 @@ sqlx = { version = "=0.8.6", default-features = false, features = ["runtime-toki
 # bundled build.rs 无条件带 -DSQLITE_ENABLE_FTS5（内捆 SQLite 3.46，FTS5/trigram 开箱）；钉死 0.30.1 防漂移。
 libsqlite3-sys = { version = "=0.30.1", features = ["bundled"] }
 # 写队列 mpsc：与 tauri 内捆 tokio 同版本节点，仅 union sync feature（不引新编译单元）。
-tokio = { version = "=1.52.3", default-features = false, features = ["sync"] }
+tokio = { version = "=1.52.3", default-features = false, features = ["sync", "time", "macros"] }
 # 前端只读 SQL 查询通道（写全在 Rust，capability 仅授 sql:default 只读集）。
 tauri-plugin-sql = { version = "=2.4.0", features = ["sqlite"] }
 # 链接匹配键采用 NFC 规范化；索引中的物理文件路径保留实际 Unicode 形式，避免合并不同文件。
@@ -83,6 +83,7 @@ git2 = { version = "=0.21.0", default-features = false, features = [
 reqwest = { version = "=0.13.4", default-features = false, features = [
     "default-tls",
     "json",
+    "form",
 ] }
 # 右键菜单「粘贴」修复（v1.2.1）：WebView2/Chromium 禁用网页内容的 execCommand('paste')，菜单粘贴
 # 读不到系统剪贴板（Ctrl+V 走受信原生 paste 事件不受影响）。改走 OS 剪贴板 API。Tauri 官方
@@ -93,3 +94,14 @@ tauri-plugin-clipboard-manager = "=2.3.2"
 # wezterm 终端模拟器同款 PTY 后端，成熟度高、无 install hook。默认 feature 即可（含各平台 pty 实现）。
 # 阻塞 I/O：每会话起一条读线程 read→Channel<InvokeResponseBody>::Raw 回传，与 tokio 运行时正交。精确 pin。
 portable-pty = "=0.9.0"
+
+[target.'cfg(windows)'.dependencies]
+# Own the process tree of cancellable Git operations from creation through shutdown.
+windows-sys = { version = "=0.61.2", features = [
+    "Win32_Foundation", "Win32_Security", "Win32_System_JobObjects",
+    "Win32_System_Threading", "Win32_System_Pipes",
+    "Win32_Storage_FileSystem",
+] }
+
+[target.'cfg(unix)'.dependencies]
+libc = "=0.2.186"

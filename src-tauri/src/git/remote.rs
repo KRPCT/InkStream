@@ -6,7 +6,7 @@ use serde::Serialize;
 use tauri::ipc::Channel;
 
 #[path = "remote_policy.rs"]
-mod policy;
+pub(super) mod policy;
 #[path = "remote_runner.rs"]
 mod runner;
 
@@ -14,7 +14,7 @@ pub use policy::RemoteOptions;
 
 /// Git 在重定向/credential context 改变后会再次调用 helper；不能只校验最初的 remote URL。
 /// 不读取/保存系统凭据，只在匹配 HTTPS github.com 默认端口的 get 请求中返回应用 token。
-const CRED_HELPER: &str = r#"credential.helper=!f() {
+pub(super) const CRED_HELPER: &str = r#"credential.helper=!f() {
   test "$1" = get || return 0
   protocol= host=
   while IFS= read -r line; do
@@ -108,6 +108,7 @@ pub async fn git_pull(
     channel: Channel<GitProgress>,
 ) -> Result<PullOutcome, String> {
     super::blocking(move || {
+        let _lease = super::rebase_registry::lock_worktree(&super::open_repo(&repo_root)?)?;
         let target = target_for(&options, &repo_root, &remote, false)?;
         let before = runner::head_oid(&repo_root);
         let (ok, err) = runner::run_streamed(

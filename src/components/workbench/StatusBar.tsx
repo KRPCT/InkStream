@@ -10,6 +10,9 @@ import HudHintIndicator from './HudHintIndicator';
 import ModeIndicator from './ModeIndicator';
 import RenderModeIndicator from './RenderModeIndicator';
 import WordCountIndicator from './WordCountIndicator';
+import TypstIndicator from './TypstIndicator';
+import DocumentWordCountIndicator from './DocumentWordCountIndicator';
+import CreativeStatusIndicator from './CreativeStatusIndicator';
 
 /**
  * StatusBar 插槽：高 24px、顶部 1px 边框（UI-SPEC Layout Contract）。
@@ -39,9 +42,12 @@ export default function StatusBar() {
       </div>
       <div data-testid="status-bar-right" className="flex h-full">
         <CursorPositionIndicator />
+        {caps.showWordCount ? <DocumentWordCountIndicator /> : null}
         {caps.showWordCount ? <WordCountIndicator /> : null}
+        {caps.showWordCount ? <CreativeStatusIndicator /> : null}
         <HudHintIndicator />
         {caps.showCitation ? <CitationIndicator /> : null}
+        {caps.showCitation ? <TypstIndicator /> : null}
         <RenderModeIndicator />
         {caps.showModeSwitch ? <ModeIndicator /> : null}
       </div>

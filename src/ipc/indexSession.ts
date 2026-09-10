@@ -4,7 +4,7 @@ import { useToastStore } from '../stores/useToastStore';
 import { useVaultStore } from '../stores/useVaultStore';
 import type { IndexScope } from '../types/index';
 import { closeIndexReads, retireIndexRead } from './indexConnection';
-import { captureIndexScope, isCurrentIndexScope, resetIndexScope } from './indexScope';
+import { captureIndexScope, isCurrentIndexScope, isIndexScopePaused, resetIndexScope } from './indexScope';
 import { invoke } from './invoke';
 
 let prepared: { scope: IndexScope; promise: Promise<null> } | null = null;
@@ -108,8 +108,33 @@ export function indexUpsertDoc(path: string, content: string, scope = captureInd
   return write(scope, () => invoke('index_upsert_doc', { ...scope!, path: path.split('\\').join('/'), content }));
 }
 
+/** 已落盘文件只传身份；原生在所属actor中读盘，真实提交后才完成此Promise。 */
+export function indexRefreshFile(path: string, scope = captureIndexScope()): Promise<null> {
+  if (!scope || !isCurrentIndexScope(scope)) return Promise.reject(new Error('索引工作区会话已过期或未启用'));
+  return write(scope, () => invoke('index_refresh_file', { ...scope, path: path.split('\\').join('/') })).then((result) => {
+    if (!isCurrentIndexScope(scope)) throw new Error('索引工作区会话已过期');
+    return result;
+  });
+}
+
 export function indexRemoveDoc(path: string, scope = captureIndexScope()): Promise<null> {
   return write(scope, () => invoke('index_remove_doc', { ...scope!, path: path.split('\\').join('/') }));
+}
+
+/** Close every captured preparation for this root before a worktree mutation starts. */
+export async function quiesceIndexSession(root: string, captured: IndexScope | null): Promise<void> {
+  const scopes = new Map<string, IndexScope>();
+  if (captured?.root === root) scopes.set(captured.sessionId, captured);
+  if (prepared?.scope.root === root) {
+    scopes.set(prepared.scope.sessionId, prepared.scope);
+    prepared = null;
+  }
+  for (const scope of scopes.values()) {
+    retireIndexRead(scope);
+    mutations.delete(scope.sessionId);
+    await invoke('index_switch_vault', { ...scope, enabled: false });
+  }
+  await closeIndexReads();
 }
 
 let stopLifecycle: (() => void) | null = null;
@@ -120,7 +145,8 @@ export function initIndexLifecycle(): () => void {
     if (scope) { void ensureIndexReady(scope).catch(() => {}); return; }
     if (prepared) retire(prepared.scope);
     prepared = null;
-    useIndexStore.setState({ scope: null, status: 'disabled', error: null });
+    const paused = isIndexScopePaused(useVaultStore.getState().vault) && !useSettingsStore.getState().simpleMode;
+    useIndexStore.setState({ scope: null, status: paused ? 'preparing' : 'disabled', error: null });
     void closeIndexReads().catch((error) => useIndexStore.setState({ status: 'error', error: message(error) }));
   };
   const vault = useVaultStore.subscribe((next, old) => { if (next.vault !== old.vault) sync(); });

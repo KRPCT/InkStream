@@ -2,6 +2,7 @@ import type { EditorView } from '@codemirror/view';
 import { useEditorStore } from '../stores/useEditorStore';
 import { getRenderMode, isMarkdownDoc, setRenderMode } from './livepreview/renderMode';
 import type { RenderMode } from '../types/editor';
+import { isBasicEditing } from './documentBudget';
 
 /**
  * 每文件渲染模式记忆（D-03 会话内，EDIT-02）。从 editorState 析出（Phase 3 renderMode 重设计预备隔离面）。
@@ -24,6 +25,10 @@ export function getRenderModeForPath(path: string): RenderMode | null {
  * 非 markdown 文档：镜像置 null——指示器隐藏、toggle 命令 no-op（D-01 同条件）。
  */
 export function syncRenderMode(view: EditorView, path: string): void {
+  if (isBasicEditing(view.state)) {
+    useEditorStore.getState().setActiveRenderMode('source');
+    return;
+  }
   const md = isMarkdownDoc(view.state.doc.toString(), path);
   useEditorStore.getState().setActiveRenderMode(md ? getRenderMode(view) : null);
 }
@@ -35,6 +40,7 @@ export function syncRenderMode(view: EditorView, path: string): void {
  * （其 compartment 本就空），镜像由 syncRenderMode 置 null。
  */
 export function applyRenderMode(view: EditorView, path: string): void {
+  if (isBasicEditing(view.state)) { syncRenderMode(view, path); return; }
   if (isMarkdownDoc(view.state.doc.toString(), path)) {
     setRenderMode(view, renderModeCache.get(path) ?? 'live');
   }
@@ -43,6 +49,7 @@ export function applyRenderMode(view: EditorView, path: string): void {
 
 /** 切走某文件前记录其 renderMode 记忆（仅 markdown/richtext 文档有切换语义）。 */
 export function snapshotRenderMode(view: EditorView, path: string): void {
+  if (isBasicEditing(view.state)) return;
   if (isMarkdownDoc(view.state.doc.toString(), path)) {
     renderModeCache.set(path, getRenderMode(view));
   }

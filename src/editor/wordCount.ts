@@ -3,6 +3,7 @@ import type { EditorView } from '@codemirror/view';
 import { countWords } from '../lib/wordCount';
 import { useWordCountStore } from '../stores/useWordCountStore';
 import { bodyStart } from './frontmatter';
+import { isBasicEditing, LARGE_DOCUMENT_UNITS } from './documentBudget';
 
 /**
  * Creative 字数镜像（CREA-04）。activeCount=活动文档正文字数；todayWritten=今日净写入。
@@ -28,8 +29,9 @@ function defaultDeps(): WordCountDeps {
 }
 let deps = defaultDeps();
 let day = '';
-let lastActive = 0;
+let lastActive: number | null = 0;
 let todayWritten = 0;
+let todayComplete = true;
 
 /** 测试注入 dayKey 桩。 */
 export function configureWordCount(next: Partial<WordCountDeps>): void {
@@ -42,24 +44,41 @@ export function resetWordCount(): void {
   day = '';
   lastActive = 0;
   todayWritten = 0;
+  todayComplete = true;
 }
 
 function mirror(activeCount: number): void {
   const s = useWordCountStore.getState();
-  if (s.activeCount !== activeCount || s.todayWritten !== todayWritten) {
-    s.report(activeCount, todayWritten);
+  if (s.activeCount !== activeCount || s.todayWritten !== todayWritten || s.todayComplete !== todayComplete) {
+    useWordCountStore.setState({ activeCount, todayWritten, todayComplete });
+  }
+}
+
+function updateDay(): void {
+  const today = deps.dayKey();
+  if (today !== day) {
+    day = today;
+    todayWritten = 0;
+    todayComplete = true;
+  }
+}
+
+function pause(edited: boolean): void {
+  updateDay();
+  lastActive = null;
+  if (edited) todayComplete = false;
+  const state = useWordCountStore.getState();
+  if (state.activeCount !== null || state.todayWritten !== todayWritten || state.todayComplete !== todayComplete) {
+    useWordCountStore.setState({ activeCount: null, todayWritten, todayComplete });
   }
 }
 
 /** docChanged 触发：换日先归零，累加净写入（删减亦计、夹至 ≥0），更新活动字数。 */
 export function syncWordCount(view: EditorView): void {
+  if (isBasicEditing(view.state)) { pause(true); return; }
   const count = extractWordCount(view.state);
-  const today = deps.dayKey();
-  if (today !== day) {
-    day = today;
-    todayWritten = 0;
-  }
-  todayWritten += count - lastActive;
+  updateDay();
+  if (lastActive !== null) todayWritten += count - lastActive;
   if (todayWritten < 0) todayWritten = 0;
   lastActive = count;
   mirror(count);
@@ -67,7 +86,22 @@ export function syncWordCount(view: EditorView): void {
 
 /** 开/切文档（openFile/switchToTab 换装）触发：仅把基线设为新文档字数，不计入今日写入。 */
 export function rebaseWordCount(view: EditorView): void {
+  syncWordSelection(view);
+  if (isBasicEditing(view.state)) { pause(false); return; }
+  updateDay();
   const count = extractWordCount(view.state);
   lastActive = count;
   mirror(count);
+}
+
+/** Selection counts use the selected text only; very large selections remain explicitly uncounted. */
+export function syncWordSelection(view: EditorView): void {
+  const ranges = view.state.selection.ranges.filter((range) => !range.empty);
+  const length = ranges.reduce((sum, range) => sum + range.to - range.from, 0);
+  const selectedCount = length >= LARGE_DOCUMENT_UNITS ? null
+    : ranges.reduce((sum, range) => sum + countWords(view.state.sliceDoc(range.from, range.to)), 0);
+  const hasSelection = ranges.length > 0;
+  const before = useWordCountStore.getState();
+  if (before.selectedCount !== selectedCount || before.hasSelection !== hasSelection)
+    useWordCountStore.setState({ selectedCount, hasSelection });
 }

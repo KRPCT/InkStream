@@ -10,6 +10,13 @@ import { dispose as disposeKeymap, init as initKeymap, normalizeEvent } from './
 import { hydrate } from './mru';
 import { execute, getAll } from './registry';
 import { toggleRenderMode } from '../editor/livepreview/renderMode';
+import { ACADEMIC_COMMANDS } from './academicCommands';
+import { BOOKSHELF_COMMANDS } from './bookshelfCommands';
+import { CORE_COMMANDS } from './coreCommands';
+import { EXPORT_COMMANDS } from './exportCommands';
+import { GIT_COMMANDS } from './gitCommands';
+import { TEXT_COMMANDS } from './textCommands';
+import { VIEW_COMMANDS } from './viewCommands';
 
 vi.mock('../editor/livepreview/renderMode', () => ({
   toggleRenderMode: vi.fn(() => null),
@@ -115,10 +122,11 @@ const TITLES: Record<string, string> = {
   // 学术组（Phase 8）
   'academic.cite': '学术：插入引用（Zotero）',
   'academic.footnote': '学术：插入脚注',
+  'academic.number-equations': '学术：公式编号',
   'academic.bibliography': '学术：插入参考文献',
-  'academic.biblio-gbt7714': '学术：参考文献（GB/T 7714）',
-  'academic.biblio-apa': '学术：参考文献（APA）',
-  'academic.biblio-vancouver': '学术：参考文献（Vancouver）',
+  'academic.biblio-gbt7714': '学术：参考文献（GB/T 7714-2015）',
+  'academic.biblio-apa': '学术：参考文献（APA 第7版）',
+  'academic.biblio-vancouver': '学术：参考文献（Vancouver / NLM）',
   // 书架（FEAT-SHELF ×4）
   'bookshelf.open': '书架：打开书架',
   'bookshelf.add-current': '书架：把当前阅读文档加入书架',
@@ -127,7 +135,10 @@ const TITLES: Record<string, string> = {
 };
 
 /** 生产命令总数：…前略… + pandoc 格式导出(×6) + 检查更新(×1) + 更新公告(×1) + 书架(open/add/import-files/import-folder ×4) + 内置终端(×1, #3) + 界面缩放(zoom-in/out/reset ×3, v1.2.1) = 91。 */
-const COMMAND_COUNT = 91;
+const EXPECTED_COMMAND_IDS = [
+  ...CORE_COMMANDS, ...VIEW_COMMANDS, ...EXPORT_COMMANDS, ...TEXT_COMMANDS,
+  ...GIT_COMMANDS, ...ACADEMIC_COMMANDS, ...BOOKSHELF_COMMANDS,
+].map((command) => command.id).sort();
 
 /** 生产命令（剔除 dev.* DEV-only 命令，如 IME 探针 dev.ime-probe）。 */
 function prodCommands() {
@@ -160,7 +171,7 @@ describe('builtins', () => {
 
   it('注册全部生产命令，标题与 UI-SPEC / R4 字面逐字一致', () => {
     const all = prodCommands();
-    expect(all).toHaveLength(COMMAND_COUNT);
+    expect(all.map((command) => command.id).sort()).toEqual(EXPECTED_COMMAND_IDS);
     for (const [id, title] of Object.entries(TITLES)) {
       expect(all.find((c) => c.id === id)?.title).toBe(title);
     }
@@ -215,7 +226,7 @@ describe('builtins', () => {
     expect(() => {
       disposeBuiltins = registerBuiltinCommands();
     }).not.toThrow();
-    expect(prodCommands()).toHaveLength(COMMAND_COUNT);
+    expect(prodCommands().map((command) => command.id).sort()).toEqual(EXPECTED_COMMAND_IDS);
   });
 
   it('合成 Ctrl+P 经 keymap 打开无前缀快速打开', () => {

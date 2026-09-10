@@ -7,6 +7,7 @@ import { useEditorStore } from '../../stores/useEditorStore';
 import { openFileByPath } from '../fileOpenFlow';
 import { WIKI_LINK_NODE, WIKI_LINK_TARGET } from './nodeNames';
 import { navigateWikiTarget } from './wikiNavigation';
+import { navigateEquationTarget } from '../equations/navigation';
 
 /**
  * 链接跳转手势（D-10 / RESEARCH「链接手势」/ 威胁 T-03-16）三路分流。
@@ -109,7 +110,9 @@ function findWikiLinkNode(state: EditorState, pos: number): SyntaxNode | null {
  */
 async function navigateWikiLink(view: EditorView, wiki: SyntaxNode): Promise<void> {
   const targetNode = wiki.getChild(WIKI_LINK_TARGET);
-  await navigateWikiTarget(targetNode ? view.state.doc.sliceString(targetNode.from, targetNode.to) : '');
+  const target = targetNode ? view.state.doc.sliceString(targetNode.from, targetNode.to) : '';
+  if (navigateEquationTarget(view, target)) return;
+  await navigateWikiTarget(target);
 }
 
 /**

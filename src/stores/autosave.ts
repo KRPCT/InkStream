@@ -3,7 +3,7 @@ import { isDraftPath } from '../editor/draftPath';
 import { getDocForPath } from '../editor/editorState';
 import { getView } from '../editor/viewHandle';
 import { writeFileAtomic, writeFileToPath } from '../ipc/files';
-import { captureIndexScope, indexUpsertDoc, isIndexable } from '../ipc/indexService';
+import { captureIndexScope, indexRefreshFile, isIndexable } from '../ipc/indexService';
 import { useEditorStore } from './useEditorStore';
 import { useSettingsStore } from './useSettingsStore';
 import { useToastStore } from './useToastStore';
@@ -166,10 +166,10 @@ async function writeOnce(path: string): Promise<SaveOutcome> {
     const sameDocument = useEditorStore.getState().tabs.find((t) => t.path === path) === tab;
     const current = sameDocument && (external || deps.getRoot() === root) && deps.getDoc(path) === content;
     if (current) clearDirty(path);
-    // Phase 4 W1：库内 .md 写盘成功后增量更新 FTS5 索引（autosave 主路径，已有内存内容无需读盘）。
+    // 库内 .md 原子落盘后只提交路径，actor读取磁盘，避免把大正文再次经JSON传回原生。
     // 库外文件不属当前 vault、不入索引。fire-and-forget——索引投递失败绝不阻断/回滚保存。
     if (!external && isIndexable(path) && !useSettingsStore.getState().simpleMode)
-      void indexUpsertDoc(path, content, indexScope).catch(() => {});
+      void indexRefreshFile(path, indexScope).catch(() => {});
     return { kind: current ? 'saved' : 'changed' };
   } catch {
     // WR-01：写失败时无 watcher 事件落地，必须撤回抑制窗口，否则它会吞掉
@@ -238,7 +238,7 @@ export async function writeProjectFile(path: string, content: string): Promise<b
     await writeFileAtomic(root, path, content);
     suppressNextWatch(path); // 写成功续窗，覆盖 rename 尾随事件。
     if (isIndexable(path) && !useSettingsStore.getState().simpleMode)
-      void indexUpsertDoc(path, content, indexScope).catch(() => {});
+      void indexRefreshFile(path, indexScope).catch(() => {});
     return { kind: 'saved' };
   } catch {
     suppressedUntil.delete(path); // 写失败无事件落地，撤回抑制窗（同 writeOnce 的 WR-01）。

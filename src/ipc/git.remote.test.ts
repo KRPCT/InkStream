@@ -5,7 +5,7 @@ const plain = vi.hoisted(() => vi.fn().mockResolvedValue(null));
 vi.mock('./invoke', () => ({ invoke: plain, invokeStreamed: streamed }));
 
 import { useSettingsStore } from '../stores/useSettingsStore';
-import { gitClone, gitFetch, gitPull, gitPush, gitStatus } from './git';
+import { gitCancelClone, gitClone, gitFetch, gitPull, gitPush, gitStatus } from './git';
 
 const progress = () => {};
 const actions = [
@@ -73,5 +73,17 @@ describe('远程设置决定实际 Git 请求', () => {
       { repoRoot: '/writing', remote: 'origin', branch: 'main', options: { mode: 'custom', customServer } },
       progress,
     );
+  });
+
+  it('克隆与取消共用调用方requestId，目标路径和mode快照交给有界原生命令', async () => {
+    const requestId = '11111111-1111-4111-8111-111111111111';
+    const url = 'git@github.com:owner/book.git';
+    const dest = 'C:/projects/中文书稿';
+    streamed.mockResolvedValueOnce(dest);
+    plain.mockResolvedValueOnce(true);
+    await expect(gitClone(url, dest, progress, requestId)).resolves.toBe(dest);
+    expect(streamed).toHaveBeenCalledWith('git_clone_owned', { url, dest, requestId, options: { mode: 'ssh', customServer: '' } }, progress);
+    await expect(gitCancelClone(requestId)).resolves.toBe(true);
+    expect(plain).toHaveBeenCalledWith('git_cancel_clone', { requestId });
   });
 });

@@ -70,6 +70,7 @@ pub async fn git_commit(
     paths: Vec<String>,
 ) -> Result<GitOpResult, String> {
     super::blocking(move || {
+        let _lease = super::rebase_registry::lock_worktree(&super::open_repo(&repo_root)?)?;
         let mut add: Vec<&str> = vec!["add"];
         if paths.is_empty() {
             add.push("-A");
@@ -98,6 +99,7 @@ pub async fn git_commit(
 #[tauri::command]
 pub async fn git_merge(repo_root: String, branch: String) -> Result<GitOpResult, String> {
     super::blocking(move || {
+        let _lease = super::rebase_registry::lock_worktree(&super::open_repo(&repo_root)?)?;
         // --end-of-options：防 branch 以 - 开头被当 flag（review 硬化）。
         let (ok, _, err) = run(
             &repo_root,
@@ -112,6 +114,7 @@ pub async fn git_merge(repo_root: String, branch: String) -> Result<GitOpResult,
 #[tauri::command]
 pub async fn git_cherry_pick(repo_root: String, oid: String) -> Result<GitOpResult, String> {
     super::blocking(move || {
+        let _lease = super::rebase_registry::lock_worktree(&super::open_repo(&repo_root)?)?;
         let (ok, _, err) = run(&repo_root, &["cherry-pick", "-S", "--end-of-options", &oid])?;
         finish_op(&repo_root, ok, &err, "cherry-pick 失败")
     })
@@ -122,6 +125,7 @@ pub async fn git_cherry_pick(repo_root: String, oid: String) -> Result<GitOpResu
 #[tauri::command]
 pub async fn git_revert(repo_root: String, oid: String) -> Result<GitOpResult, String> {
     super::blocking(move || {
+        let _lease = super::rebase_registry::lock_worktree(&super::open_repo(&repo_root)?)?;
         let (ok, _, err) = run(&repo_root, &["revert", "--no-edit", "-S", "--end-of-options", &oid])?;
         finish_op(&repo_root, ok, &err, "revert 失败")
     })
@@ -168,6 +172,12 @@ fn in_progress_op(repo: &str) -> Option<&'static str> {
 #[tauri::command]
 pub async fn git_abort_op(repo_root: String) -> Result<(), String> {
     super::blocking(move || {
+        if super::rebase_state::in_progress(&super::open_repo(&repo_root)?) {
+            let result = super::rebase::execute(&repo_root, super::rebase_registry::request_id(), super::rebase::RebaseAction::Abort)?;
+            return if result.outcome == super::rebase::RebaseOutcome::Aborted { Ok(()) }
+                else { Err(GitError::Git(result.error.unwrap_or_else(|| "中止变基未完成".into()))) };
+        }
+        let _lease = super::rebase_registry::lock_worktree(&super::open_repo(&repo_root)?)?;
         let Some(sub) = in_progress_op(&repo_root) else {
             return Err(GitError::Git("没有进行中的合并/拣选/回退操作".into()));
         };

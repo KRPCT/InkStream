@@ -1,8 +1,12 @@
 import { zoteroCslResilient } from '../ipc/zotero';
 import { showToast } from '../stores/useToastStore';
+import { useEditorStore } from '../stores/useEditorStore';
+import { useVaultStore } from '../stores/useVaultStore';
 import type { CitationStyle, CslItem } from '../types/zotero';
 import { extractCitations } from './citations';
 import { formatBibliography } from './cslFormat';
+import { queueAfterComposition } from './composition';
+import { isBasicEditing } from './documentBudget';
 import { getView } from './viewHandle';
 
 /**
@@ -16,6 +20,7 @@ const END_MARK = '<!-- /biblio -->';
 /** 匹配 `<!-- biblio -->` 或 `<!-- biblio:apa -->`，捕获样式标识。 */
 const BIBLIO_RE = /<!--\s*biblio(?::([a-z0-9]+))?\s*-->/i;
 const STYLES = new Set<CitationStyle>(['gbt7714', 'apa', 'vancouver']);
+let generation = 0;
 
 function errText(e: unknown): string {
   return typeof e === 'string' ? e : e instanceof Error ? e.message : String(e);
@@ -54,6 +59,27 @@ function marker(style: CitationStyle): string {
   return style === 'gbt7714' ? '<!-- biblio -->' : `<!-- biblio:${style} -->`;
 }
 
+function currentBlock(doc: string): string | null {
+  const found = BIBLIO_RE.exec(doc);
+  if (!found) return null;
+  const end = doc.indexOf(END_MARK, found.index + found[0].length);
+  return doc.slice(found.index, end < 0 ? found.index + found[0].length : end + END_MARK.length);
+}
+
+/** Resolve every requested key before replacing a previously complete, correctly numbered block. */
+function orderItems(keys: readonly string[], items: readonly CslItem[]): CslItem[] {
+  const byKey = new Map<string, CslItem>();
+  for (const item of items) {
+    const key = item['citation-key'] ?? item.citekey;
+    if (!key) continue;
+    if (byKey.has(key)) throw new Error(`文献标识「${key}」重复，原参考文献已保留。`);
+    byKey.set(key, item);
+  }
+  const missing = keys.filter((key) => !byKey.has(key));
+  if (missing.length) throw new Error(`未找到引用：${missing.join('、')}。原参考文献已保留。`);
+  return keys.map((key) => byKey.get(key)!);
+}
+
 /** 插入空参考文献占位（文末标题 + 标记）。已存在则提示不重复。 */
 function insertPlaceholder(): void {
   const view = getView();
@@ -81,27 +107,46 @@ function insertPlaceholder(): void {
 async function expand(styleOverride?: CitationStyle): Promise<void> {
   const view = getView();
   if (!view) return;
-  const doc = view.state.doc.toString();
-  const style = styleOverride ?? detectBiblioStyle(doc) ?? 'gbt7714';
-  const keys = extractCitations(view.state).map((c) => c.key);
-  let items: CslItem[];
-  try {
-    items = keys.length ? await zoteroCslResilient(keys) : [];
-  } catch (e) {
-    showToast('error', `展开参考文献失败：${errText(e)}`);
+  if (isBasicEditing(view.state)) {
+    showToast('warning', '请先为此文档启用完整排版，再生成参考文献。');
     return;
   }
-  const resolved = new Set(items.map((it) => it['citation-key'] ?? it.citekey ?? ''));
-  const missing = keys.filter((k) => !resolved.has(k));
-  const body = formatBibliography(items, style) || '（暂无可解析的文献）';
-  const block = `${marker(style)}\n\n${body}\n\n${END_MARK}`;
-  // dispatch 前重读 doc（与上方同步，无异步改动），保证 plan 坐标有效。
-  const { from, to, insert } = planBiblioEdit(view.state.doc.toString(), block);
-  view.dispatch({ changes: { from, to, insert }, scrollIntoView: true });
-  view.focus();
-  if (missing.length) {
-    showToast('warning', `${missing.length} 条引用在 Zotero 中未找到：${missing.join('、')}`);
+  const request = ++generation;
+  const path = useEditorStore.getState().activePath;
+  const tab = useEditorStore.getState().tabs.find((item) => item.path === path);
+  const vault = useVaultStore.getState().vault;
+  const doc = view.state.doc.toString();
+  const beforeBlock = currentBlock(doc);
+  const style = styleOverride ?? detectBiblioStyle(doc) ?? 'gbt7714';
+  const keys = extractCitations(view.state).map((c) => c.key);
+  const isCurrent = () => request === generation && getView() === view &&
+    useVaultStore.getState().vault === vault && useEditorStore.getState().activePath === path &&
+    useEditorStore.getState().tabs.find((item) => item.path === path) === tab;
+  let body: string;
+  try {
+    const items = keys.length ? await zoteroCslResilient(keys) : [];
+    if (!isCurrent()) return;
+    body = await formatBibliography(orderItems(keys, items), style) || '（暂无引用）';
+  } catch (e) {
+    if (isCurrent()) showToast('error', `展开参考文献失败：${errText(e)}`);
+    return;
   }
+  const block = `${marker(style)}\n\n${body}\n\n${END_MARK}`;
+  await new Promise<void>((resolve) => queueAfterComposition(view, `bibliography:${request}`, () => {
+    try {
+      if (!isCurrent()) return;
+      const current = view.state.doc.toString();
+      if (isBasicEditing(view.state) || currentBlock(current) !== beforeBlock ||
+        JSON.stringify(extractCitations(view.state).map((item) => item.key)) !== JSON.stringify(keys)) {
+        showToast('warning', '引用或参考文献在等待期间已改变，请重新生成；当前编辑已保留。');
+        return;
+      }
+      const changes = planBiblioEdit(current, block);
+      view.dispatch({ changes, scrollIntoView: true });
+    } catch (error) {
+      showToast('error', `无法写入参考文献：${errText(error)}`);
+    } finally { resolve(); }
+  }));
 }
 
 /**

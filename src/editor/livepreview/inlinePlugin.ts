@@ -1,4 +1,7 @@
 import { syntaxTree } from '@codemirror/language';
+import { equationCatalog } from '../equations/catalog';
+import { equationReferenceLabel } from '../equations/markers';
+import { EquationReferenceWidget } from '../equations/presentation';
 import { Facet, type Range, RangeSetBuilder } from '@codemirror/state';
 import {
   Decoration,
@@ -191,11 +194,22 @@ export function buildInlineDecorations(view: EditorView): DecorationSet {
         // 活动行已在上方 active 分支跳过 → 显 `[[...]]` 源码（Typora 范式，相等闸门不破）。
         if (node.name === WIKI_LINK_NODE) {
           const n = node.node;
+          const target = n.getChild(WIKI_LINK_TARGET);
+          const rawTarget = target ? state.doc.sliceString(target.from, target.to) : '';
+          if (rawTarget.startsWith('#eq:')) {
+            const catalog = equationCatalog(state);
+            if (catalog.enabled) {
+              const label = equationReferenceLabel(rawTarget);
+              const entry = label === null ? undefined : catalog.byLabel.get(label);
+              const alias = n.getChild(WIKI_LINK_ALIAS);
+              ranges.push(Decoration.replace({ widget: new EquationReferenceWidget(label ?? rawTarget.slice(4), entry?.ordinal ?? null, alias ? state.doc.sliceString(alias.from, alias.to) : null) }).range(node.from, node.to));
+              return false;
+            }
+          }
           for (const mk of n.getChildren(WIKI_LINK_MARK)) {
             if (mk.to > mk.from) ranges.push(HIDDEN_MARK.range(mk.from, mk.to));
           }
           const alias = n.getChild(WIKI_LINK_ALIAS);
-          const target = n.getChild(WIKI_LINK_TARGET);
           if (alias) {
             if (target) ranges.push(HIDDEN_MARK.range(target.from, target.to));
             ranges.push(WIKI_LINK_DECO.range(alias.from, alias.to));

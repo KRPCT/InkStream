@@ -9,7 +9,7 @@ vi.mock('@tauri-apps/plugin-sql', () => ({ default: { load: vi.fn(async () => ({
 import { useSettingsStore } from '../stores/useSettingsStore';
 import { useIndexStore } from '../stores/useIndexStore';
 import { useVaultStore } from '../stores/useVaultStore';
-import { captureIndexScope, initIndexLifecycle, indexRebuild, indexRemoveDoc, indexSwitchVault, indexUpsertDoc, queryContent, queryGraphData } from './indexService';
+import { captureIndexScope, initIndexLifecycle, indexRebuild, indexRemoveDoc, indexSwitchVault, indexUpsertDoc, pauseIndexSession, queryContent, queryGraphData } from './indexService';
 
 function vault(root: string) {
   useVaultStore.setState({ vault: { root, name: root, repoRoot: null }, files: [] });
@@ -138,5 +138,50 @@ describe('索引写入绑定工作区生命周期', () => {
     await old;
     expect(useIndexStore.getState().status).toBe('ready');
     expect(useIndexStore.getState().error).toBeNull();
+  });
+
+  it('写树暂停期间禁止旧token与默认写；最后一次resume才换token重建且幂等', async () => {
+    await indexSwitchVault('/index-scope-a');
+    const old = captureIndexScope()!;
+    const resumeA = await pauseIndexSession('/index-scope-a');
+    const resumeB = await pauseIndexSession('/index-scope-a');
+    try {
+      expect(captureIndexScope()).toBeNull();
+      ipc.mockClear();
+      await indexUpsertDoc('partial.md', '中间工作树', old);
+      await indexUpsertDoc('partial.md', '默认准入');
+      expect(ipc.mock.calls.some(([name]) => name === 'index_upsert_doc')).toBe(false);
+      await resumeA();
+      expect(captureIndexScope()).toBeNull();
+      await resumeB();
+      const current = captureIndexScope();
+      expect(current?.sessionId).not.toBe(old.sessionId);
+      const rebuilds = ipc.mock.calls.filter(([name]) => name === 'index_rebuild').length;
+      await resumeA(); await resumeB();
+      expect(captureIndexScope()).toBe(current);
+      expect(ipc.mock.calls.filter(([name]) => name === 'index_rebuild')).toHaveLength(rebuilds);
+    } finally { await resumeA(); await resumeB(); }
+  });
+
+  it('暂停期间改为简易模式，resume不得重启旧索引；换库也不回写原库', async () => {
+    await indexSwitchVault('/index-scope-a');
+    const old = captureIndexScope()!;
+    const resume = await pauseIndexSession('/index-scope-a');
+    useSettingsStore.setState({ simpleMode: true });
+    ipc.mockClear();
+    await resume();
+    expect(captureIndexScope()).toBeNull();
+    expect(useIndexStore.getState().status).toBe('disabled');
+    expect(ipc.mock.calls.some(([name]) => name === 'index_rebuild')).toBe(false);
+    useSettingsStore.setState({ simpleMode: false });
+    const resumeAgain = await pauseIndexSession('/index-scope-a');
+    vault('/index-scope-b');
+    await indexSwitchVault('/index-scope-b');
+    const b = captureIndexScope();
+    ipc.mockClear();
+    await resumeAgain();
+    await indexUpsertDoc('late-a.md', '旧读取结果', old);
+    expect(captureIndexScope()).toBe(b);
+    expect(ipc).not.toHaveBeenCalled();
   });
 });

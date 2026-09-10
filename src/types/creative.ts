@@ -11,7 +11,9 @@ export interface SceneNode {
   name: string;
   status: SceneStatus;
   /** 正文字数（剔除 frontmatter，countWords 同源）。 */
-  words: number;
+  words: number | null;
+  /** Failed reads remain visible; they are not zero-word drafts. */
+  error?: string;
 }
 
 /** 章（= 顶层文件夹；或合成「未分章」收纳根级散场景）。 */

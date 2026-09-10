@@ -15,6 +15,7 @@ import {
   mergeBranchInto,
   pullCurrent,
   pushCurrent,
+  rebaseCurrentOnto,
 } from '../../editor/gitActions';
 import { useGitStore } from '../../stores/useGitStore';
 import type { BranchInfo } from '../../types/git';
@@ -69,6 +70,7 @@ function BranchRow({ b }: { b: BranchInfo }) {
       <div className="flex shrink-0 items-center gap-0.5 opacity-0 transition-opacity group-hover:opacity-100">
         <IconBtn icon={Check} title="切换到此分支" onClick={() => void checkoutTarget(b.name)} />
         <IconBtn icon={GitMerge} title="合并到当前分支" onClick={() => void mergeBranchInto(b.name)} />
+        <IconBtn icon={GitBranch} title="将当前分支变基到此分支" onClick={() => void rebaseCurrentOnto(b.name)} />
         {b.isRemote ? null : (
           <IconBtn icon={Trash2} title="删除分支" onClick={() => void deleteBranchNamed(b.name)} />
         )}

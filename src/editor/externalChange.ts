@@ -1,6 +1,5 @@
 import { onVaultChange, type UnlistenFn, type VaultChangePayload } from '../ipc/events';
-import { readFile } from '../ipc/files';
-import { captureIndexScope, indexRemoveDoc, indexUpsertDoc, isIndexable } from '../ipc/indexService';
+import { captureIndexScope, indexRefreshFile, indexRemoveDoc, isIndexable } from '../ipc/indexService';
 import { consumeSuppressedWatch, freezeAutosave } from '../stores/autosave';
 import { useGitStore } from '../stores/useGitStore';
 import { useSettingsStore } from '../stores/useSettingsStore';
@@ -43,7 +42,7 @@ function baseName(path: string): string {
 /**
  * 外部变更后同步 FTS5 索引（Phase 4 W1，仅挂实际反映磁盘新态的分支：reload 成功 / refreshTree，
  * **绝不挂 freeze 分支**——freeze 时磁盘新内容尚未被采纳，索引留旧待用户裁决重载后由后续路径补齐）。
- * remove → 删索引；create/modify → 读盘 upsert（仅 .md，与 rebuild 一致）。fire-and-forget 不阻断仲裁。
+ * remove → 删索引；create/modify → actor按路径刷新（仅 .md，与 rebuild 一致）。不把正文绕经前端再传回。
  */
 function reindexExternal(root: string, rel: string, kind: string): void {
   if (useSettingsStore.getState().simpleMode) return; // 简易模式不建/不更新索引
@@ -55,9 +54,7 @@ function reindexExternal(root: string, rel: string, kind: string): void {
       void indexRemoveDoc(rel, scope).catch(() => {});
       return;
     }
-    void readFile(root, rel)
-      .then((content) => indexUpsertDoc(rel, content, scope))
-      .catch(() => {}); // 文件已删/读失败：忽略（下次变更或重建补齐）。
+    void indexRefreshFile(rel, scope).catch(() => {}); // 当前scope的失败已由indexSession置为明确error。
   } catch {
     // 索引/读盘依赖不可用：彻底吞掉，绝不抛进仲裁流程（fire-and-forget，doc 真相源不受影响）。
   }

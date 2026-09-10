@@ -1,22 +1,16 @@
 import { type ReactNode, useEffect, useState } from 'react';
 import {
-  ghCliStatus,
-  gitGithubStatus,
-  gitLoginGithub,
-  gitLoginGithubGh,
-  gitLogoutGithub,
-} from '../../ipc/git';
-import {
   zoteroClearCredentials,
   zoteroCredentialsStatus,
   zoteroSetCredentials,
   zoteroSync,
 } from '../../ipc/zotero';
 import { confirmDestructive } from '../../stores/useConfirmStore';
-import { useHelpStore } from '../../stores/useHelpStore';
 import { useSettingsStore } from '../../stores/useSettingsStore';
 import { showToast } from '../../stores/useToastStore';
 import type { GitRemoteMode, ThemeSetting } from '../../types/settings';
+import ImportedThemeSection from './ImportedThemeSection';
+import GithubAccountSection from './GithubAccountSection';
 
 /**
  * 设置分区内容 + 可复用控件（簇②）。控件色全走 CSS 变量（无硬编色）。
@@ -223,6 +217,7 @@ export function AppearanceSection() {
       <SettingRow label="编辑器字体大小" description="正文与编辑区字号。">
         <NumberInput value={fontSize} min={10} max={28} suffix="px" onChange={setFontSize} />
       </SettingRow>
+      <ImportedThemeSection />
       <SettingRow
         label="界面缩放"
         description="整体界面缩放比例（含侧栏 / 编辑器 / 面板 / 终端）。也可用 Ctrl+=、Ctrl+-、Ctrl+0 调整。"
@@ -321,119 +316,7 @@ function errText(e: unknown): string {
 }
 
 export function AccountSection() {
-  const [loggedIn, setLoggedIn] = useState<boolean | null>(null);
-  const [token, setToken] = useState('');
-  const [busy, setBusy] = useState(false);
-  const [ghAvailable, setGhAvailable] = useState(false);
-
-  useEffect(() => {
-    void gitGithubStatus()
-      .then(setLoggedIn)
-      .catch(() => setLoggedIn(false));
-    void ghCliStatus()
-      .then(setGhAvailable)
-      .catch(() => setGhAvailable(false));
-  }, []);
-
-  const login = async (): Promise<void> => {
-    const t = token.trim();
-    if (!t) return;
-    setBusy(true);
-    try {
-      await gitLoginGithub(t);
-      setToken('');
-      setLoggedIn(true);
-    } catch (e) {
-      showToast('error', `登录失败：${errText(e)}`);
-    } finally {
-      setBusy(false);
-    }
-  };
-  const loginGh = async (): Promise<void> => {
-    setBusy(true);
-    try {
-      await gitLoginGithubGh();
-      setLoggedIn(true);
-    } catch (e) {
-      showToast('error', `gh CLI 登录失败：${errText(e)}`);
-    } finally {
-      setBusy(false);
-    }
-  };
-  const logout = async (): Promise<void> => {
-    setBusy(true);
-    try {
-      await gitLogoutGithub();
-      setLoggedIn(false);
-    } catch (e) {
-      showToast('error', `登出失败：${errText(e)}`);
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  return (
-    <div>
-      {loggedIn === null ? (
-        <p className="py-3 text-[13px] text-[var(--text-muted)]">检查登录状态…</p>
-      ) : loggedIn ? (
-        <SettingRow label="GitHub" description="已保存凭据。选择「GitHub 登录」远程方式后用于 github.com 的 HTTPS 仓库。">
-          <button
-            type="button"
-            disabled={busy}
-            onClick={() => void logout()}
-            className="rounded-[4px] border border-[var(--background-modifier-border)] px-3 py-1 text-[12px] text-[var(--text-normal)] hover:bg-[var(--background-modifier-hover)] disabled:text-[var(--text-faint)]"
-          >
-            登出
-          </button>
-        </SettingRow>
-      ) : (
-        <div className="py-3">
-          <div className="text-[13px] text-[var(--text-normal)]">GitHub 个人访问令牌（PAT）</div>
-          <div className="mt-0.5 text-[12px] leading-snug text-[var(--text-muted)]">
-            用于经 HTTPS 同步；也可改用 SSH（见「Git ▸ 远程方式」）。令牌仅保存在本机 OS 凭据库，不会上传。
-          </div>
-          <div className="mt-2 flex items-center gap-2">
-            <input
-              type="password"
-              value={token}
-              placeholder="ghp_..."
-              onChange={(e) => setToken(e.target.value)}
-              className="min-w-0 flex-1 rounded-[4px] border border-[var(--background-modifier-border)] bg-[var(--background-primary)] px-2 py-1 text-[12px] text-[var(--text-normal)] outline-none focus:border-[var(--accent)]"
-            />
-            <button
-              type="button"
-              disabled={busy || !token.trim()}
-              onClick={() => void login()}
-              className="shrink-0 rounded-[4px] bg-[var(--accent)] px-3 py-1 text-[12px] font-medium text-[var(--background-primary)] disabled:opacity-50"
-            >
-              登录
-            </button>
-          </div>
-          {ghAvailable ? (
-            <button
-              type="button"
-              disabled={busy}
-              onClick={() => void loginGh()}
-              className="mt-2 rounded-[4px] border border-[var(--background-modifier-border)] px-3 py-1 text-[12px] text-[var(--text-normal)] hover:bg-[var(--background-modifier-hover)] disabled:opacity-50"
-            >
-              用本机 gh CLI 一键登录（已检测到登录态）
-            </button>
-          ) : null}
-          <p className="mt-2 text-[12px] leading-snug text-[var(--text-faint)]">
-            在 GitHub ▸ Settings ▸ Developer settings ▸ Personal access tokens 创建一个含 repo 权限的令牌。
-          </p>
-        </div>
-      )}
-      <button
-        type="button"
-        onClick={() => useHelpStore.getState().openHelp('sync')}
-        className="mt-3 text-[12px] text-[var(--accent)] hover:underline"
-      >
-        查看多设备同步教程 →
-      </button>
-    </div>
-  );
+  return <GithubAccountSection />;
 }
 
 export function ZoteroSection() {

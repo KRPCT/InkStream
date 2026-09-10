@@ -11,6 +11,14 @@
  */
 export type RenderMode = 'source' | 'live';
 
+/** 每文档派生工作预算；正文仍只存在于 CodeMirror Text。 */
+export type DocumentEditingPreference = 'auto' | 'basic' | 'full';
+export interface DocumentBudget {
+  preference: DocumentEditingPreference;
+  mode: 'basic' | 'full';
+  large: boolean;
+}
+
 /**
  * 大纲条目（RightPanel 大纲 tab）：从 markdown 语法树析出的标题。
  * - level：1-6（ATXHeading/SetextHeading 级别）；

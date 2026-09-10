@@ -64,6 +64,6 @@ describe('buildChapterTree（CREA-01）', () => {
     );
     readFile.mockRejectedValue(new Error('boom'));
     const chapters = await buildChapterTree('/v');
-    expect(chapters[0].scenes[0]).toEqual({ path: 'a.md', name: 'a', status: 'draft', words: 0 });
+    expect(chapters[0].scenes[0]).toEqual({ path: 'a.md', name: 'a', status: 'draft', words: null, error: 'boom' });
   });
 });

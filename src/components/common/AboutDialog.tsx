@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { getAppVersion } from '../../ipc/app';
+import { openExternal } from '../../ipc/opener';
 import { useAboutStore } from '../../stores/useAboutStore';
 import { useUpdaterStore } from '../../stores/useUpdaterStore';
 
@@ -56,6 +57,13 @@ function AboutPanel() {
         </p>
         <p className="mt-2 text-[13px] leading-normal text-[var(--text-muted)]">
           版本 {version ?? '读取中'}
+        </p>
+        <p className="mt-3 text-[11px] leading-relaxed text-[var(--text-muted)]">
+          参考文献排版：{' '}
+          <button type="button" className="underline" onClick={() => void openExternal('https://citeproc-js.readthedocs.io/')}>citeproc-js</button>
+          {' '}© Frank Bennett（CPAL）与{' '}
+          <button type="button" className="underline" onClick={() => void openExternal('https://citationstyles.org/')}>Citation Style Language</button>
+          {' '}样式（CC BY-SA 3.0）。许可随应用附带。
         </p>
         <button
           type="button"

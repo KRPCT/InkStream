@@ -117,11 +117,11 @@ fn read_worker(
 
 /// 只保留最多三个未完成UTF8字节，不为验证再读文件或复制整篇正文。
 #[derive(Default)]
-struct Utf8Validator {
+pub(super) struct Utf8Validator {
     tail: Vec<u8>,
 }
 impl Utf8Validator {
-    fn append(&mut self, bytes: &[u8]) -> Result<(), String> {
+    pub(super) fn append(&mut self, bytes: &[u8]) -> Result<(), String> {
         let mut offset = 0;
         while !self.tail.is_empty() && offset < bytes.len() {
             self.tail.push(bytes[offset]);
@@ -146,7 +146,7 @@ impl Utf8Validator {
             Err(_) => Err("文件不是有效的UTF-8文本。".into()),
         }
     }
-    fn finish(&self) -> Result<(), String> {
+    pub(super) fn finish(&self) -> Result<(), String> {
         if self.tail.is_empty() {
             Ok(())
         } else {

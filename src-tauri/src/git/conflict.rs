@@ -12,7 +12,7 @@
 use super::GitError;
 use crate::path_guard::canonicalize_in_root;
 use std::path::Path;
-use std::process::Command;
+use std::time::Duration;
 
 /// 读取冲突文件的工作区内容（含 git 合并标记）。
 #[tauri::command]
@@ -31,20 +31,24 @@ pub async fn git_resolve_conflict(
     repo_root: String,
     path: String,
     content: String,
+    expected_content: Option<String>,
 ) -> Result<(), String> {
     super::blocking(move || {
+        let repo = super::open_repo(&repo_root)?;
+        let lease = super::rebase_registry::acquire(&repo, super::rebase_registry::request_id())?;
         let target = canonicalize_in_root(Path::new(&repo_root), &path).map_err(GitError::Git)?;
+        if let Some(expected) = expected_content {
+            let actual = std::fs::read_to_string(&target).map_err(|e| GitError::Git(format!("读取当前冲突文件失败: {e}")))?;
+            if actual != expected { return Err(GitError::Git("冲突文件已变化，未覆盖新内容；请重新读取冲突".into())); }
+        }
         // 复用 files.rs 的 WR-04 原子写（temp + sync_all + rename + 失败清理）。
         crate::files::write_atomic(&target, &content).map_err(GitError::Git)?;
-        let out = Command::new("git")
-            .current_dir(&repo_root)
-            .args(["add", "--", &path])
-            .output()
-            .map_err(|e| GitError::Internal(format!("无法执行 git（请确认已安装）: {e}")))?;
-        if !out.status.success() {
+        let spec = super::rebase::local_spec(&repo, ["add", "--", &path].map(std::ffi::OsString::from).to_vec())?;
+        let out = super::rebase_process::run_process(&spec, &lease.cancelled, Duration::from_secs(30)).map_err(GitError::Git)?;
+        if out.exit_code != Some(0) || out.interruption.is_some() || out.cleanup_error.is_some() {
             return Err(GitError::Git(format!(
                 "git add 失败: {}",
-                String::from_utf8_lossy(&out.stderr).trim()
+                out.cleanup_error.as_deref().unwrap_or_else(|| if out.stderr.trim().is_empty() { "执行未完成，请检查变基状态后重试" } else { out.stderr.trim() })
             )));
         }
         Ok(())

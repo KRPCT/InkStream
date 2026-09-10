@@ -1,14 +1,26 @@
 use crate::path_guard::{canonicalize_in_root, resolve_new_target_in_root};
-use std::io::{ErrorKind, Write};
+use std::io::ErrorKind;
 use std::path::{Path, PathBuf};
 
+pub(crate) mod create;
 mod read_target;
+mod staged_write;
 pub(crate) mod stream;
 mod stream_control;
+pub(crate) mod write;
+pub(crate) mod write_session;
 
 #[cfg(test)]
 #[path = "files/stream_tests.rs"]
 mod stream_tests;
+
+#[cfg(test)]
+#[path = "files/write_tests.rs"]
+mod write_tests;
+
+#[cfg(test)]
+#[path = "files/write_session_tests.rs"]
+mod write_session_tests;
 
 /// 单次 invoke 负载红线阈值（字节）。
 ///
@@ -61,56 +73,18 @@ pub(crate) fn write_atomic(target: &Path, content: &str) -> Result<(), String> {
 /// 二进制原子写：与 write_atomic 同核（temp + sync_all + rename + Unix 父目录 fsync），但写任意字节而非
 /// UTF-8 文本——导出 DOCX 等二进制产物经此（write_file_to_path 仅接 String，二进制经其会被 UTF-8 破坏）。
 pub(crate) fn write_atomic_bytes(target: &Path, content: &[u8]) -> Result<(), String> {
-    // rename 会替换 inode；保留既有文件 mode，避免私有文档变得可公开读取或脚本丢失执行位。
-    #[cfg(unix)]
-    let existing_permissions = match std::fs::metadata(target) {
-        Ok(metadata) => Some(metadata.permissions()),
-        Err(error) if error.kind() == ErrorKind::NotFound => None,
-        Err(error) => return Err(format!("无法读取目标文件权限: {error}")),
-    };
-    let tmp = temp_sibling(target);
-
-    // temp 写入 + 数据块刷盘（sync_all）。任一步失败清理 temp 再返回。
-    let write_result = (|| -> std::io::Result<()> {
-        let mut options = std::fs::OpenOptions::new();
-        options.write(true).create(true).truncate(true);
-        #[cfg(unix)]
-        if let Some(permissions) = &existing_permissions {
-            use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
-            // 创建时已限制权限，不能先写入私有内容再从默认权限收紧。
-            options.mode(permissions.mode() & 0o7777);
-        }
-        let mut f = options.open(&tmp)?;
-        f.write_all(content)?;
-        #[cfg(unix)]
-        if let Some(permissions) = existing_permissions {
-            // 创建权限受 umask 影响；写入完成后按原 mode 精确恢复，再一并刷盘。
-            f.set_permissions(permissions)?;
-        }
-        f.sync_all()?;
-        Ok(())
-    })();
-    if let Err(e) = write_result {
-        let _ = std::fs::remove_file(&tmp);
-        return Err(format!("无法写入临时文件: {e}"));
+    let mut staged = staged_write::StagedWrite::new(target)?;
+    let result = staged
+        .append(content)
+        .and_then(|()| staged.prepare())
+        .and_then(|()| staged.publish());
+    match result {
+        Ok(()) => Ok(()),
+        Err(error) => match staged.discard() {
+            Ok(()) => Err(error),
+            Err(cleanup) => Err(format!("{error}; {cleanup}")),
+        },
     }
-
-    if let Err(e) = std::fs::rename(&tmp, target) {
-        let _ = std::fs::remove_file(&tmp);
-        return Err(format!("无法落盘（rename 失败）: {e}"));
-    }
-
-    // Unix：fsync 父目录 fd，使 rename 的目录项变更持久化（尽力而为，失败不回滚已落盘的数据）。
-    #[cfg(unix)]
-    {
-        if let Some(parent) = target.parent() {
-            if let Ok(dir) = std::fs::File::open(parent) {
-                let _ = dir.sync_all();
-            }
-        }
-    }
-
-    Ok(())
 }
 
 /// 原子写（T-02-07）：同目录 temp 文件 + rename。写中途崩溃只丢 temp，原文件不动。
@@ -339,7 +313,11 @@ mod tests {
 
         let root = temp_dir("write-permissions");
         let root_str = root.to_string_lossy().into_owned();
-        for (name, mode) in [("private.md", 0o600), ("run.sh", 0o751)] {
+        for (name, mode) in [
+            ("private.md", 0o600),
+            ("run.sh", 0o751),
+            ("executable.sh", 0o755),
+        ] {
             let target = root.join(name);
             fs::write(&target, "old").unwrap();
             fs::set_permissions(&target, fs::Permissions::from_mode(mode)).unwrap();
@@ -356,6 +334,58 @@ mod tests {
             );
         }
         fs::remove_dir_all(&root).ok();
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn new_atomic_files_match_default_permissions_of_an_ordinary_sibling_write() {
+        use std::os::unix::fs::PermissionsExt;
+        let root = temp_dir("new-file-permissions");
+        let control = root.join("ordinary.md");
+        let target = root.join("atomic.md");
+        // 同目录、同一现有 umask；不修改整个测试进程的权限掩码。
+        fs::write(&control, b"control").unwrap();
+        write_file_atomic(
+            root.to_string_lossy().into_owned(),
+            "atomic.md".into(),
+            "atomic".into(),
+        )
+        .unwrap();
+        let expected = fs::metadata(&control).unwrap().permissions().mode() & 0o7777;
+        let actual = fs::metadata(&target).unwrap().permissions().mode() & 0o7777;
+        fs::remove_dir_all(&root).unwrap();
+        assert_eq!(
+            actual, expected,
+            "new atomic writes changed the default file mode"
+        );
+    }
+
+    #[test]
+    fn failed_atomic_rename_preserves_the_target_and_removes_its_temp() {
+        let root = temp_dir("rename-failure-cleanup");
+        let blocked = root.join("blocked.md");
+        fs::create_dir(&blocked).unwrap();
+        fs::write(blocked.join("original"), b"original directory contents").unwrap();
+        let result = write_file_atomic(
+            root.to_string_lossy().into_owned(),
+            "blocked.md".into(),
+            "new".into(),
+        );
+        let original = fs::read(blocked.join("original")).unwrap();
+        let leftover = fs::read_dir(&root).unwrap().any(|entry| {
+            entry
+                .unwrap()
+                .file_name()
+                .to_string_lossy()
+                .starts_with(".inkstream-tmp-")
+        });
+        fs::remove_dir_all(&root).unwrap();
+        assert!(
+            result.unwrap_err().contains("rename"),
+            "fixture must reach the atomic rename failure"
+        );
+        assert_eq!(original, b"original directory contents");
+        assert!(!leftover, "failed atomic rename left a temp file behind");
     }
 
     #[test]

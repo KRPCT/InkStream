@@ -8,6 +8,7 @@ import UpdateDialog from './components/common/UpdateDialog';
 import WhatsNewDialog from './components/common/WhatsNewDialog';
 import WritingHud from './components/common/WritingHud';
 import ImeProbe from './components/dev/ImeProbe';
+import GitCloneDialog from './components/git/GitCloneDialog';
 import HelpModal from './components/help/HelpModal';
 import OnboardingOverlay from './components/onboarding/OnboardingOverlay';
 import CommandPalette from './components/palette/CommandPalette';
@@ -27,10 +28,14 @@ import { loadLastSeenVersion } from './ipc/settings';
 import { initPersistence } from './stores/persistSettings';
 import { initVaultPersistence } from './stores/persistVault';
 import { initIndexLifecycle } from './ipc/indexService';
+import { initCodexLifecycle } from './editor/codex';
+import { initImportedTheme } from './stores/useImportedThemeStore';
 
 export default function App() {
   useEffect(() => {
     const stopIndex = initIndexLifecycle();
+    const stopCodex = initCodexLifecycle();
+    void initImportedTheme();
     // 持久化 hydrate 先于 show() 发起、不阻塞首帧：首帧由 boot.js 镜像保证，
     // settings.json 到达后校正（Pattern 6 第 3 步）。initPersistence 幂等。
     // 持久化 hydrate（幂等，不阻塞首帧）。restoreLastVault 须等 settings（含 simpleMode）已 apply，
@@ -59,6 +64,7 @@ export default function App() {
     const onboardingTimer = setTimeout(() => initOnboarding(), 1000);
     return () => {
       stopIndex();
+      stopCodex();
       clearTimeout(onboardingTimer);
       stopExternalChangeArbiter();
       stopExitGuard();
@@ -85,6 +91,7 @@ export default function App() {
       <ChoiceDialog />
       {/* 文本输入模态：git 分支/tag 名、提交信息（usePromptStore，promptInput 弹出） */}
       <PromptDialog />
+      <GitCloneDialog />
       {/* Toast 通知宿主：错误/警告（useToastStore，持久化读写失败路径消费） */}
       <Toast />
       {/* 写作 HUD（写作模式升级）：码字速度/时间/番茄钟，默认关闭，writing.toggle-hud 开启 */}

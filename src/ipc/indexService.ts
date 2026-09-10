@@ -8,7 +8,8 @@ import { captureIndexScope, isCurrentIndexScope } from './indexScope';
 import { ensureIndexReady, recordIndexError } from './indexSession';
 
 export { captureIndexScope, indexDbUrl } from './indexScope';
-export { indexUpsertDoc, indexRemoveDoc, indexRebuild, indexSwitchVault, initIndexLifecycle } from './indexSession';
+export { pauseIndexSession } from './indexPause';
+export { indexUpsertDoc, indexRefreshFile, indexRemoveDoc, indexRebuild, indexSwitchVault, initIndexLifecycle } from './indexSession';
 export type { IndexScope } from '../types/index';
 export type { BacklinkReference } from '../editor/wikiReferences';
 

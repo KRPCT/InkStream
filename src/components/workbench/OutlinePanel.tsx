@@ -23,6 +23,7 @@ import EmptyState from '../common/EmptyState';
 export default function OutlinePanel() {
   const items = useOutlineStore((s) => s.items);
   const activePath = useEditorStore((s) => s.activePath);
+  const paused = useEditorStore((s) => s.documentBudget?.mode === 'basic');
   const cursor = useEditorStore((s) => s.cursor);
   const panelTab = useWorkbenchStore((s) => s.activeTab);
   const activeFrom = useMemo(() => activeHeadingFrom(items, cursor), [items, cursor]);
@@ -82,6 +83,9 @@ export default function OutlinePanel() {
     activeRef.current?.scrollIntoView?.({ block: 'nearest' });
   }, [activeFrom, panelTab]);
 
+  if (paused) {
+    return <EmptyState icon={ListTree} heading="大纲已暂停" body="基础编辑模式下不自动扫描全文。可在状态栏启用完整排版。" />;
+  }
   if (items.length === 0) {
     return <EmptyState icon={ListTree} heading="暂无大纲" body="打开文档后，标题结构会显示在这里。" />;
   }

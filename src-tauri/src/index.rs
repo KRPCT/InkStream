@@ -6,6 +6,8 @@ use tauri::{AppHandle, Manager};
 mod db;
 #[path = "index_links.rs"]
 mod links;
+#[path = "index_file.rs"]
+mod file;
 #[path = "index_worker.rs"]
 mod worker;
 use worker::{IndexState, Operation, Scope};
@@ -18,6 +20,9 @@ mod link_tests;
 #[cfg(test)]
 #[path = "index_actor_tests.rs"]
 mod actor_tests;
+#[cfg(test)]
+#[path = "index_refresh_tests.rs"]
+mod refresh_tests;
 
 pub fn init(app: &tauri::App) {
     app.manage(IndexState::start());
@@ -29,6 +34,15 @@ pub async fn index_upsert_doc(
 ) -> Result<(), String> {
     app.state::<IndexState>().submit(
         Scope::new(root, session_id)?, Operation::Upsert { path, content },
+    ).await
+}
+
+#[tauri::command]
+pub async fn index_refresh_file(
+    app: AppHandle, root: String, session_id: String, path: String,
+) -> Result<(), String> {
+    app.state::<IndexState>().submit(
+        Scope::new(root, session_id)?, Operation::Refresh { path },
     ).await
 }
 

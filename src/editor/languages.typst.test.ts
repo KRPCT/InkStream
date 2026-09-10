@@ -25,6 +25,20 @@ afterEach(() => {
 });
 
 describe('switchLanguage typst 迟到 reconfigure 守卫（WR-10）', () => {
+  it('初次打开 Typst 的空占位也启动解析器，下一文档登记会使旧请求失效', async () => {
+    const { markAppliedLanguage, langCompartment } = await import('./languages');
+    const view = new EditorView({ state: EditorState.create({ doc: '#let x = 1', extensions: [langCompartment.of([])] }) });
+    try {
+      markAppliedLanguage(view, 'typst');
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      expect(typstMarker).toHaveBeenCalledOnce();
+      typstMarker.mockClear();
+      markAppliedLanguage(view, 'typst');
+      markAppliedLanguage(view, 'markdown');
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      expect(typstMarker).not.toHaveBeenCalled();
+    } finally { view.destroy(); }
+  });
   it('import 解析前切走语言 → typst 工厂不被应用', async () => {
     const { switchLanguage, langCompartment, extensionsForLanguage } = await import('./languages');
     const view = new EditorView({

@@ -3,6 +3,19 @@ export interface FileReadOptions {
   signal?: AbortSignal;
 }
 
+export type FileWriteTarget =
+  | { kind: 'vault'; root: string; path: string }
+  | { kind: 'absolute'; path: string };
+
+export interface FileWriteMetadata {
+  version: 1;
+  requestId: string;
+  target: FileWriteTarget;
+  encoding: 'utf8' | 'bytes';
+  byteLength: number;
+  timeoutMs: number;
+}
+
 /** 三种读取权限分别沿用文本工作区、阅读格式与图片格式的原有守卫。 */
 export type FileReadTarget =
   | { kind: 'text'; root: string; path: string }

@@ -18,10 +18,11 @@ import { refreshLivePreview } from '../composition';
  */
 
 /** convert 转换器：latex 源 → SVG DOM 节点（display 块级恒 true）。 */
-type MathjaxConvert = (latex: string, display: boolean) => HTMLElement;
+export type MathjaxConvert = (latex: string, display: boolean) => HTMLElement;
 
 let convertFn: MathjaxConvert | null = null;
 let loading: Promise<void> | null = null;
+let handlerRegistered = false;
 
 /** MathJax 是否已就绪（LatexWidget.toDOM 据此决定渲染公式还是占位）。 */
 export function mathjaxReady(): boolean {
@@ -51,7 +52,7 @@ export function ensureMathjax(view: EditorView): void {
 }
 
 /** 一次性装配 tex→svg 转换器（全部 dynamic import 在此，首屏 chunk 不含）。 */
-async function buildConverter(): Promise<MathjaxConvert> {
+async function buildConverter(strict = false): Promise<MathjaxConvert> {
   const [{ mathjax }, { TeX }, { SVG }, { browserAdaptor }, { RegisterHTMLHandler }, { MathJaxNewcmFont }] =
     await Promise.all([
       import('@mathjax/src/js/mathjax.js'),
@@ -71,15 +72,32 @@ async function buildConverter(): Promise<MathjaxConvert> {
   ]);
 
   const adaptor = browserAdaptor();
-  RegisterHTMLHandler(adaptor);
+  if (!handlerRegistered) {
+    RegisterHTMLHandler(adaptor);
+    handlerRegistered = true;
+  }
 
-  const tex = new TeX({ packages: ['base', 'ams', 'newcommand', 'noundefined'] });
+  const fail = (_owner: unknown, error: { message?: string }): never => { throw new Error(error.message || 'LaTeX 转换失败'); };
+  const tex = new TeX(strict
+    ? { packages: ['base', 'ams', 'newcommand'], formatError: fail }
+    : { packages: ['base', 'ams', 'newcommand', 'noundefined'] });
   // fontCache:'local'：每个公式 SVG 自带 <defs> 路径缓存（自包含），规避多公式共用全局 <defs> 的 id 冲突。
   const svg = new SVG({ fontData: new MathJaxNewcmFont(), fontCache: 'local' });
-  const mathDoc = mathjax.document('', { InputJax: tex, OutputJax: svg });
+  const mathDoc = mathjax.document('', {
+    InputJax: tex, OutputJax: svg,
+    ...(strict ? {
+      compileError: (_document: unknown, _math: unknown, error: { message?: string }) => fail(null, error),
+      typesetError: (_document: unknown, _math: unknown, error: { message?: string }) => fail(null, error),
+    } : {}),
+  });
 
   return (latex: string, display: boolean): HTMLElement =>
     mathDoc.convert(latex, { display }) as HTMLElement;
+}
+
+/** 导出每次新建严格 TeX 上下文，拒绝错误公式且不继承其他公式定义的宏。 */
+export function loadMathjaxForExport(): Promise<MathjaxConvert> {
+  return buildConverter(true);
 }
 
 /** 仅供测试：注入/重置 convert 单例，绕过 jsdom 下的真 import。 */

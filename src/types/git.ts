@@ -97,6 +97,27 @@ export interface GitOpResult {
   conflicted: boolean;
 }
 
+export type GitRebaseAction = { kind: 'start'; upstream: string } | { kind: 'continue' | 'skip' | 'abort' } | { kind: 'commit-continue'; commit: string };
+export type GitRebaseOutcome = 'completed' | 'paused' | 'aborted' | 'failed' | 'cancelled';
+export interface GitRebaseStatus {
+  inProgress: boolean;
+  headOid: string | null;
+  branch: string | null;
+  originalHead: string | null;
+  onto: string | null;
+  currentCommit: string | null;
+  step: number | null;
+  total: number | null;
+  conflicts: string[];
+  needsCommit: boolean;
+  source: 'application' | 'existing' | null;
+}
+export interface GitRebaseResult {
+  outcome: GitRebaseOutcome;
+  status: GitRebaseStatus;
+  error: string | null;
+}
+
 /** 单条 stash（index 越小越新）。 */
 export interface StashEntry {
   index: number;
@@ -171,6 +192,15 @@ export interface Comment {
   body: string;
   createdAt: string;
   url: string;
+}
+
+/** Inline review discussions use GitHub pull-request review comments, distinct from issue comments. */
+export interface ReviewComment extends Comment {
+  inReplyToId: number | null;
+  path: string;
+  line: number | null;
+  originalLine: number | null;
+  diffHunk: string;
 }
 
 /** 提交 PR review 的 event 类型。 */

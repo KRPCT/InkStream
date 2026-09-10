@@ -48,6 +48,11 @@ pub fn run() {
             files::stream::ack_file_read,
             files::stream::cancel_file_read,
             files::write_file_atomic,
+            files::write::write_file_raw,
+            files::write_session::begin_file_write,
+            files::write_session::append_file_write,
+            files::write_session::commit_file_write,
+            files::write_session::abort_file_write,
             files::write_file_to_path,
             files::write_file_bytes,
             files::read_file_bytes,
@@ -56,6 +61,7 @@ pub fn run() {
             pandoc::pandoc_available,
             pandoc::pandoc_convert,
             files::create_file,
+            files::create::create_text_file,
             files::create_dir,
             files::rename_path,
             files::move_path,
@@ -63,6 +69,7 @@ pub fn run() {
             watcher::start_watch,
             watcher::stop_watch,
             index::index_upsert_doc,
+            index::index_refresh_file,
             index::index_remove_doc,
             index::index_rebuild,
             index::index_switch_vault,
@@ -76,6 +83,9 @@ pub fn run() {
             git::commit::git_cherry_pick,
             git::commit::git_revert,
             git::commit::git_abort_op,
+            git::rebase::git_rebase,
+            git::rebase::git_rebase_status,
+            git::rebase::git_cancel_rebase,
             git::refops::git_checkout,
             git::refops::git_create_branch,
             git::refops::git_delete_branch,
@@ -90,14 +100,22 @@ pub fn run() {
             git::remote::git_push,
             git::remote::git_pull,
             git::remote::git_clone,
+            git::clone::git_clone_owned,
+            git::clone::git_cancel_clone,
             git::auth::git_login_github,
             git::auth::git_logout_github,
             git::auth::git_github_status,
+            git::auth::git_github_device_configuration,
+            git::auth::git_github_device_start,
+            git::auth::git_github_device_poll,
+            git::auth::git_github_device_cancel,
             git::pr::gh_pr_list,
             git::pr::gh_pr_create,
             git::pr::gh_pr_merge,
             git::pr::gh_pr_diff,
             git::pr::gh_pr_reviews,
+            git::pr::review_comments::gh_pr_review_comments,
+            git::pr::review_comments::gh_pr_reply,
             git::pr::gh_pr_review_create,
             git::pr::gh_issue_list,
             git::pr::gh_issue_create,
@@ -122,6 +140,13 @@ pub fn run() {
             terminal::terminal_resize,
             terminal::terminal_close
         ])
+        .on_window_event(|window, event| {
+            if matches!(event, tauri::WindowEvent::Destroyed) {
+                files::write_session::close_owner(window.label());
+                git::clone::close_owner(window.label());
+                git::auth::close_owner(window.label());
+            }
+        })
         .setup(|app| {
             // watcher 单例状态注册（切 vault 时 start/stop_watch 经此句柄换装）。
             watcher::init(app);

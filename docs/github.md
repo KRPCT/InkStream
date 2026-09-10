@@ -11,17 +11,19 @@ GitHub 登录入口在「设置 ▸ 账户」分区。
 1. 按 `Ctrl+,` 打开设置，或从命令面板（`Ctrl+Shift+P`）执行「视图：设置」。
 2. 在左侧分类中点「账户」。
 
-登录有两种方式：
+登录有三种方式：
 
-- 个人访问令牌（PAT）：在输入框粘贴形如 `ghp_...` 的令牌，点「登录」。令牌需包含 repo 权限，可在 GitHub ▸ Settings ▸ Developer settings ▸ Personal access tokens 创建。
-- 本机 gh CLI 登录：若 InkStream 检测到你已通过 `gh` 命令行工具在 github.com 登录，账户分区会出现「用本机 gh CLI 一键登录」按钮，点一下就行，不用手动粘贴令牌。
+- 浏览器登录：点「通过浏览器登录 GitHub」，在固定的 GitHub 验证页面输入应用显示的验证码，并确认授权。等待期间可以取消或重新获取验证码；关闭账户设置会取消该页面的设备登录。
+- 个人访问令牌（PAT）：填写令牌后点「使用 PAT 登录」。访问私有仓库时需授予对应仓库权限；经典 PAT 通常需要 `repo` 权限。
+- 本机 gh CLI：若本机 `gh` 已在 github.com 登录，可点「使用本机 gh CLI 登录」。InkStream 只读取现有令牌，不修改 gh 的登录账户。
 
-登录成功后，账户分区显示「已登录」并提供「登出」按钮。登录后通过 HTTPS 推送、拉取、克隆会自动带上令牌。
+浏览器登录需要 GitHub OAuth App 的公开 Client ID，并在该 App 设置中启用 Device Flow。发布版本可在构建时通过 `INKSTREAM_GITHUB_CLIENT_ID` 配置；若当前版本没有配置，浏览器登录按钮会暂时禁用，也可填写自己注册的 OAuth App Client ID。客户端不需要也不接受 Client Secret。具体流程见 [GitHub Device Flow 官方说明](https://docs.github.com/en/apps/oauth-apps/building-oauth-apps/authorizing-oauth-apps#device-flow)。
 
-注意事项：
+登录成功后，账户分区显示「已登录」并提供「登出 GitHub」按钮。浏览器登录会显示刚验证的 GitHub 用户名。设备码、访问令牌和刷新令牌均由原生端处理；界面只接收验证码、状态和用户名。凭据与过期信息保存在本机系统凭据库的同一条目中，旧版本保存的 PAT/gh 令牌可以继续使用。
 
-- 令牌只保存在本机操作系统凭据库（如 Windows 凭据管理器），不会上传，也不会回显到界面。
-- 如果你偏好用 SSH 同步而非令牌，可改在「设置 ▸ Git ▸ 远程方式」选择「SSH」。
+对于 GitHub 返回的有过期时间的 OAuth 令牌，GitHub API 与 HTTPS Git 操作会在使用前按需刷新。授权被撤销或刷新令牌已过期时，应用会要求重新登录；网络失败时不会把已过期令牌交给 Git。切换 PAT、gh 或登出会取消旧的设备授权和刷新请求，迟到结果不能覆盖新的账户选择。
+
+GitHub 账户仅用于通过准入检查的 github.com HTTPS 地址；本地、SSH、自定义地址等方式按「Git ▸ 远程方式」处理。SSH 需要仓库的 SSH remote URL 与本机密钥。点「登出 GitHub」会删除 InkStream 保存的本机凭据；如需在 GitHub 服务端撤销 OAuth App 授权，可在 GitHub 的 Applications 设置中操作。
 
 ## 打开 Git Graph 与切换标签
 
@@ -30,7 +32,7 @@ GitHub 的 PR / Issues 视图位于 Git Graph 页面内。
 - 按 `Ctrl+Shift+G` 打开 Git Graph，或从命令面板执行「Git Graph」。
 - 仅在当前工作区是 git 仓库时可用；否则会提示「当前工作区不是 git 仓库」。
 
-Git Graph 顶部有四个标签：图谱、分支、PR、Issues。点「PR」或「Issues」即可进入对应视图。
+Git Graph 顶部可切换图谱、分支、暂存记录、PR 与 Issues。点「PR」或「Issues」即可进入对应视图。
 
 提示：`Ctrl+G` 打开的是知识图谱（双向链接网络），与 Git Graph 不是同一个功能，请勿混用。
 
@@ -65,6 +67,8 @@ Git Graph 顶部有四个标签：图谱、分支、PR、Issues。点「PR」或
    - 批准：表示同意合并（评语可留空）。
    - 请求修改：要求作者修改（必须填写评语）。
    - 评论：仅留言、不表态（必须填写评语）。
+
+PR 详情中的“代码审阅讨论”按文件位置列出原评论和回复，可展开上下文，再回复对应讨论。旧版本位置会单独标注；读取或发送失败时显示原因，保留尚未发送的文字。切换 PR 后，旧请求不会覆盖新 PR 的讨论或输入。该回复入口使用 PR review comment 线程，与下方普通评论区分开。
 
 ## Issue
 

@@ -2,140 +2,78 @@ import { describe, expect, it } from 'vitest';
 import type { CslItem } from '../types/zotero';
 import { formatBibEntry, formatBibliography } from './cslFormat';
 
-/** 参考文献渲染回归门（Phase 8 ZOT-04）。三式格式 + 截断/排序/编号纯函数。 */
-
-const lecun: CslItem = {
-  type: 'article-journal',
-  title: 'Deep learning',
-  'container-title': 'Nature',
-  'citation-key': 'lecunDeepLearning2015',
-  DOI: '10.1038/nature14539',
-  page: '436-444',
-  volume: '521',
-  author: [
-    { family: 'LeCun', given: 'Yann' },
-    { family: 'Bengio', given: 'Yoshua' },
-    { family: 'Hinton', given: 'Geoffrey' },
-  ],
-  issued: { 'date-parts': [['2015']] },
+// Fixed style integration; provenance and unmodified CSL hashes are in csl/assets/sources.json.
+const article: CslItem = {
+  type: 'article-journal', title: 'Deep learning', 'container-title': 'Nature',
+  'citation-key': 'lecun2015', DOI: '10.1038/nature14539', page: '436-444', volume: '521',
+  author: [{ family: 'LeCun', given: 'Yann' }, { family: 'Bengio', given: 'Yoshua' }, { family: 'Hinton', given: 'Geoffrey' }],
+  issued: { 'date-parts': [[2015]] },
+};
+const book: CslItem = {
+  type: 'book', title: 'The example book', 'citation-key': 'alpha2020',
+  author: [{ family: 'Alpha', given: 'Alice' }], publisher: 'Example Press',
+  'publisher-place': 'Beijing', edition: '2', issued: { 'date-parts': [[2020]] },
+};
+const website: CslItem = {
+  type: 'webpage', title: 'Reference data', 'citation-key': 'web2024',
+  author: [{ literal: 'Example Organization' }], URL: 'https://example.org/reference',
+  issued: { 'date-parts': [[2024, 2, 3]] }, accessed: { 'date-parts': [[2026, 9, 11]] },
 };
 
-const hochreiter: CslItem = {
-  type: 'article-journal',
-  title: 'Long Short-Term Memory',
-  'container-title': 'Neural Computation',
-  volume: '9',
-  issue: '8',
-  page: '1735-1780',
-  author: [
-    { family: 'Hochreiter', given: 'Sepp' },
-    { family: 'Schmidhuber', given: 'Jürgen' },
-  ],
-  issued: { 'date-parts': [['1997']] },
-};
-
-const vaswani: CslItem = {
-  type: 'paper-conference',
-  title: 'Attention Is All You Need',
-  'container-title': 'NeurIPS',
-  author: [
-    { family: 'Vaswani', given: 'Ashish' },
-    { family: 'Shazeer', given: 'Noam' },
-    { family: 'Parmar', given: 'Niki' },
-  ],
-  issued: { 'date-parts': [['2017']] },
-};
-
-describe('formatBibEntry — GB/T 7714', () => {
-  it('期刊文章：作者. 题名[J]. 刊名, 年, 卷(期): 页', () => {
-    expect(formatBibEntry(lecun, 'gbt7714')).toBe(
-      'LeCun Y, Bengio Y, Hinton G. Deep learning[J]. Nature, 2015, 521: 436-444.',
-    );
-    expect(formatBibEntry(hochreiter, 'gbt7714')).toBe(
-      'Hochreiter S, Schmidhuber J. Long Short-Term Memory[J]. Neural Computation, 1997, 9(8): 1735-1780.',
-    );
+describe('pinned CSL bibliography styles', () => {
+  it('GB/T 7714-2015 retains identifiers, publisher and online access metadata for three entry types', async () => {
+    const result = await formatBibliography([article, book, website], 'gbt7714');
+    expect(result).toContain('\\[1\\]');
+    expect(result).toContain('\\[2\\]');
+    expect(result).toContain('\\[3\\]');
+    expect(result).toContain('Deep learning\\[J/OL\\]');
+    expect(result).toContain('10.1038/nature14539');
+    expect(result).toContain('The example book\\[M\\]');
+    expect(result).toContain('Example Press');
+    expect(result).toContain('Reference data\\[EB/OL\\]');
+    expect(result).toContain('2026-09-11');
   });
 
-  it('会议论文标记 [C]', () => {
-    expect(formatBibEntry(vaswani, 'gbt7714')).toBe(
-      'Vaswani A, Shazeer N, Parmar N. Attention Is All You Need[C]. NeurIPS, 2017.',
-    );
+  it('APA 7 retains emphasis, DOI, edition and corporate author metadata', async () => {
+    const result = await formatBibliography([article, book, website], 'apa');
+    expect(result).toContain('LeCun, Y., Bengio, Y., & Hinton, G. (2015).');
+    expect(result).toContain('*Nature*');
+    expect(result).toContain('*521*');
+    expect(result).toContain('436–444');
+    expect(result).toContain('10.1038/nature14539');
+    expect(result).toContain('*The example book*');
+    expect(result).toContain('2nd ed.');
+    expect(result).toContain('Example Organization.');
+    expect(result.indexOf('Alpha')).toBeLessThan(result.indexOf('LeCun'));
   });
 
-  it('作者超 3 取前 3 + 等', () => {
-    const many: CslItem = {
-      type: 'book',
-      title: '某书',
-      author: [
-        { family: 'A', given: 'X' },
-        { family: 'B', given: 'Y' },
-        { family: 'C', given: 'Z' },
-        { family: 'D', given: 'W' },
-      ],
-      issued: { 'date-parts': [[2020]] },
-    };
-    expect(formatBibEntry(many, 'gbt7714')).toBe('A X, B Y, C Z, 等. 某书[M]. 2020.');
-  });
-});
-
-describe('formatBibEntry — APA', () => {
-  it('期刊：姓, I.（年）. 题名. *刊名*, *卷*(期), 页. doi', () => {
-    expect(formatBibEntry(lecun, 'apa')).toBe(
-      'LeCun, Y., Bengio, Y., & Hinton, G. (2015). Deep learning. *Nature*, *521*, 436-444. https://doi.org/10.1038/nature14539',
-    );
+  it('Vancouver NLM owns numeric labels, edition and Internet retrieval notation', async () => {
+    const result = await formatBibliography([article, book, website], 'vancouver');
+    expect(result).toContain('1\\. LeCun Y, Bengio Y, Hinton G.');
+    expect(result).toContain('2015;521:436–44.');
+    expect(result).toContain('2nd ed.');
+    expect(result).toContain('\\[Internet\\]');
+    expect(result).toContain('https://example.org/reference');
   });
 
-  it('单作者不加 &', () => {
-    const solo: CslItem = {
-      type: 'book',
-      title: 'Solo Work',
-      publisher: 'MIT Press',
-      author: [{ family: 'Knuth', given: 'Donald E.' }],
-      issued: { 'date-parts': [[1968]] },
-    };
-    expect(formatBibEntry(solo, 'apa')).toBe('Knuth, D. E. (1968). *Solo Work*. MIT Press.');
-  });
-});
-
-describe('formatBibEntry — Vancouver', () => {
-  it('期刊：作者. 题名. 刊名. 年;卷(期):页', () => {
-    expect(formatBibEntry(lecun, 'vancouver')).toBe(
-      'LeCun Y, Bengio Y, Hinton G. Deep learning. Nature. 2015;521:436-444.',
-    );
-    expect(formatBibEntry(hochreiter, 'vancouver')).toBe(
-      'Hochreiter S, Schmidhuber J. Long Short-Term Memory. Neural Computation. 1997;9(8):1735-1780.',
-    );
+  it('single-entry formatting uses the same styles without the reference number', async () => {
+    const result = await formatBibEntry(article, 'gbt7714');
+    expect(result).not.toContain('\\[1\\]');
+    expect(result).toContain('Deep learning');
   });
 
-  it('作者超 6 取前 6 + et al.', () => {
-    const seven: CslItem = {
-      type: 'article-journal',
-      title: 'Big',
-      'container-title': 'J',
-      author: Array.from({ length: 7 }, (_, i) => ({ family: `A${i}`, given: 'X' })),
-      issued: { 'date-parts': [[2021]] },
-    };
-    expect(formatBibEntry(seven, 'vancouver')).toContain('A0 X, A1 X, A2 X, A3 X, A4 X, A5 X, et al.');
-  });
-});
-
-describe('formatBibliography', () => {
-  it('GB/T 按引用序加 [n] 编号、空行分隔', () => {
-    const out = formatBibliography([lecun, vaswani], 'gbt7714');
-    expect(out).toBe(
-      '[1] LeCun Y, Bengio Y, Hinton G. Deep learning[J]. Nature, 2015, 521: 436-444.\n\n' +
-        '[2] Vaswani A, Shazeer N, Parmar N. Attention Is All You Need[C]. NeurIPS, 2017.',
-    );
+  it('APA same-author same-year entries receive distinct year suffixes', async () => {
+    const result = await formatBibliography([book, { ...book, 'citation-key': 'alpha2020b', title: 'Another book' }], 'apa');
+    expect(result).toContain('(2020a)');
+    expect(result).toContain('(2020b)');
   });
 
-  it('APA 按首作者姓字母序、无编号', () => {
-    const out = formatBibliography([vaswani, hochreiter], 'apa');
-    // Hochreiter < Vaswani → Hochreiter 在前
-    expect(out.indexOf('Hochreiter')).toBeLessThan(out.indexOf('Vaswani'));
-    expect(out).not.toMatch(/^\[1\]/);
+  it('invalid or duplicate entry identities fail before producing partial output', async () => {
+    await expect(formatBibliography([{ title: 'Missing type' }], 'apa')).rejects.toThrow('CSL');
+    await expect(formatBibliography([article, article], 'gbt7714')).rejects.toThrow('重复');
   });
 
-  it('空列表 → 空串', () => {
-    expect(formatBibliography([], 'apa')).toBe('');
+  it('an empty list returns empty text', async () => {
+    expect(await formatBibliography([], 'apa')).toBe('');
   });
 });

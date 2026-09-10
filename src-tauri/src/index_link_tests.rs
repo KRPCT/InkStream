@@ -25,3 +25,13 @@ fn wiki_link_targets_keep_nfc_and_existing_heading_alias_fields() {
     assert_eq!(refs[0].block.as_deref(), Some("block"));
     assert_eq!(refs[0].alias.as_deref(), Some("别名"));
 }
+
+#[test]
+fn local_equation_anchors_do_not_create_file_edges() {
+    let refs = extract_wiki_links("[[#eq:energy]] [[#章节]] [[#^block]] [[paper#章节^block|原文]]");
+    assert_eq!(refs.len(), 1);
+    assert_eq!(refs[0].target, "paper");
+    assert_eq!(refs[0].heading.as_deref(), Some("章节"));
+    assert_eq!(refs[0].block.as_deref(), Some("block"));
+    assert_eq!(refs[0].alias.as_deref(), Some("原文"));
+}

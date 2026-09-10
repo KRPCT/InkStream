@@ -27,6 +27,8 @@ import IssuePanel from './IssuePanel';
 import PrDetailPanel from './PrDetailPanel';
 import PullRequestPanel from './PullRequestPanel';
 import RepoSettings from './RepoSettings';
+import RebaseControls from './RebaseControls';
+import StashPanel from './StashPanel';
 import CommitGraphList from './graph/CommitGraphList';
 import CommitDetailPanel from './CommitDetailPanel';
 import FileDiffPanel from './FileDiffPanel';
@@ -59,13 +61,14 @@ export default function GitGraphView() {
 
   return (
     <div className="flex h-full flex-col bg-[var(--background-primary)]">
+      <RebaseControls />
       <div className="flex h-8 shrink-0 items-center justify-between border-b border-[var(--background-modifier-border)] px-2">
         <div className="flex items-center gap-3">
           <span className="text-[13px] font-medium text-[var(--text-normal)]">
             Git Graph · {remoteBusy ?? (loading ? '加载中…' : `${commitCount} 提交`)}
           </span>
           <div className="flex overflow-hidden rounded-[4px] border border-[var(--background-modifier-border)]">
-            {(['graph', 'branches', 'pr', 'issues'] as const).map((m) => (
+            {(['graph', 'branches', 'stashes', 'pr', 'issues'] as const).map((m) => (
               <button
                 key={m}
                 type="button"
@@ -76,7 +79,7 @@ export default function GitGraphView() {
                     : 'text-[var(--text-muted)] hover:bg-[var(--background-modifier-hover)]'
                 }`}
               >
-                {m === 'graph' ? '图谱' : m === 'branches' ? '分支' : m === 'pr' ? 'PR' : 'Issues'}
+                {m === 'graph' ? '图谱' : m === 'branches' ? '分支' : m === 'stashes' ? '暂存记录' : m === 'pr' ? 'PR' : 'Issues'}
               </button>
             ))}
           </div>
@@ -166,6 +169,8 @@ export default function GitGraphView() {
         <Panel id="graph-list" minSize={300} defaultSize={560} className="h-full">
           {leftMode === 'branches' ? (
             <BranchManager />
+          ) : leftMode === 'stashes' ? (
+            <StashPanel />
           ) : leftMode === 'pr' ? (
             <PullRequestPanel />
           ) : leftMode === 'issues' ? (

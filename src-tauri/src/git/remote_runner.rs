@@ -48,7 +48,7 @@ pub(super) fn run_streamed(
     channel: &Channel<GitProgress>,
 ) -> Result<(bool, String), GitError> {
     let token = if target.github_auth {
-        Some(super::super::auth::github_token().ok_or_else(|| {
+        Some(tauri::async_runtime::block_on(super::super::auth::github_token()).map_err(GitError::Git)?.ok_or_else(|| {
             GitError::Git("请先在「账户」设置登录 GitHub，或选择 SSH 远程方式。".into())
         })?)
     } else { None };

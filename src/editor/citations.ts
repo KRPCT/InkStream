@@ -1,6 +1,7 @@
 import type { EditorState } from '@codemirror/state';
 import type { EditorView } from '@codemirror/view';
 import { useCitationStore, type CitationEntry } from '../stores/useCitationStore';
+import { isBasicEditing } from './documentBudget';
 
 /**
  * 文档引用析出（Phase 8 ZOT-03，RightPanel 引用 tab）：扫文档全部 pandoc 式 `[@citekey]`
@@ -35,7 +36,7 @@ function sameCitations(a: CitationEntry[], b: CitationEntry[]): boolean {
 
 /** 把当前 view 的引用镜像到 store（变化才写）。 */
 export function syncCitations(view: EditorView): void {
-  const items = extractCitations(view.state);
+  const items = isBasicEditing(view.state) ? [] : extractCitations(view.state);
   if (sameCitations(useCitationStore.getState().citations, items)) return;
   useCitationStore.getState().setCitations(items);
 }

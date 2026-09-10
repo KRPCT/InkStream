@@ -1,6 +1,8 @@
 import { insertCitation, insertFootnote } from '../editor/academicActions';
 import { expandBibliographyAs, insertOrExpandBibliography } from '../editor/bibliography';
 import type { Command } from '../types/commands';
+import { numberEquations } from '../editor/equations/commands';
+import { exportEquationPdf } from '../editor/export/equationPdf';
 
 /**
  * 学术命令组（Phase 8 ZOT / ACAD）。引用/参考文献/脚注等学术写作动作，接 Zotero + Typst。
@@ -19,10 +21,12 @@ export const ACADEMIC_COMMANDS: Command[] = [
     run: () => void insertCitation(),
   },
   { id: 'academic.footnote', title: '学术：插入脚注', advanced: true, run: () => insertFootnote() },
+  { id: 'academic.number-equations', title: '学术：公式编号', advanced: true, run: numberEquations },
+  { id: 'academic.export-equation-pdf', title: '学术：导出公式 PDF 片段', advanced: true, run: exportEquationPdf },
   // 无占位 → 插入空占位；有占位 → 按文档已选样式展开/刷新（默认 GB/T 7714）。
   { id: 'academic.bibliography', title: '学术：插入参考文献', advanced: true, run: () => void insertOrExpandBibliography() },
   // 指定样式展开（写入 `<!-- biblio:STYLE -->` 标记，doc 即真相源）。
-  { id: 'academic.biblio-gbt7714', title: '学术：参考文献（GB/T 7714）', advanced: true, run: () => void expandBibliographyAs('gbt7714') },
-  { id: 'academic.biblio-apa', title: '学术：参考文献（APA）', advanced: true, run: () => void expandBibliographyAs('apa') },
-  { id: 'academic.biblio-vancouver', title: '学术：参考文献（Vancouver）', advanced: true, run: () => void expandBibliographyAs('vancouver') },
+  { id: 'academic.biblio-gbt7714', title: '学术：参考文献（GB/T 7714-2015）', advanced: true, run: () => void expandBibliographyAs('gbt7714') },
+  { id: 'academic.biblio-apa', title: '学术：参考文献（APA 第7版）', advanced: true, run: () => void expandBibliographyAs('apa') },
+  { id: 'academic.biblio-vancouver', title: '学术：参考文献（Vancouver / NLM）', advanced: true, run: () => void expandBibliographyAs('vancouver') },
 ];

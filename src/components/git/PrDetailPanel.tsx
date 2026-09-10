@@ -1,12 +1,13 @@
 import { ExternalLink } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { ghPrReviewCreate, ghPrReviews } from '../../ipc/git';
 import { openExternal } from '../../ipc/opener';
 import { useGitGraphStore } from '../../stores/useGitGraphStore';
 import { useGitStore } from '../../stores/useGitStore';
 import { showToast } from '../../stores/useToastStore';
-import type { Review, ReviewEvent } from '../../types/git';
+import type { PullRequest, Review, ReviewEvent } from '../../types/git';
 import CommentThread from './CommentThread';
+import ReviewThreadList from './ReviewThreadList';
 
 const REVIEW_ACTIONS: Array<{ event: ReviewEvent; label: string }> = [
   { event: 'APPROVE', label: '批准' },
@@ -21,10 +22,18 @@ const REVIEW_ACTIONS: Array<{ event: ReviewEvent; label: string }> = [
 export default function PrDetailPanel() {
   const repoRoot = useGitStore((s) => s.repoRoot);
   const pr = useGitGraphStore((s) => s.selectedPr);
+  if (!repoRoot || !pr) return <div className="p-4 text-[13px] text-[var(--text-muted)]">选择一个 PR 查看详情。</div>;
+  return <SelectedPr key={`${repoRoot}:${pr.number}`} repoRoot={repoRoot} pr={pr} />;
+}
+
+function SelectedPr({ repoRoot, pr }: { repoRoot: string; pr: PullRequest }) {
   const [reviews, setReviews] = useState<Review[]>([]);
   const [reviewBody, setReviewBody] = useState('');
   const [busy, setBusy] = useState(false);
   const [tick, setTick] = useState(0);
+  const [error, setError] = useState('');
+  const alive = useRef(true);
+  useEffect(() => { alive.current = true; return () => { alive.current = false; }; }, []);
 
   // 竞态守卫：切换 PR（pr 变）时旧 review 请求回填判废。
   useEffect(() => {
@@ -34,8 +43,8 @@ export default function PrDetailPanel() {
       .then((rs) => {
         if (!cancelled) setReviews(rs);
       })
-      .catch(() => {
-        /* review 加载失败静默 */
+      .catch((error: unknown) => {
+        if (!cancelled) setError(error instanceof Error ? error.message : String(error));
       });
     return () => {
       cancelled = true;
@@ -54,12 +63,13 @@ export default function PrDetailPanel() {
     setBusy(true);
     try {
       await ghPrReviewCreate(repoRoot, pr.number, event, reviewBody.trim());
+      if (!alive.current) return;
       setReviewBody('');
       setTick((t) => t + 1);
     } catch (e) {
-      showToast('error', e instanceof Error ? e.message : String(e));
+      if (alive.current) showToast('error', e instanceof Error ? e.message : String(e));
     } finally {
-      setBusy(false);
+      if (alive.current) setBusy(false);
     }
   };
 
@@ -87,6 +97,7 @@ export default function PrDetailPanel() {
         </div>
       ) : null}
 
+      {error && <p role="alert" className="text-[12px] text-[var(--color-error)]">Review 读取失败：{error}<button type="button" className="ml-2 underline" onClick={() => { setError(''); setTick((value) => value + 1); }}>重试</button></p>}
       {reviews.length > 0 ? (
         <div className="mb-3">
           <div className="mb-1 text-[12px] font-semibold text-[var(--text-muted)]">Review</div>
@@ -100,6 +111,7 @@ export default function PrDetailPanel() {
 
       <div className="mb-3 flex flex-col gap-1">
         <textarea
+          disabled={busy}
           value={reviewBody}
           onChange={(e) => setReviewBody(e.target.value)}
           placeholder="Review 评语（批准可留空）…"
@@ -121,6 +133,7 @@ export default function PrDetailPanel() {
         </div>
       </div>
 
+      <ReviewThreadList repoRoot={repoRoot} number={pr.number} />
       <div className="mb-1 text-[12px] font-semibold text-[var(--text-muted)]">评论</div>
       <CommentThread repoRoot={repoRoot} number={pr.number} />
     </div>

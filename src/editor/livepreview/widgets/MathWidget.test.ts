@@ -1,4 +1,5 @@
-import type { EditorView } from '@codemirror/view';
+import { EditorState } from '@codemirror/state';
+import { EditorView } from '@codemirror/view';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 /** MathWidget 回归门（Phase 5 W1）。mathLoader 经 mock 控制就绪态，避免真 KaTeX import。 */
@@ -20,13 +21,19 @@ vi.mock('../mathLoader', () => ({
 }));
 
 const { MathWidget } = await import('./MathWidget');
-const fakeView = {} as EditorView;
+let fakeView: EditorView;
+let editorHost: HTMLDivElement;
 
 beforeEach(() => {
+  editorHost = document.createElement('div');
+  document.body.appendChild(editorHost);
+  fakeView = new EditorView({ state: EditorState.create({ doc: ' '.repeat(64) }), parent: editorHost });
   ready = false;
   ensureKatex.mockClear();
 });
 afterEach(() => {
+  fakeView.destroy();
+  editorHost.remove();
   ready = false;
 });
 

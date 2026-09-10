@@ -7,10 +7,14 @@ import type { CodexEntry } from '../types/creative';
  */
 interface CodexState {
   entries: CodexEntry[];
+  issues: string[];
+  status: 'idle' | 'loading' | 'ready' | 'error';
   setEntries: (entries: CodexEntry[]) => void;
 }
 
 export const useCodexStore = create<CodexState>((set) => ({
   entries: [],
+  issues: [],
+  status: 'idle',
   setEntries: (entries) => set({ entries }),
 }));

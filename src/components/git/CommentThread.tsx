@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { ghCommentCreate, ghCommentList } from '../../ipc/git';
 import { showToast } from '../../stores/useToastStore';
 import type { Comment } from '../../types/git';
@@ -8,10 +8,17 @@ import type { Comment } from '../../types/git';
  * （GitHub 中 PR 即 issue，评论同走 /issues/{n}/comments）。
  */
 export default function CommentThread({ repoRoot, number }: { repoRoot: string; number: number }) {
+  return <SelectedComments key={`${repoRoot}:${number}`} repoRoot={repoRoot} number={number} />;
+}
+
+function SelectedComments({ repoRoot, number }: { repoRoot: string; number: number }) {
   const [comments, setComments] = useState<Comment[]>([]);
   const [body, setBody] = useState('');
   const [busy, setBusy] = useState(false);
   const [tick, setTick] = useState(0);
+  const [error, setError] = useState('');
+  const alive = useRef(true);
+  useEffect(() => { alive.current = true; return () => { alive.current = false; }; }, []);
 
   // 竞态守卫：number/repoRoot 变化或重载时，旧请求回填判废（与 store selectPr 同纪律）。
   useEffect(() => {
@@ -20,8 +27,8 @@ export default function CommentThread({ repoRoot, number }: { repoRoot: string; 
       .then((cs) => {
         if (!cancelled) setComments(cs);
       })
-      .catch(() => {
-        /* 评论加载失败静默，不阻断详情主体 */
+      .catch((error: unknown) => {
+        if (!cancelled) setError(error instanceof Error ? error.message : String(error));
       });
     return () => {
       cancelled = true;
@@ -33,17 +40,19 @@ export default function CommentThread({ repoRoot, number }: { repoRoot: string; 
     setBusy(true);
     try {
       await ghCommentCreate(repoRoot, number, body.trim());
+      if (!alive.current) return;
       setBody('');
       setTick((t) => t + 1);
     } catch (e) {
-      showToast('error', e instanceof Error ? e.message : String(e));
+      if (alive.current) showToast('error', e instanceof Error ? e.message : String(e));
     } finally {
-      setBusy(false);
+      if (alive.current) setBusy(false);
     }
   };
 
   return (
     <div className="flex flex-col gap-2">
+      {error && <p role="alert" className="text-[12px] text-[var(--color-error)]">评论读取失败：{error}<button type="button" className="ml-2 underline" onClick={() => { setError(''); setTick((value) => value + 1); }}>重试</button></p>}
       {comments.map((c) => (
         <div
           key={c.id}
@@ -56,6 +65,7 @@ export default function CommentThread({ repoRoot, number }: { repoRoot: string; 
         </div>
       ))}
       <textarea
+        disabled={busy}
         value={body}
         onChange={(e) => setBody(e.target.value)}
         placeholder="写下评论…"

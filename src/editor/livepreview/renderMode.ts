@@ -5,6 +5,7 @@ import { languageFromDoc } from '../languages';
 import { useEditorStore } from '../../stores/useEditorStore';
 import type { RenderMode } from '../../types/editor';
 import { livePreviewExtensions, renderModeCompartment } from './livePreview';
+import { isBasicEditing, rememberFullRenderMode } from '../documentBudget';
 
 /**
  * renderMode 运行时切换（EDIT-02 / RESEARCH Pattern 5）。
@@ -35,8 +36,9 @@ export function isMarkdownDoc(doc: string, path: string): boolean {
  */
 export function setRenderMode(view: EditorView, mode: RenderMode): void {
   queueAfterComposition(view, 'renderMode', () => {
+    if (isBasicEditing(view.state)) return;
     view.dispatch({
-      effects: renderModeCompartment.reconfigure(mode === 'live' ? livePreviewExtensions() : []),
+      effects: [renderModeCompartment.reconfigure(mode === 'live' ? livePreviewExtensions() : []), rememberFullRenderMode.of(mode)],
     });
   });
 }
@@ -65,6 +67,7 @@ export function getRenderMode(view: EditorView): RenderMode {
  */
 export function toggleRenderMode(view: EditorView | null = getView()): RenderMode | null {
   if (!view) return null;
+  if (isBasicEditing(view.state)) return null;
   if (useEditorStore.getState().activeRenderMode === null) return null;
   const next: RenderMode = getRenderMode(view) === 'live' ? 'source' : 'live';
   setRenderMode(view, next);

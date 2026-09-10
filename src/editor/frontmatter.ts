@@ -124,7 +124,7 @@ export function writeField(doc: string, key: string, val: string): string {
   const lineRe = new RegExp(`^${key}:.*$`, 'm');
   let newInner: string;
   if (lineRe.test(inner)) {
-    newInner = inner.replace(lineRe, `${key}: ${val}`);
+    newInner = inner.replace(lineRe, () => `${key}: ${val}`);
   } else {
     const sep = inner.endsWith('\n') || inner === '' ? '' : '\n';
     newInner = `${inner}${sep}${key}: ${val}`;

@@ -1,4 +1,4 @@
-import { Quote, Sigma, Superscript, type LucideIcon } from 'lucide-react';
+import { FileDown, ListOrdered, Quote, Sigma, Superscript, type LucideIcon } from 'lucide-react';
 import { execute } from '../../commands/registry';
 import BibliographyMenuButton from './BibliographyMenuButton';
 
@@ -12,6 +12,8 @@ import BibliographyMenuButton from './BibliographyMenuButton';
 const ITEMS: { id: string; label: string; icon: LucideIcon }[] = [
   { id: 'academic.cite', label: '引用', icon: Quote },
   { id: 'academic.footnote', label: '脚注', icon: Superscript },
+  { id: 'academic.number-equations', label: '公式编号', icon: ListOrdered },
+  { id: 'academic.export-equation-pdf', label: '公式 PDF', icon: FileDown },
 ];
 
 export default function AcademicToolbar() {

@@ -2,12 +2,19 @@ import { useGitStore } from '../stores/useGitStore';
 import { showToast } from '../stores/useToastStore';
 import { useWorkbenchStore } from '../stores/useWorkbenchStore';
 import type { Command } from '../types/commands';
+import { abortRebase, continueRebase, requestRebase, skipRebaseCommit } from '../editor/gitRebaseActions';
+import { requestCloneRepository } from '../editor/gitCloneActions';
 
 /**
  * git 命令（Phase 6 GIT-02）。Command 类型无 enabled 字段（菜单仅按未注册置灰），故 run 内守卫仓库根：
  * 非 git 工作区提示而非打开。Ctrl+Shift+G 沿用 vscode-git-graph 键位降低迁移成本。
  */
 export const GIT_COMMANDS: Command[] = [
+  { id: 'git.clone', title: '克隆仓库…', advanced: true, run: requestCloneRepository },
+  { id: 'git.rebase', title: '本地变基…', advanced: true, run: requestRebase },
+  { id: 'git.rebase-continue', title: '继续本地变基', advanced: true, run: continueRebase },
+  { id: 'git.rebase-skip', title: '跳过当前变基提交', advanced: true, run: skipRebaseCommit },
+  { id: 'git.rebase-abort', title: '中止本地变基', advanced: true, run: async () => { await abortRebase(); } },
   {
     id: 'git.toggle-graph',
     title: 'Git Graph',

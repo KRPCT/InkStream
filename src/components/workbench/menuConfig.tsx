@@ -41,6 +41,7 @@ export const MENUS: GroupConfig[] = [
       { separator: true },
       { commandId: 'file.open-file', label: '打开文件…' },
       { commandId: 'file.open-folder', label: '打开文件夹…' },
+      { commandId: 'git.clone', label: '克隆仓库…' },
       { recent: true, label: '最近打开' },
       { separator: true },
       { commandId: 'file.save', label: '保存' },
@@ -50,6 +51,7 @@ export const MENUS: GroupConfig[] = [
         submenu: [
           { commandId: 'file.export-html', label: 'HTML…' },
           { commandId: 'file.export-pdf', label: 'PDF…' },
+          { commandId: 'academic.export-equation-pdf', label: '公式 PDF 片段…' },
           { commandId: 'file.export-docx', label: 'DOCX…' },
           { commandId: 'file.export-odt', label: 'ODT…' },
           { commandId: 'file.export-rtf', label: 'RTF…' },

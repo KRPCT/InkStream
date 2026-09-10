@@ -1,0 +1,5 @@
+src/editor/csl/assets/*.csl text eol=lf
+src/editor/csl/assets/*.xml text eol=lf
+src/editor/csl/assets/*.json text eol=lf
+public/third-party/*.txt text eol=lf
+public/typst-fonts/LICENSE-* -whitespace

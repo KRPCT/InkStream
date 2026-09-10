@@ -2,6 +2,7 @@ import { useCallback, useEffect } from 'react';
 import { AlertCircle, Quote, RefreshCw } from 'lucide-react';
 import { zoteroCitekeys } from '../../ipc/zotero';
 import { useCitationStore } from '../../stores/useCitationStore';
+import { useEditorStore } from '../../stores/useEditorStore';
 import { showToast } from '../../stores/useToastStore';
 import EmptyState from '../common/EmptyState';
 
@@ -16,23 +17,28 @@ function errText(e: unknown): string {
 }
 
 export default function CitationPanel() {
+  const paused = useEditorStore((s) => s.documentBudget?.mode === 'basic');
   const citations = useCitationStore((s) => s.citations);
   const validKeys = useCitationStore((s) => s.validKeys);
   const resolved = useCitationStore((s) => s.resolved);
   const setValidKeys = useCitationStore((s) => s.setValidKeys);
 
   const resolve = useCallback(async () => {
+    if (paused) return;
     try {
       setValidKeys(await zoteroCitekeys());
     } catch (e) {
       showToast('error', `解析引用失败：${errText(e)}`);
     }
-  }, [setValidKeys]);
+  }, [setValidKeys, paused]);
 
   useEffect(() => {
     void resolve();
   }, [resolve]);
 
+  if (paused) {
+    return <EmptyState icon={Quote} heading="引用分析已暂停" body="基础编辑模式下不自动扫描全文。可在状态栏启用完整排版。" />;
+  }
   if (citations.length === 0) {
     return (
       <EmptyState

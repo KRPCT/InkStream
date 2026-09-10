@@ -5,8 +5,9 @@ import { drawSelection, EditorView, highlightActiveLine, keymap } from '@codemir
 import type { Extension } from '@codemirror/state';
 import { insertCitation } from './academicActions';
 import { inkstreamHighlightStyle } from './highlightTheme';
-import { extensionsForLanguage, langCompartment } from './languages';
-import { livePreviewExtensions, renderModeCompartment } from './livepreview/livePreview';
+import { documentBudgetExtensions } from './documentBudgetExtensions';
+import { typstCompilationExtension } from './livepreview/typst/typstDocument';
+import { equationPdfLifecycle } from './export/equationPdfLifecycle';
 import { focusModeExtensions, toggleFocusMode } from './livepreview/focusMode';
 import { typewriterExtensions } from './livepreview/typewriter';
 import { compositionGate } from './composition';
@@ -63,7 +64,8 @@ const editorBaseTheme = EditorView.theme({
  * 语言：langCompartment 承载当前语言扩展，默认 markdown，运行时经 switchLanguage 热切（Pattern 5）。
  *
  * 每次 openFile 新建 EditorState 时调用——history() 等带状态的扩展必须每个 state 各持一份，
- * 以保证 undo 历史按文件独立（Pitfall 3）。可传 lang 决定初始语言（openFile 用 languageForPath 提供）。
+ * 以保证 undo 历史按文件独立（Pitfall 3）。lang 决定初始语言，documentLength 在创建 State 前
+ * 选择大文档预算：达到门限先用基础编辑，显式完整排版选择按文档保留。
  *
  * 装饰层（D-02 默认 Live Preview）：renderModeCompartment 默认装 livePreviewExtensions()——
  * 新打开的 Markdown 文档即渲染（标题/加粗 + 光标行还原 + IME 安全）。compartment 独立于 langCompartment，
@@ -81,7 +83,7 @@ const editorBaseTheme = EditorView.theme({
  * Runtime 承载（Chromium 149 回归 crbug 521205128 已坐实，pin 148 后原生输入全部正常）；
  * 组合期数据安全由 compositionGate 统一收口（contentDOM compositionstart/end 门）。
  */
-export function baseExtensions(lang: string = 'markdown'): Extension[] {
+export function baseExtensions(lang: string = 'markdown', documentLength = 0): Extension[] {
   return [
     compositionGate,
     editorBaseTheme,
@@ -128,10 +130,11 @@ export function baseExtensions(lang: string = 'markdown'): Extension[] {
     ]),
     search(),
     syntaxHighlighting(inkstreamHighlightStyle),
-    langCompartment.of(extensionsForLanguage(lang)),
-    renderModeCompartment.of(livePreviewExtensions()),
+    documentBudgetExtensions(lang, documentLength),
     focusModeExtensions, // CREA-03 Focus Mode（顶层，Source/Live 均生效；关闭时零装饰）
     typewriterExtensions, // 打字机模式（顶层，光标行居中；关闭时零开销）
+    typstCompilationExtension, // 轻量会话始终保留；基础档内部短路扫描/编译并报告暂停。
+    equationPdfLifecycle, // 导出只保留当前文档快照；换装、编辑或销毁即取消旧 Worker。
     mirrorListener,
   ];
 }
