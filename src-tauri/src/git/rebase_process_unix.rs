@@ -6,6 +6,10 @@ use std::process::{Child, Command, ExitStatus, Stdio};
 use std::sync::atomic::AtomicBool;
 use std::time::{Duration, Instant};
 
+#[cfg(target_os = "macos")]
+#[path = "rebase_process_darwin.rs"]
+mod darwin;
+
 fn nonblocking(pipe: &impl AsRawFd) -> Result<(), String> {
     let fd = pipe.as_raw_fd();
     let flags = unsafe { libc::fcntl(fd, libc::F_GETFL) };
@@ -46,6 +50,13 @@ fn exited(pid: u32) -> Result<bool, String> {
 fn signal_group(pid: u32, signal: i32) -> Result<(), String> {
     if unsafe { libc::kill(-(pid as i32), signal) } == 0 { return Ok(()); }
     let error = std::io::Error::last_os_error();
+    // Darwin skips zombies in killpg1 and returns EPERM when none remain signalable.
+    // Keep the root unreaped and independently verify every remaining member before
+    // accepting that result; a real permission failure must still stop cleanup.
+    #[cfg(target_os = "macos")]
+    if error.raw_os_error() == Some(libc::EPERM) && exited(pid)? && darwin::group_has_no_live_members(pid)? {
+        return Ok(());
+    }
     if error.raw_os_error() == Some(libc::ESRCH) { Ok(()) } else { Err(error.to_string()) }
 }
 

@@ -32,6 +32,7 @@ import StashPanel from './StashPanel';
 import CommitGraphList from './graph/CommitGraphList';
 import CommitDetailPanel from './CommitDetailPanel';
 import FileDiffPanel from './FileDiffPanel';
+import BranchCompareView from './BranchCompareView';
 import '../../styles/git-graph.css';
 
 /**
@@ -68,7 +69,7 @@ export default function GitGraphView() {
             Git Graph · {remoteBusy ?? (loading ? '加载中…' : `${commitCount} 提交`)}
           </span>
           <div className="flex overflow-hidden rounded-[4px] border border-[var(--background-modifier-border)]">
-            {(['graph', 'branches', 'stashes', 'pr', 'issues'] as const).map((m) => (
+            {(['graph', 'branches', 'compare', 'stashes', 'pr', 'issues'] as const).map((m) => (
               <button
                 key={m}
                 type="button"
@@ -79,7 +80,7 @@ export default function GitGraphView() {
                     : 'text-[var(--text-muted)] hover:bg-[var(--background-modifier-hover)]'
                 }`}
               >
-                {m === 'graph' ? '图谱' : m === 'branches' ? '分支' : m === 'stashes' ? '暂存记录' : m === 'pr' ? 'PR' : 'Issues'}
+                {m === 'graph' ? '图谱' : m === 'branches' ? '分支' : m === 'compare' ? '分支比较' : m === 'stashes' ? '暂存记录' : m === 'pr' ? 'PR' : 'Issues'}
               </button>
             ))}
           </div>
@@ -165,7 +166,7 @@ export default function GitGraphView() {
           </button>
         </div>
       </div>
-      <Group orientation="horizontal" className="min-h-0 flex-1">
+      {leftMode === 'compare' ? <BranchCompareView key={repoRoot} /> : <Group orientation="horizontal" className="min-h-0 flex-1">
         <Panel id="graph-list" minSize={300} defaultSize={560} className="h-full">
           {leftMode === 'branches' ? (
             <BranchManager />
@@ -187,7 +188,7 @@ export default function GitGraphView() {
         <Panel id="graph-diff" minSize={300} className="h-full">
           <FileDiffPanel />
         </Panel>
-      </Group>
+      </Group>}
     </div>
   );
 }

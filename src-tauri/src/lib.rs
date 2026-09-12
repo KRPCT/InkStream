@@ -77,6 +77,7 @@ pub fn run() {
             git::branch::git_branch_list,
             git::log::git_log,
             git::diff::git_diff,
+            git::compare::git_compare_files,
             git::refs::git_refs,
             git::commit::git_commit,
             git::commit::git_merge,

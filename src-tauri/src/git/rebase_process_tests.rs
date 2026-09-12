@@ -41,6 +41,17 @@ impl Drop for Running {
 }
 
 #[test]
+fn ordinary_root_exit_preserves_success_and_failure_without_cleanup_errors() {
+    let directory = Temp::new();
+    for (mode, code) in [("exit-success", 0), ("exit-failure", 7)] {
+        let output = run_process(&spec(&directory.0, mode), &AtomicBool::new(false), Duration::from_secs(5)).unwrap();
+        assert_eq!(output.exit_code, Some(code), "{output:?}");
+        assert!(output.interruption.is_none(), "{output:?}");
+        assert!(output.cleanup_error.is_none(), "{output:?}");
+    }
+}
+
+#[test]
 fn cancellation_and_timeout_stop_owned_descendants_but_not_a_sentinel() {
     for timeout in [false, true] {
         let directory = Temp::new();

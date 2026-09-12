@@ -28,8 +28,8 @@ interface GitGraphState {
   /** 远程操作进行中的提示文案（W4，fetch/push/pull 期间显示；null=空闲）。 */
   remoteBusy: string | null;
   /** git-graph 左栏视图：提交图谱 / 分支管理 / 暂存记录 / Pull Requests / Issues。 */
-  leftMode: 'graph' | 'branches' | 'stashes' | 'pr' | 'issues';
-  setLeftMode: (mode: 'graph' | 'branches' | 'stashes' | 'pr' | 'issues') => void;
+  leftMode: 'graph' | 'branches' | 'compare' | 'stashes' | 'pr' | 'issues';
+  setLeftMode: (mode: 'graph' | 'branches' | 'compare' | 'stashes' | 'pr' | 'issues') => void;
   /** 选中的 PR（leftMode==='pr' 时中栏显详情、右栏复用 commitFiles 显其文件 diff）；null=未选。 */
   selectedPr: PullRequest | null;
   selectPr: (pr: PullRequest) => void;

@@ -113,6 +113,8 @@ fn fixture_process() {
     let stamp = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos();
     fs::write(directory.join(format!("{mode}.pid")), format!("{} {} {stamp}\n", std::process::id(), std::env::var(PARENT).unwrap_or_default())).unwrap();
     let _child = match mode.as_str() {
+        "exit-success" => return,
+        "exit-failure" => std::process::exit(7),
         "root" => Some(spawn(&directory, "child", false)),
         "child" => Some(spawn(&directory, "grandchild", false)),
         "pipe-parent" => {

@@ -1,4 +1,5 @@
 import { execute } from './registry';
+import { getCommandView } from '../editor/commandView';
 
 /**
  * window 级单一 keydown 分发器（D-05 VSCode 惯例）：accelerator 字符串 → 命令 id。
@@ -53,6 +54,15 @@ function onKeydown(e: KeyboardEvent): void {
   if (!accel) return;
   const id = bindings.get(accel);
   if (!id) return; // 未绑定组合不拦截默认行为
+  // A separate editor, comparison pane, or form control owns its native editing
+  // shortcuts. Never redirect them to the persistent document behind that surface.
+  if (/^(?:edit\.|fmt\.|para\.|academic\.|file\.export-)/.test(id)) {
+    const view = getCommandView();
+    if (!view) return;
+    const target = e.target instanceof Element ? e.target : null;
+    if (target?.closest('input, textarea, select, [contenteditable], .cm-editor') &&
+      !view.contentDOM.contains(target)) return;
+  }
   e.preventDefault();
   void execute(id);
 }

@@ -3,8 +3,7 @@ import type { ChangeSpec, EditorState } from '@codemirror/state';
 import { useToastStore } from '../../stores/useToastStore';
 import { isBasicEditing } from '../documentBudget';
 import { queueAfterComposition } from '../composition';
-import { currentDocumentNavigation, isCurrentDocumentNavigation } from '../editorState.navigation';
-import { getView } from '../viewHandle';
+import { captureCommandIntent, getWritableCommandView } from '../commandView';
 import { equationBodyStart, equationCatalog, type EquationCatalog, type EquationIssue } from './catalog';
 import { EQUATION_NUMBERING_MARKER, equationLabelMarker } from './markers';
 
@@ -38,12 +37,12 @@ function changesForNumbering(state: EditorState, catalog: EquationCatalog): Chan
 
 /** 一个用户动作只写一次标签事务；编号在呈现时派生，不向公式引擎源码注入数字。 */
 export function numberEquations(): void {
-  const view = getView();
+  const view = getWritableCommandView();
   if (!view) { warning('请先打开包含公式的文档。'); return; }
   if (isBasicEditing(view.state)) { warning('基础编辑模式下暂停完整公式编号，请先显式启用完整排版。'); return; }
-  const navigation = currentDocumentNavigation();
+  const intent = captureCommandIntent(view);
   queueAfterComposition(view, 'number-equations', () => {
-    if (getView() !== view || !isCurrentDocumentNavigation(navigation)) return;
+    if (!intent.isCurrent() || getWritableCommandView() !== view) return;
     if (isBasicEditing(view.state)) { warning('基础编辑模式下暂停完整公式编号。'); return; }
     const tree = ensureSyntaxTree(view.state, view.state.doc.length, 50);
     if (!tree) { warning('文档尚未完成解析，请稍后再执行公式编号。'); return; }

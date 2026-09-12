@@ -58,11 +58,7 @@ fn read_worker(
     lease.control.remaining()?;
     let mut opened = read_target::open(target)?;
     lease.control.remaining()?;
-    let modified = opened
-        .file
-        .metadata()
-        .ok()
-        .and_then(|metadata| metadata.modified().ok());
+    let original_stamp = opened.file.stamp()?;
     send_control(
         &channel,
         serde_json::json!({ "type": "start", "byteLength": opened.byte_length, "chunkBytes": CHUNK_BYTES }),
@@ -98,13 +94,9 @@ fn read_worker(
     if opened.text {
         utf8.finish()?;
     }
-    let final_metadata = opened
-        .file
-        .metadata()
-        .map_err(|e| format!("无法确认文件读取结果: {e}"))?;
+    let final_stamp = opened.file.stamp()?;
     if offset != opened.byte_length
-        || final_metadata.len() != opened.byte_length
-        || final_metadata.modified().ok() != modified
+        || final_stamp != original_stamp
     {
         return Err("文件在读取期间发生变化，整次读取已取消。".into());
     }

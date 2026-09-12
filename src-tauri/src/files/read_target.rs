@@ -2,7 +2,7 @@ use super::{READ_BYTES_MAX, READ_FILE_INLINE_LIMIT_BYTES, READ_IMAGE_MAX};
 use crate::path_guard::canonicalize_in_root;
 use serde::{Deserialize, Serialize};
 use std::fs::File;
-use std::io::{Read, Write};
+use std::io::{Cursor, Read, Write};
 use std::path::{Path, PathBuf};
 
 #[derive(Debug, Clone, Deserialize)]
@@ -11,10 +11,30 @@ pub enum FileReadTarget {
     Text { root: String, path: String },
     Reading { path: String },
     Image { path: String },
+    GitBlob { #[serde(rename = "repoRoot")] repo_root: String, #[serde(rename = "commitOid")] commit_oid: String, path: String, #[serde(rename = "blobOid")] blob_oid: String },
+}
+
+pub(super) enum ReadSource {
+    File(File),
+    Blob(Cursor<Vec<u8>>),
+}
+impl Read for ReadSource {
+    fn read(&mut self, buffer: &mut [u8]) -> std::io::Result<usize> {
+        match self { Self::File(file) => file.read(buffer), Self::Blob(blob) => blob.read(buffer) }
+    }
+}
+impl ReadSource {
+    pub(super) fn stamp(&self) -> Result<Option<(u64, Option<std::time::SystemTime>)>, String> {
+        match self {
+            Self::File(file) => file.metadata().map(|m| Some((m.len(), m.modified().ok())))
+                .map_err(|e| format!("无法确认文件读取结果: {e}")),
+            Self::Blob(_) => Ok(None), // Fixed object IDs are immutable, independent of the worktree.
+        }
+    }
 }
 
 pub(super) struct OpenedFile {
-    pub file: File,
+    pub file: ReadSource,
     pub byte_length: u64,
     pub maximum: u64,
     pub text: bool,
@@ -31,6 +51,10 @@ fn absolute(path: String) -> Result<PathBuf, String> {
 /// 保留三种已有读取范围；不把受限的阅读/图片读取扩大成任意绝对路径读取。
 pub(super) fn open(target: FileReadTarget) -> Result<OpenedFile, String> {
     let (path, maximum, text) = match target {
+        FileReadTarget::GitBlob { repo_root, commit_oid, path, blob_oid } => {
+            let bytes = crate::git::compare::read_blob(&repo_root, &commit_oid, &path, &blob_oid)?;
+            return Ok(OpenedFile { byte_length: bytes.len() as u64, file: ReadSource::Blob(Cursor::new(bytes)), maximum: READ_BYTES_MAX, text: true });
+        }
         FileReadTarget::Text { root, path } => {
             let root = Path::new(&root)
                 .canonicalize()
@@ -77,7 +101,7 @@ pub(super) fn open(target: FileReadTarget) -> Result<OpenedFile, String> {
         return Err(format!("文件超过{}MiB读取上限。", maximum / 1024 / 1024));
     }
     Ok(OpenedFile {
-        file,
+        file: ReadSource::File(file),
         byte_length: metadata.len(),
         maximum,
         text,

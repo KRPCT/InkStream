@@ -11,7 +11,7 @@ import { equationBodyStart } from '../equations/catalog';
 import { formulaBlockFromNode, type FormulaBlock } from '../livepreview/formulaBlocks';
 import { formulaEditState } from '../livepreview/formulaEditState';
 import { loadMathjaxForExport } from '../livepreview/mathjaxLoader';
-import { getView } from '../viewHandle';
+import { captureCommandIntent, getCommandView } from '../commandView';
 import { compileSvgToPdf, equationPdfAbortError } from './equationPdfClient';
 import { equationPdfLifecycle } from './equationPdfLifecycle';
 import { equationSvg } from './equationSvg';
@@ -49,6 +49,8 @@ function filename(path: string | null): string {
 
 /** 当前源码快照的公式片段导出。所有异步阶段均归属于当前文档；不改正文、不借用整篇打印流程。 */
 export async function exportEquationPdfAt(view: EditorView, blockFrom?: number): Promise<void> {
+  if (getCommandView() !== view) return;
+  const intent = captureCommandIntent(view, false);
   if (isBasicEditing(view.state)) { showToast('warning', '基础编辑模式下暂停公式 PDF 导出，请先显式启用完整排版。'); return; }
   if (isComposing(view)) { showToast('warning', '请先完成当前输入，再导出公式 PDF。'); return; }
   const block = currentBlock(view, blockFrom);
@@ -65,10 +67,11 @@ export async function exportEquationPdfAt(view: EditorView, blockFrom?: number):
   const lifecycle = view.plugin(equationPdfLifecycle)?.signal;
   const abort = (): void => controller.abort(equationPdfAbortError());
   navigation.addEventListener('abort', abort, { once: true });
+  intent.signal.addEventListener('abort', abort, { once: true });
   lifecycle?.addEventListener('abort', abort, { once: true });
   if (navigation.aborted || lifecycle?.aborted) abort();
   const current = (): void => {
-    if (controller.signal.aborted || getView() !== view || view.state.doc !== doc || useEditorStore.getState().activePath !== path) throw equationPdfAbortError();
+    if (controller.signal.aborted || !intent.isCurrent() || view.state.doc !== doc || useEditorStore.getState().activePath !== path) throw equationPdfAbortError();
   };
   let loadingTimeout: ReturnType<typeof setTimeout> | undefined;
   try {
@@ -92,13 +95,14 @@ export async function exportEquationPdfAt(view: EditorView, blockFrom?: number):
   } finally {
     if (loadingTimeout !== undefined) clearTimeout(loadingTimeout);
     navigation.removeEventListener('abort', abort);
+    intent.signal.removeEventListener('abort', abort);
     lifecycle?.removeEventListener('abort', abort);
     if (activeExport === controller) activeExport = null;
   }
 }
 
 export async function exportEquationPdf(): Promise<void> {
-  const view = getView();
+  const view = getCommandView();
   if (!view) { showToast('warning', '请先打开包含 LaTeX 公式的文档。'); return; }
   await exportEquationPdfAt(view);
 }

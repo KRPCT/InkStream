@@ -11,6 +11,41 @@ use tauri::ipc::{Channel, InvokeResponseBody};
 // All cases share the production admission registry, including under parallel cargo test.
 static STREAM_TEST: Mutex<()> = Mutex::new(());
 
+#[test]
+fn git_blob_uses_the_same_complete_acknowledged_raw_channel() {
+    let _serial = STREAM_TEST.lock().unwrap_or_else(|error| error.into_inner());
+    let sandbox = Sandbox::new();
+    let repo = git2::Repository::init(&sandbox.0).unwrap();
+    let text = format!("\u{feff}开头\r\n{}完整末尾", "中文跨帧🙂\r\n".repeat(50_000));
+    let blob = repo.blob(text.as_bytes()).unwrap();
+    let mut builder = repo.treebuilder(None).unwrap();
+    builder.insert("note.md", blob, 0o100644).unwrap();
+    let tree = repo.find_tree(builder.write().unwrap()).unwrap();
+    let signature = git2::Signature::now("Fixture", "fixture@example.test").unwrap();
+    let commit = repo.commit(None, &signature, &signature, "fixture", &tree, &[]).unwrap();
+    let received = Arc::new(Mutex::new(Vec::<u8>::new()));
+    let captured = received.clone();
+    let channel = Channel::new(move |message| {
+        match message {
+            InvokeResponseBody::Raw(frame) => {
+                assert!(frame.len() <= 262_144 + 8);
+                let mut bytes = captured.lock().unwrap();
+                let offset = u64::from_le_bytes(frame[..8].try_into().unwrap());
+                assert_eq!(offset as usize, bytes.len());
+                bytes.extend_from_slice(&frame[8..]);
+                ack_file_read("compare-raw-body".into(), bytes.len() as u64).unwrap();
+            }
+            InvokeResponseBody::Json(json) => assert!(json.len() < 256),
+        }
+        Ok(())
+    });
+    tauri::async_runtime::block_on(read_file_stream("compare-raw-body".into(), FileReadTarget::GitBlob {
+        repo_root: sandbox.0.to_string_lossy().into_owned(), commit_oid: commit.to_string(), path: "note.md".into(), blob_oid: blob.to_string(),
+    }, channel)).unwrap();
+    assert_eq!(*received.lock().unwrap(), text.as_bytes());
+    assert!(!sandbox.0.join("note.md").exists());
+}
+
 struct Sandbox(PathBuf);
 impl Sandbox {
     fn new() -> Self {

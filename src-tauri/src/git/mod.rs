@@ -20,6 +20,7 @@ pub(crate) mod branch;
 pub(crate) mod commit;
 pub(crate) mod clone;
 pub(crate) mod conflict;
+pub(crate) mod compare;
 pub(crate) mod diff;
 pub(crate) mod log;
 pub(crate) mod pr;

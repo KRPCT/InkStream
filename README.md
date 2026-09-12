@@ -110,7 +110,7 @@
 
 ## 从源码构建
 
-环境要求：**Node 22（LTS）· Rust stable（rustup）· pnpm 11.5.2**（经 corepack 激活）。
+环境要求：**Node 24（见 `.node-version`）· Rust stable（rustup）· pnpm 11.5.2**（经 corepack 激活）。
 
 ```bash
 corepack enable
@@ -119,7 +119,7 @@ pnpm tauri dev        # 开发模式启动桌面应用
 pnpm tauri build      # 打包本平台安装包（产物在 src-tauri/target/release/bundle/）
 ```
 
-三道门：`pnpm typecheck && pnpm lint && pnpm test`。Linux 构建需先安装 webkit2gtk 等系统依赖（清单见 [.github/workflows/ci.yml](./.github/workflows/ci.yml)）；三平台安装包经 [.github/workflows/release.yml](./.github/workflows/release.yml) 在 CI 同时构建。
+本地检查：`pnpm typecheck`、`pnpm lint`、`pnpm test:ci`、`pnpm build`。`test:ci` 串行执行全部前端测试，保留每项测试的原有时限，记录进程清理与结果，避免大文档测试和其他 jsdom 实例争用资源。原生测试运行 `node scripts/acceptance/run-rust.mjs`。Linux 构建需先安装 webkit2gtk 等系统依赖（清单见 [.github/workflows/ci.yml](./.github/workflows/ci.yml)）；三平台安装包经 [.github/workflows/release.yml](./.github/workflows/release.yml) 在 CI 同时构建。
 
 ## 路线图
 

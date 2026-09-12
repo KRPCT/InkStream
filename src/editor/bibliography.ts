@@ -5,9 +5,8 @@ import { useVaultStore } from '../stores/useVaultStore';
 import type { CitationStyle, CslItem } from '../types/zotero';
 import { extractCitations } from './citations';
 import { formatBibliography } from './cslFormat';
-import { queueAfterComposition } from './composition';
 import { isBasicEditing } from './documentBudget';
-import { getView } from './viewHandle';
+import { applyCommandIntent, captureCommandIntent, getWritableCommandView, runWritableCommand } from './commandView';
 
 /**
  * 参考文献占位与展开（Phase 8 ZOT-04）。占位标记 `<!-- biblio[:style] -->`，
@@ -82,22 +81,22 @@ function orderItems(keys: readonly string[], items: readonly CslItem[]): CslItem
 
 /** 插入空参考文献占位（文末标题 + 标记）。已存在则提示不重复。 */
 function insertPlaceholder(): void {
-  const view = getView();
-  if (!view) return;
-  const doc = view.state.doc.toString();
-  if (BIBLIO_RE.test(doc)) {
-    showToast('warning', '文末已有参考文献占位（点「展开」可生成条目）。');
-    return;
-  }
-  const prefix = doc.endsWith('\n\n') ? '' : doc.endsWith('\n') ? '\n' : '\n\n';
-  const insert = `${prefix}${HEADING}\n\n${marker('gbt7714')}\n`;
-  const at = view.state.doc.length;
-  view.dispatch({
-    changes: { from: at, insert },
-    selection: { anchor: at + insert.length },
-    scrollIntoView: true,
+  runWritableCommand((view) => {
+    const doc = view.state.doc.toString();
+    if (BIBLIO_RE.test(doc)) {
+      showToast('warning', '文末已有参考文献占位（点「展开」可生成条目）。');
+      return;
+    }
+    const prefix = doc.endsWith('\n\n') ? '' : doc.endsWith('\n') ? '\n' : '\n\n';
+    const insert = `${prefix}${HEADING}\n\n${marker('gbt7714')}\n`;
+    const at = view.state.doc.length;
+    view.dispatch({
+      changes: { from: at, insert },
+      selection: { anchor: at + insert.length },
+      scrollIntoView: true,
+    });
+    view.focus();
   });
-  view.focus();
 }
 
 /**
@@ -105,8 +104,9 @@ function insertPlaceholder(): void {
  * styleOverride 缺省时沿用文档已编码样式（无占位则默认 gbt7714）。Zotero 失败 → 错误 toast。
  */
 async function expand(styleOverride?: CitationStyle): Promise<void> {
-  const view = getView();
+  const view = getWritableCommandView();
   if (!view) return;
+  const intent = captureCommandIntent(view);
   if (isBasicEditing(view.state)) {
     showToast('warning', '请先为此文档启用完整排版，再生成参考文献。');
     return;
@@ -119,7 +119,7 @@ async function expand(styleOverride?: CitationStyle): Promise<void> {
   const beforeBlock = currentBlock(doc);
   const style = styleOverride ?? detectBiblioStyle(doc) ?? 'gbt7714';
   const keys = extractCitations(view.state).map((c) => c.key);
-  const isCurrent = () => request === generation && getView() === view &&
+  const isCurrent = () => request === generation && intent.isCurrent() && getWritableCommandView() === view &&
     useVaultStore.getState().vault === vault && useEditorStore.getState().activePath === path &&
     useEditorStore.getState().tabs.find((item) => item.path === path) === tab;
   let body: string;
@@ -132,7 +132,7 @@ async function expand(styleOverride?: CitationStyle): Promise<void> {
     return;
   }
   const block = `${marker(style)}\n\n${body}\n\n${END_MARK}`;
-  await new Promise<void>((resolve) => queueAfterComposition(view, `bibliography:${request}`, () => {
+  await applyCommandIntent(intent, () => {
     try {
       if (!isCurrent()) return;
       const current = view.state.doc.toString();
@@ -145,8 +145,8 @@ async function expand(styleOverride?: CitationStyle): Promise<void> {
       view.dispatch({ changes, scrollIntoView: true });
     } catch (error) {
       showToast('error', `无法写入参考文献：${errText(error)}`);
-    } finally { resolve(); }
-  }));
+    }
+  });
 }
 
 /**
@@ -154,7 +154,7 @@ async function expand(styleOverride?: CitationStyle): Promise<void> {
  * 有占位 → 展开/刷新（第二步）。两步单按钮，符合「Insert Bibliography 后编译展开」。
  */
 export async function insertOrExpandBibliography(): Promise<void> {
-  const view = getView();
+  const view = getWritableCommandView();
   if (!view) return;
   if (detectBiblioStyle(view.state.doc.toString()) === null) {
     insertPlaceholder();

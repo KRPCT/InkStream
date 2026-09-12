@@ -2,7 +2,7 @@ import { EditorSelection, Prec, type ChangeSpec, type Extension } from '@codemir
 import { keymap, type Command, type EditorView } from '@codemirror/view';
 import { useEditorStore } from '../stores/useEditorStore';
 import { insertLink, wrapSelection } from './richtext/commands';
-import { getView } from './viewHandle';
+import { runWritableCommand } from './commandView';
 
 /**
  * Markdown「编辑/段落/格式」命令（R4 §1.3 段落▸/格式▸ + §3 键位裁决）。
@@ -208,8 +208,7 @@ export function isMarkdownFamily(): boolean {
  * 仅 markdown 家族文档执行（非 markdown / 无 view 静默 no-op）。
  */
 export function runMarkdownCommand(cmd: Command): void {
-  const view = getView();
-  if (view && isMarkdownFamily()) cmd(view);
+  runWritableCommand((view) => { if (isMarkdownFamily()) cmd(view); });
 }
 
 /**

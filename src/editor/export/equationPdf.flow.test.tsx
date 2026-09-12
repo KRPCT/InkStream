@@ -233,6 +233,28 @@ describe('LaTeX 公式 PDF 片段的用户入口', () => {
     expect(worker.terminate).toHaveBeenCalled();
   });
 
+  it('opening comparison retires a pending formula export even when the same document is shown again', async () => {
+    open();
+    const { worker, pending } = await beginCommand();
+    await act(async () => {
+      useWorkbenchStore.setState({ centralView: 'gitGraph' });
+      useWorkbenchStore.setState({ centralView: 'editor' });
+      await pending;
+    });
+    expect(worker.terminate).toHaveBeenCalled();
+    await finish(worker, pending);
+    expect(pickExportPath).not.toHaveBeenCalled();
+    expect(writeBytesToPath).not.toHaveBeenCalled();
+  });
+
+  it('comparison cannot start a formula export from the hidden document', async () => {
+    open();
+    useWorkbenchStore.setState({ centralView: 'gitGraph' });
+    await execute(COMMAND);
+    expect(loadStrict).not.toHaveBeenCalled();
+    expect(writeBytesToPath).not.toHaveBeenCalled();
+  });
+
   it('严格 LaTeX 转换失败显示原始错误且不启动 PDF Worker 或保存', async () => {
     open();
     strictConvert.mockImplementationOnce(() => { throw new Error('Undefined control sequence \\doesnotexist'); });

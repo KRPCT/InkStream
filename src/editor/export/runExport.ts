@@ -8,7 +8,7 @@ import { showToast } from '../../stores/useToastStore';
 import type { ExportFormat, ExportMeta, PandocFormat } from '../../types/export';
 import { readFields } from '../frontmatter';
 import { loadKatex } from '../livepreview/mathLoader';
-import { getView } from '../viewHandle';
+import { getCommandView } from '../commandView';
 import { imageContextForPath } from '../editorState';
 import { stripVerbatim } from '../pathUtil';
 import { htmlToDocxBlob } from './exportDocx';
@@ -45,7 +45,7 @@ async function buildMathRenderer(): Promise<MathRenderer | undefined> {
 }
 
 export async function exportDocument(format: ExportFormat): Promise<void> {
-  const view = getView();
+  const view = getCommandView();
   if (!view) {
     showToast('warning', '请先打开一个文档再导出。');
     return;
@@ -53,6 +53,7 @@ export async function exportDocument(format: ExportFormat): Promise<void> {
   const activePath = useEditorStore.getState().activePath;
   const markdown = view.state.doc.toString();
   const name = baseName(activePath);
+  const imageContext = imageContextForPath(activePath ?? '');
   const meta: ExportMeta = {
     title: readFields(markdown, ['title']).title || name,
     brandingFooter: useSettingsStore.getState().exportBrandingFooter,
@@ -62,7 +63,7 @@ export async function exportDocument(format: ExportFormat): Promise<void> {
   const renderMath = await buildMathRenderer();
   // 图片内嵌：把文档引用的 vault 内本地图预解析为 data URI，HTML/PDF 内联、DOCX 经 canvas 嵌 ImageRun，
   // 使导出产物脱离 vault 仍显示图片（远程图保活链接、已是 data: 的跳过——见 resolveExportImages）。
-  const images = await resolveExportImages(markdown, imageContextForPath(activePath ?? ''));
+  const images = await resolveExportImages(markdown, imageContext);
   const bodyHtml = markdownToHtml(markdown, { renderMath, images });
 
   try {
@@ -114,7 +115,7 @@ function docResourcePath(activePath: string | null): string | null {
 
 /** pandoc 导出（odt/rtf/latex/epub/typst/org）：当前文档 gfm markdown → pandoc → 保存对话框选定路径。 */
 export async function exportViaPandoc(format: PandocFormat): Promise<void> {
-  const view = getView();
+  const view = getCommandView();
   if (!view) {
     showToast('warning', '请先打开一个文档再导出。');
     return;
@@ -123,14 +124,16 @@ export async function exportViaPandoc(format: PandocFormat): Promise<void> {
   if (!spec) return;
   const activePath = useEditorStore.getState().activePath;
   const name = baseName(activePath);
+  const markdown = withWatermark(view.state.doc.toString());
+  const resourcePath = docResourcePath(activePath);
   const path = await pickExportPath(`${name}.${spec.ext}`, format);
   if (!path) return;
   try {
     await pandocConvert(
-      withWatermark(view.state.doc.toString()),
+      markdown,
       path,
       format,
-      docResourcePath(activePath),
+      resourcePath,
     );
   } catch (e) {
     showToast('error', typeof e === 'string' ? e : `导出 ${spec.label} 失败（pandoc）。`);

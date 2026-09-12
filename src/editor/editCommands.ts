@@ -2,14 +2,14 @@ import { selectAll, undo, redo } from '@codemirror/commands';
 import { openSearchPanel } from '@codemirror/search';
 import { readText } from '../ipc/clipboard';
 import type { EditorView } from '@codemirror/view';
-import { getView } from './viewHandle';
+import { applyCommandIntent, captureCommandIntent, getCommandView, getWritableCommandView, runWritableCommand } from './commandView';
 import { isMarkdownFamily } from './markdownCommands';
 import { smartLinkPaste } from './richtext/commands';
 
 /**
  * 「编辑」菜单的视图级命令（R4 §1.3 编辑组）：撤销/重做/全选/查找/替换/剪贴板。
  *
- * 全部经 getView() 取单内核 EditorView（EditorView 不进 store 纪律）；无活动编辑器时 no-op。
+ * 仅操作可见的主编辑器；比较视图与输入控件保留自己的编辑行为。
  * 撤销/重做/全选/查找直接调 @codemirror/commands / @codemirror/search（不需 DOM 焦点即生效）。
  *
  * 剪贴板（剪切/复制/粘贴）：菜单点击是真实用户手势——回焦编辑器（铁律 1 豁免：真实手势后合法回焦）
@@ -17,16 +17,16 @@ import { smartLinkPaste } from './richtext/commands';
  */
 
 function withView(fn: (view: EditorView) => void): void {
-  const view = getView();
+  const view = getCommandView();
   if (view) fn(view);
 }
 
 export function doUndo(): void {
-  withView((view) => void undo(view));
+  runWritableCommand((view) => void undo(view));
 }
 
 export function doRedo(): void {
-  withView((view) => void redo(view));
+  runWritableCommand((view) => void redo(view));
 }
 
 export function doSelectAll(): void {
@@ -41,7 +41,7 @@ export function doFind(): void {
 
 /** 替换：CM6 搜索面板默认含替换行（openSearchPanel 即可达替换 UI）。 */
 export function doReplace(): void {
-  withView((view) => {
+  runWritableCommand((view) => {
     openSearchPanel(view);
   });
 }
@@ -52,7 +52,8 @@ export function doReplace(): void {
  * 合法用户手势，execCommand('copy'/'cut') 在 WebView2/Chromium 此语境下可靠。
  */
 function copyCut(action: 'cut' | 'copy'): void {
-  withView((view) => {
+  const run = action === 'cut' ? runWritableCommand : withView;
+  run((view) => {
     view.focus();
     document.execCommand(action);
   });
@@ -76,22 +77,25 @@ export function doCopy(): void {
  * 剪切/复制（copyCut）保留 execCommand：剪贴板**写**在 WebView2 用户手势下被允许，仍写入系统剪贴板。
  */
 export async function doPaste(): Promise<void> {
-  const view = getView();
+  const view = getWritableCommandView();
   if (!view) return;
   view.focus();
+  const intent = captureCommandIntent(view);
   let text: string;
   try {
     text = await readText();
   } catch {
     return; // 剪贴板无文本 / 读取被拒 / 非 Tauri 运行时：静默 no-op
   }
-  if (!text) return;
+  if (!text || !intent.isCurrent()) return;
   // 智能链接仅限 markdown 家族文档（markdown/richtext，isMarkdownFamily=activeRenderMode!==null）：
   // smartLinkPaste 语言无关，若不门控会在 .py/.rs/.json 等代码文件里把选中源码误包成 [选区](URL)，
   // 污染源码且与 Ctrl+V（代码文件走纯文本粘贴）分叉。门控后与键盘路径对齐。
-  if (isMarkdownFamily() && smartLinkPaste(view, text)) return; // http(s) URL + 有选区 → 包成 [选区](URL)
-  view.dispatch(view.state.replaceSelection(text), {
-    userEvent: 'input.paste',
-    scrollIntoView: true,
+  await applyCommandIntent(intent, (target) => {
+    if (isMarkdownFamily() && smartLinkPaste(target, text)) return;
+    target.dispatch(target.state.replaceSelection(text), {
+      userEvent: 'input.paste',
+      scrollIntoView: true,
+    });
   });
 }

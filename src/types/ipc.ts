@@ -103,6 +103,7 @@ export interface IpcCommands {
     result: CommitInfo[];
   };
   git_diff: { args: { repoRoot: string; target: DiffTarget }; result: FileDiff[] };
+  git_compare_files: { args: { repoRoot: string; fromOid: string; toOid: string; skip: number; limit: number; focusPath: string | null }; result: import('./gitCompare').GitComparePage };
   git_refs: { args: { repoRoot: string }; result: GitRef[] };
   // Phase 6 W3 写命令。产生提交类（commit/merge/cherry-pick/revert）走 git CLI -S 签名；引用操作走 git2。
   git_commit: { args: { repoRoot: string; message: string; paths: string[] }; result: GitOpResult };

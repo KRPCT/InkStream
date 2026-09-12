@@ -2,6 +2,10 @@ import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vite
 import { bind, dispose, init, normalizeEvent } from './keymap';
 import { hydrate } from './mru';
 import { register } from './registry';
+import { EditorState } from '@codemirror/state';
+import { EditorView } from '@codemirror/view';
+import { setView } from '../editor/viewHandle';
+import { useWorkbenchStore } from '../stores/useWorkbenchStore';
 
 const disposers: Array<() => void> = [];
 
@@ -75,5 +79,60 @@ describe('keymap 分发', () => {
     dispose();
     window.dispatchEvent(key({ key: 'b', ctrlKey: true }));
     expect(run).not.toHaveBeenCalled();
+  });
+});
+
+describe('editing shortcuts stay with the surface receiving the key', () => {
+  let view: EditorView;
+  let run: Mock<() => void>;
+  beforeEach(() => {
+    useWorkbenchStore.setState({ centralView: 'editor' });
+    view = new EditorView({ state: EditorState.create({ doc: 'Original document' }) });
+    document.body.appendChild(view.dom);
+    setView(view);
+    run = vi.fn();
+    disposers.push(register({ id: 'edit.copy', title: 'Copy', run }));
+    disposers.push(bind('Ctrl+C', 'edit.copy'));
+    init();
+  });
+  afterEach(() => {
+    dispose();
+    while (disposers.length) disposers.pop()!();
+    setView(null); view.destroy(); view.dom.remove();
+    useWorkbenchStore.setState({ centralView: 'editor' });
+  });
+
+  it.each(['input', 'textarea', 'select', 'contenteditable'])('%s keeps its native copy without redirecting to the document', (kind) => {
+    const input = document.createElement(kind === 'contenteditable' ? 'div' : kind);
+    if (kind === 'contenteditable') input.setAttribute('contenteditable', 'true');
+    document.body.appendChild(input);
+    const event = key({ key: 'c', ctrlKey: true, bubbles: true });
+    input.dispatchEvent(event);
+    expect(event.defaultPrevented).toBe(false);
+    expect(run).not.toHaveBeenCalled();
+    input.remove();
+  });
+
+  it('comparison selection keeps copy and find while the hidden document receives neither command', () => {
+    disposers.push(register({ id: 'edit.find', title: 'Find', run }));
+    disposers.push(bind('Ctrl+F', 'edit.find'));
+    const comparison = new EditorView({ state: EditorState.create({ doc: 'Compared revision', extensions: [EditorState.readOnly.of(true)] }) });
+    document.body.appendChild(comparison.dom);
+    useWorkbenchStore.setState({ centralView: 'gitGraph' });
+    try {
+      for (const keyName of ['c', 'f']) {
+        const event = key({ key: keyName, ctrlKey: true, bubbles: true });
+        comparison.contentDOM.dispatchEvent(event);
+        expect(event.defaultPrevented).toBe(false);
+      }
+      expect(run).not.toHaveBeenCalled();
+    } finally { comparison.destroy(); comparison.dom.remove(); }
+  });
+
+  it('the main editor still receives its unhandled command shortcut', () => {
+    const event = key({ key: 'c', ctrlKey: true, bubbles: true });
+    view.contentDOM.dispatchEvent(event);
+    expect(event.defaultPrevented).toBe(true);
+    expect(run).toHaveBeenCalledTimes(1);
   });
 });
