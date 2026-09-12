@@ -1,12 +1,17 @@
-import { render, screen } from '@testing-library/react';
+import { EditorView } from '@codemirror/view';
+import { act, cleanup, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { registerBuiltinCommands } from '../../commands/builtins';
 import { hydrate } from '../../commands/mru';
+import { execute } from '../../commands/registry';
+import { setView } from '../../editor/viewHandle';
 import { windowControls } from '../../ipc/window';
 import { useAboutStore } from '../../stores/useAboutStore';
 import { usePaletteStore } from '../../stores/usePaletteStore';
 import { useWorkbenchStore } from '../../stores/useWorkbenchStore';
+import { useFocusModeStore } from '../../stores/useFocusModeStore';
+import { useTypewriterStore } from '../../stores/useTypewriterStore';
 import AboutDialog from '../common/AboutDialog';
 import MenuBar from './MenuBar';
 
@@ -15,6 +20,7 @@ vi.mock('../../ipc/app', () => ({
 }));
 
 let disposeBuiltins: () => void;
+let editor: EditorView | null = null;
 
 describe('MenuBar（D-02 同源框架）', () => {
   beforeEach(() => {
@@ -22,12 +28,18 @@ describe('MenuBar（D-02 同源框架）', () => {
     useWorkbenchStore.setState(useWorkbenchStore.getInitialState(), true);
     usePaletteStore.setState(usePaletteStore.getInitialState(), true);
     useAboutStore.setState(useAboutStore.getInitialState(), true);
+    useFocusModeStore.setState({ active: false });
+    useTypewriterStore.setState({ active: false });
     delete document.documentElement.dataset.mode;
     disposeBuiltins = registerBuiltinCommands();
   });
 
   afterEach(() => {
+    cleanup();
     disposeBuiltins();
+    setView(null);
+    editor?.destroy();
+    editor = null;
   });
 
   it('渲染 文件 / 编辑 / 段落 / 格式 / 视图 / 帮助 六个顶层菜单', () => {
@@ -55,6 +67,28 @@ describe('MenuBar（D-02 同源框架）', () => {
     await user.click(screen.getByRole('menuitem', { name: '格式' }));
     expect(screen.getByRole('menuitem', { name: /加粗/ })).toHaveTextContent('Ctrl+B');
     expect(screen.getByRole('menuitem', { name: '清除格式' })).toBeInTheDocument();
+  });
+
+  it.each([
+    ['打字机模式', 'view.toggle-typewriter', useTypewriterStore, useFocusModeStore],
+    ['专注模式', 'view.toggle-focus', useFocusModeStore, useTypewriterStore],
+  ] as const)('%s 勾选跟随菜单及外部命令切换，两个模式互不影响', async (label, command, store, other) => {
+    editor = new EditorView();
+    setView(editor);
+    const user = userEvent.setup();
+    render(<MenuBar />);
+    await user.click(screen.getByRole('menuitem', { name: '视图' }));
+    expect(screen.getByRole('menuitemcheckbox', { name: new RegExp(label) })).toHaveAttribute('aria-checked', 'false');
+
+    await user.click(screen.getByRole('menuitemcheckbox', { name: new RegExp(label) }));
+    expect(store.getState().active).toBe(true);
+    expect(other.getState().active).toBe(false);
+    await user.click(screen.getByRole('menuitem', { name: '视图' }));
+    expect(screen.getByRole('menuitemcheckbox', { name: new RegExp(label) })).toHaveAttribute('aria-checked', 'true');
+
+    await act(async () => { await execute(command); });
+    expect(store.getState().active).toBe(false);
+    expect(screen.getByRole('menuitemcheckbox', { name: new RegExp(label) })).toHaveAttribute('aria-checked', 'false');
   });
 
   it('展开「文件」含原生打开文件/文件夹（Ctrl+O / Ctrl+Shift+O 芯片）', async () => {

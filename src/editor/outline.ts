@@ -4,6 +4,7 @@ import type { EditorView } from '@codemirror/view';
 import { useOutlineStore } from '../stores/useOutlineStore';
 import type { OutlineItem } from '../types/editor';
 import { getView, revealRange } from './viewHandle';
+import { isBasicEditing } from './documentBudget';
 
 /**
  * 文档大纲（RightPanel 大纲 tab）：从 markdown 语法树析出 H1-H6 标题。
@@ -75,7 +76,7 @@ export function activeHeadingFrom(items: OutlineItem[], pos: number): number | n
 
 /** 把当前 view 的大纲镜像到 store（变化才写）。 */
 export function syncOutline(view: EditorView): void {
-  const items = extractOutline(view.state);
+  const items = isBasicEditing(view.state) ? [] : extractOutline(view.state);
   if (sameOutline(useOutlineStore.getState().items, items)) return;
   useOutlineStore.getState().setOutline(items);
 }

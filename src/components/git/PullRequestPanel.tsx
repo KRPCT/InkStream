@@ -1,11 +1,15 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ExternalLink, Plus, RefreshCw } from 'lucide-react';
-import { ghPrCreate, ghPrList, ghPrMerge } from '../../ipc/git';
+import { ghPrCreate, ghPrMerge } from '../../ipc/git';
+import { githubPrPage } from '../../ipc/githubPage';
 import { openExternal } from '../../ipc/opener';
 import { useGitGraphStore } from '../../stores/useGitGraphStore';
 import { useGitStore } from '../../stores/useGitStore';
 import { showToast } from '../../stores/useToastStore';
 import type { MergeMethod, PullRequest } from '../../types/git';
+import { useGithubPage } from './useGithubPage';
+import GithubPageControls from './GithubPageControls';
+import { useGithubScopeKey } from './githubScope';
 
 /**
  * GitHub PR 面板（GIT-07，git-graph 第三视图）：列开放 PR + 内联新建（当前分支→base）+ 合并（merge/squash/rebase）。
@@ -25,16 +29,24 @@ const METHODS: { key: MergeMethod; label: string }[] = [
 
 export default function PullRequestPanel() {
   const repoRoot = useGitStore((s) => s.repoRoot);
+  const scope = useGithubScopeKey(repoRoot);
+  return repoRoot ? <RepositoryPullRequests key={scope} repoRoot={repoRoot} /> : <p className="p-3">当前不是 GitHub 仓库。</p>;
+}
+
+function RepositoryPullRequests({ repoRoot }: { repoRoot: string }) {
   const currentBranch = useGitStore((s) => s.status?.branch ?? null);
   const branches = useGitStore((s) => s.branches);
   const selectPr = useGitGraphStore((s) => s.selectPr);
-  const [prs, setPrs] = useState<PullRequest[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const loadPage = useCallback((page: number) => githubPrPage(repoRoot, page), [repoRoot]);
+  const { data, loading, error, pageNumber, setPageNumber, refresh: load } = useGithubPage(loadPage);
+  const prs = data?.items ?? [];
   const [creating, setCreating] = useState(false);
   const [title, setTitle] = useState('');
   const [base, setBase] = useState('');
   const [busy, setBusy] = useState(false);
+  const alive = useRef(true);
+  useEffect(() => { alive.current = true; return () => { alive.current = false; }; }, []);
+  const current = () => alive.current && useGitStore.getState().repoRoot === repoRoot;
 
   /** 默认 base：main > master > 首个非当前本地分支。 */
   const defaultBase = useMemo(() => {
@@ -47,50 +59,34 @@ export default function PullRequestPanel() {
     );
   }, [branches, currentBranch]);
 
-  const load = useCallback(async () => {
-    if (!repoRoot) return;
-    setLoading(true);
-    setError(null);
-    try {
-      setPrs(await ghPrList(repoRoot));
-    } catch (e) {
-      setError(errText(e));
-      setPrs([]);
-    } finally {
-      setLoading(false);
-    }
-  }, [repoRoot]);
-
-  useEffect(() => {
-    void load();
-  }, [load]);
-
   const submitCreate = async () => {
-    if (!repoRoot || !currentBranch || !title.trim() || busy) return;
+    if (!current() || !currentBranch || !title.trim() || busy) return;
     setBusy(true);
     try {
       await ghPrCreate(repoRoot, title.trim(), '', base.trim() || defaultBase, currentBranch);
+      if (!current()) return;
       setCreating(false);
       setTitle('');
-      await load();
+      load();
     } catch (e) {
-      showToast('error', `新建 PR 失败：${errText(e)}`);
+      if (current()) showToast('error', `新建 PR 失败：${errText(e)}`);
     } finally {
-      setBusy(false);
+      if (current()) setBusy(false);
     }
   };
 
   const merge = async (pr: PullRequest, method: MergeMethod) => {
-    if (!repoRoot || busy) return;
+    if (!current() || busy || !prs.includes(pr)) return;
     setBusy(true);
     try {
-      const r = await ghPrMerge(repoRoot, pr.number, method);
+      const r = await ghPrMerge(repoRoot, pr.number, method, pr.headOid ?? null);
+      if (!current()) return;
       if (!r.merged) showToast('warning', `PR #${pr.number} 未合并：${r.message}`);
-      await load();
+      load();
     } catch (e) {
-      showToast('error', `合并 PR #${pr.number} 失败：${errText(e)}`);
+      if (current()) showToast('error', `合并 PR #${pr.number} 失败：${errText(e)}`);
     } finally {
-      setBusy(false);
+      if (current()) setBusy(false);
     }
   };
 
@@ -181,7 +177,7 @@ export default function PullRequestPanel() {
                 <span className="shrink-0 text-[11px] text-[var(--text-faint)]">#{pr.number}</span>
                 <button
                   type="button"
-                  onClick={() => selectPr(pr)}
+                  onClick={() => { if (current()) selectPr(pr, repoRoot); }}
                   title={pr.title}
                   className="min-w-0 flex-1 truncate text-left text-[13px] text-[var(--text-normal)] hover:text-[var(--accent)]"
                 >
@@ -217,6 +213,7 @@ export default function PullRequestPanel() {
           ))
         )}
       </div>
+      <GithubPageControls page={pageNumber} next={data?.nextPage ?? null} loading={loading} onPage={setPageNumber} />
     </div>
   );
 }

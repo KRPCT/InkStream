@@ -7,7 +7,8 @@ import { slashCommandSource } from './slashCommand';
  * `[[` wiki-link 文件名 fuzzy 补全（Phase 4 W3 / LINK-02）。
  *
  * 输入 `[[` 后弹 vault 文件清单（取自 useVaultStore 快照，openVault 时填充），按文件名 uFuzzy 排序
- * （复用 commands/match.ts，支持中文）。选中插入 `[[文件名]]`（去 `.md`，Obsidian 风裸名；光标落 `]]` 后）。
+ * （复用 commands/match.ts，支持中文）。选中插入确定的 vault 相对路径，嵌套文件以文件名作显示别名，
+ * 防止同名候选在插入后丢失目录身份；光标落 `]]` 后。
  *
  * filter:false——已用 uFuzzy 预排序，关闭 CM 内置过滤（避免对 CJK 二次过滤打架）。
  */
@@ -29,7 +30,10 @@ export function wikiLinkSource(ctx: CompletionContext): CompletionResult | null 
   const options = ranked.slice(0, MAX_OPTIONS).map((i) => {
     const f = files[i];
     const nameNoMd = f.name.endsWith('.md') ? f.name.slice(0, -3) : f.name;
-    return { label: f.name, detail: f.path, apply: `[[${nameNoMd}]]` };
+    const path = f.path.replace(/\\/g, '/');
+    const pathNoMd = path.endsWith('.md') ? path.slice(0, -3) : path;
+    const alias = pathNoMd === nameNoMd ? '' : `|${nameNoMd}`;
+    return { label: f.name, detail: f.path, apply: `[[${pathNoMd}${alias}]]` };
   });
   if (options.length === 0) return null;
   return { from: m.from, options, filter: false };

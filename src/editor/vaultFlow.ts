@@ -1,10 +1,7 @@
 import { pickFile, pickFolder } from '../ipc/dialog';
-import { startWatch, stopWatch } from '../ipc/events';
 import { indexRebuild } from '../ipc/indexService';
 import { listDir, listFiles, openVault } from '../ipc/vault';
-import { cancelPendingAutosave, resumeAutosave, suspendAutosave } from '../stores/autosave';
 import { chooseAction } from '../stores/useChoiceStore';
-import { useEditorStore } from '../stores/useEditorStore';
 import { useSettingsStore } from '../stores/useSettingsStore';
 import { showToast } from '../stores/useToastStore';
 import { useGitGuidanceStore } from '../stores/useGitGuidanceStore';
@@ -12,15 +9,11 @@ import { useGitStore } from '../stores/useGitStore';
 import { useVaultStore } from '../stores/useVaultStore';
 import type { VaultInfo } from '../types/vault';
 import { refreshCodex } from './codex';
-import { isDraftPath } from './draftPath';
-import { snapshotBeforeSwitch } from './editorState';
 import { entriesToNodes } from './fileTreeData';
 import { openExternalFile } from './fileOpenFlow';
 import { basename, stripVerbatim } from './pathUtil';
 import { isAutoReadingFormat, openReading } from './reading/openReading';
 import { commitChanges } from './gitActions';
-import { rehomeTabsForVaultSwitch } from './tabReconcile';
-import { getView } from './viewHandle';
 
 /**
  * vault 生命周期编排（非 React 模块，经 getState() 调用）：打开 / 切换 / 引导。
@@ -47,33 +40,36 @@ function applyGitGuidance(info: VaultInfo): void {
 }
 
 /** 打开给定路径为 vault：openVault + listDir 根目录 → useVaultStore.openVault。 */
-export async function openVaultByPath(path: string): Promise<void> {
+export async function prepareVault(path: string) {
   try {
     const info = await openVault(path);
-    useVaultStore.getState().openVault(info, entriesToNodes(await listDir(info.root, '')));
+    const tree = entriesToNodes(await listDir(info.root, ''));
+    const files = await listFiles(info.root);
+    return { info, tree, files };
+  } catch (error) {
+    showToast('error', '无法打开这个文件夹，它可能已被移动或删除。');
+    throw error;
+  }
+}
+
+export function publishVault({ info, tree, files }: Awaited<ReturnType<typeof prepareVault>>): void {
+    useVaultStore.setState({ vault: info, tree, files, expanded: new Set() });
     useVaultStore.getState().pushRecent(info.root);
     useVaultStore.getState().setLastVaultPath(info.root);
     applyGitGuidance(info);
     // Phase 6 GIT-01：设 git 仓库根并刷新（status + branches）→ StatusBar 分支指示上屏。
     // 非 git 工作区 repoRoot 为 null，store 清空、指示器隐藏（与 applyGitGuidance 的 init 引导协同）。
     useGitStore.getState().setRepoRoot(info.repoRoot);
-    // 快速打开（Ctrl+P，FILE-03）文件清单快照：fileProvider 同步消费此 store 快照。
-    // 枚举失败不阻断打开 vault——快速打开仅暂无结果，文件树仍可用。
-    try {
-      useVaultStore.getState().setFiles(await listFiles(info.root));
-    } catch {
-      useVaultStore.getState().setFiles([]);
-    }
-    // Phase 4 W1：打开 vault 即全量重建 FTS5 索引（worker 开 <root>/.inkstream/index.db + 扫 .md 重灌），
-    // 保索引与当前磁盘一致；会话内增量由 autosave/外部变更钩子维护。fire-and-forget，不阻断打开。
-    // 简易模式不在工作区创建 .inkstream 索引库（wiki-link/反链/图谱/搜索随之降级为空）。
+    // 快速打开与文件树使用准备阶段成功获取的同一工作区快照。
+    // 索引位置由原生项目仓储返回，位于应用数据目录；简易模式关闭索引。
     if (!useSettingsStore.getState().simpleMode) void indexRebuild(info.root).catch(() => {});
     // CREA-02：扫 Codex/ 文献条目供提及高亮（fire-and-forget，无 Codex/ 即空，不阻断打开）。
     void refreshCodex(info.root).catch(() => {});
-  } catch (e) {
-    showToast('error', '无法打开这个文件夹，它可能已被移动或删除。');
-    throw e instanceof Error ? e : new Error(String(e));
-  }
+}
+
+/** All directory entry points share the same transition and recovery protocol. */
+export async function openVaultByPath(path: string): Promise<void> {
+  await switchVault(path, { confirmLeave: false });
 }
 
 /**
@@ -98,47 +94,11 @@ async function confirmLeaveDirtyVault(): Promise<boolean> {
   return true;
 }
 
-/**
- * 切换 vault（同窗单 vault，D-07）：未提交提示 → 挂起 autosave → stop_watch 旧 → open_vault 新
- * → 重归位旧 tab（#3/#5.5）→ start_watch 新。返回是否实际切换（用户取消提示 → false）。
- *
- * #3 数据丢失根治：切库全程挂起 autosave + 清防抖定时器，开新库后把旧 tab 按其**真实绝对路径**重归位
- * （库内→相对、库外→external），杜绝旧 tab 落盘到「新库根 + 旧相对路径」覆盖新库文件。
- * 打开失败抛出（保留旧 vault + 旧 tab，调用方兜底提示）。
- * restoreLastVault / saveDraftAs 经 `{ confirmLeave: false }` 跳过提示。
- */
-export async function switchVault(
-  path: string,
-  options?: { confirmLeave?: boolean },
-): Promise<boolean> {
+/** Directory entry points register stable projects and use the shared session transaction. */
+export async function switchVault(path: string, options?: { confirmLeave?: boolean }): Promise<boolean> {
   if (options?.confirmLeave !== false && !(await confirmLeaveDirtyVault())) return false;
-  const oldRoot = useVaultStore.getState().vault?.root ?? null;
-  suspendAutosave();
-  cancelPendingAutosave();
-  try {
-    try {
-      await stopWatch();
-    } catch {
-      /* 停旧 watcher 失败不阻断切换 */
-    }
-    // 活动 tab 内容尚在 live view、未入缓存——先快照，rehome 才能连内容一起重归位（数据零丢失）。
-    const view = getView();
-    const active = useEditorStore.getState().activePath;
-    if (view && active && !isDraftPath(active)) snapshotBeforeSwitch(view, active);
-    await openVaultByPath(path); // 翻 vault.root 到新库（失败抛出 → 不 rehome，旧 tab 不变）
-    const newRoot = useVaultStore.getState().vault?.root ?? null;
-    if (oldRoot && newRoot && oldRoot !== newRoot) rehomeTabsForVaultSwitch(oldRoot, newRoot);
-    if (newRoot) {
-      try {
-        await startWatch(newRoot);
-      } catch {
-        /* watcher 启动失败：外部变更监听不可用，文件树仍可用 */
-      }
-    }
-    return true;
-  } finally {
-    resumeAutosave();
-  }
+  const { openProjectDirectory } = await import('../projects/actions');
+  return openProjectDirectory(path);
 }
 
 /**

@@ -26,6 +26,7 @@ jobs:
   # 草稿 Release 一次性创建（job 永远跑，建 Release 步骤仅 tag push）。bundle 依赖它，杜绝并发建 Release 竞态。
   create-release:
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     steps:
       - name: Create draft release (tag push only)
         if: startsWith(github.ref, 'refs/tags/')
@@ -40,6 +41,7 @@ jobs:
 
   bundle:
     needs: create-release
+    timeout-minutes: 60
     strategy:
       fail-fast: false
       matrix:
@@ -67,10 +69,10 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y libwebkit2gtk-4.1-dev build-essential curl wget file libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev
 
-      - name: Setup Node 22
+      - name: Setup Node
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
-          node-version: 22
+          node-version-file: .node-version
 
       - name: Activate pnpm via corepack
         run: |
@@ -141,6 +143,7 @@ jobs:
 
   latest-json:
     needs: bundle
+    timeout-minutes: 5
     if: startsWith(github.ref, 'refs/tags/')
     runs-on: ubuntu-latest
     steps:

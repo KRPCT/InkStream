@@ -8,6 +8,7 @@ import UpdateDialog from './components/common/UpdateDialog';
 import WhatsNewDialog from './components/common/WhatsNewDialog';
 import WritingHud from './components/common/WritingHud';
 import ImeProbe from './components/dev/ImeProbe';
+import GitCloneDialog from './components/git/GitCloneDialog';
 import HelpModal from './components/help/HelpModal';
 import OnboardingOverlay from './components/onboarding/OnboardingOverlay';
 import CommandPalette from './components/palette/CommandPalette';
@@ -26,20 +27,32 @@ import { getAppVersion } from './ipc/app';
 import { loadLastSeenVersion } from './ipc/settings';
 import { initPersistence } from './stores/persistSettings';
 import { initVaultPersistence } from './stores/persistVault';
+import { initIndexLifecycle } from './ipc/indexService';
+import { initCodexLifecycle } from './editor/codex';
+import { initImportedTheme } from './stores/useImportedThemeStore';
+import { stopProjectCheckpoints } from './projects/session';
+import { useProjectStore } from './stores/useProjectStore';
 
 export default function App() {
   useEffect(() => {
+    if (!useProjectStore.getState().ready) useProjectStore.setState({ phase: 'loading' });
+    const stopIndex = initIndexLifecycle();
+    const stopCodex = initCodexLifecycle();
+    void initImportedTheme();
     // 持久化 hydrate 先于 show() 发起、不阻塞首帧：首帧由 boot.js 镜像保证，
     // settings.json 到达后校正（Pattern 6 第 3 步）。initPersistence 幂等。
     // 持久化 hydrate（幂等，不阻塞首帧）。restoreLastVault 须等 settings（含 simpleMode）已 apply，
     // 否则可能在 simpleMode 生效前触发索引重建、在用户库建出 .inkstream（D-08 + 简易模式约束）。
-    void Promise.all([initPersistence(), initVaultPersistence()]).then(() => restoreLastVault());
+    let disposed = false;
+    void Promise.all([initPersistence(), initVaultPersistence()]).then(async () => {
+      await restoreLastVault();
+      if (!disposed) initOsFileOpen();
+    });
     // 外部变更冲突仲裁订阅（D-04，FILE-02）：watcher 事件经此按 isDirty 双路径仲裁。
     initExternalChangeArbiter();
     // 未提交退出提醒（簇①）：关窗时若 git 有未提交改动则确认。
     initExitGuard();
     // #6：OS 文件接入（拖拽 + 「打开方式」冷启动/热转发）→ openExternalFile。
-    initOsFileOpen();
     // 文件导出：探测一次系统是否装 pandoc，决定「导出为」是否显示 odt/rtf/latex/epub/typst/org。
     void usePandocStore.getState().detect();
     // 自动更新：启动静默检查（dev / 无网 / 无更新一律静默；有更新弹非侵入对话框）。模块级 checking 守 StrictMode。
@@ -56,6 +69,10 @@ export default function App() {
     // 首次引导（簇③）：延迟到布局渲染后再开，spotlight 才能命中侧栏/状态栏元素。seen 标记防重复弹。
     const onboardingTimer = setTimeout(() => initOnboarding(), 1000);
     return () => {
+      disposed = true;
+      stopProjectCheckpoints();
+      stopIndex();
+      stopCodex();
       clearTimeout(onboardingTimer);
       stopExternalChangeArbiter();
       stopExitGuard();
@@ -82,6 +99,7 @@ export default function App() {
       <ChoiceDialog />
       {/* 文本输入模态：git 分支/tag 名、提交信息（usePromptStore，promptInput 弹出） */}
       <PromptDialog />
+      <GitCloneDialog />
       {/* Toast 通知宿主：错误/警告（useToastStore，持久化读写失败路径消费） */}
       <Toast />
       {/* 写作 HUD（写作模式升级）：码字速度/时间/番茄钟，默认关闭，writing.toggle-hud 开启 */}

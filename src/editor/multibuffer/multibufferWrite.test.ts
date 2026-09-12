@@ -38,7 +38,7 @@ function fakeView(initial: string) {
 
 beforeEach(() => {
   applyOpen.mockReset();
-  flush.mockReset().mockResolvedValue(undefined);
+  flush.mockReset().mockResolvedValue({ kind: 'saved' });
   writeFile.mockReset().mockResolvedValue(true);
   composing.mockReset().mockReturnValue(false);
   queue.mockReset();
@@ -97,12 +97,12 @@ describe('applyRangeEdits', () => {
     queue.mockImplementation((_v, _k, cb) => {
       deferred = cb as () => void;
     });
-    const ok = await applyRangeEdits('a.md', 'x', [{ from: 0, to: 1, insert: 'Z' }]);
-    expect(ok).toBe(true);
-    expect(queue).toHaveBeenCalledWith(v, 'mb-write:a.md', expect.any(Function));
+    const pending = applyRangeEdits('a.md', 'x', [{ from: 0, to: 1, insert: 'Z' }]);
+    expect(queue).toHaveBeenCalledWith(v, expect.stringMatching(/^mb-write:a\.md:/), expect.any(Function));
     expect(applyOpen).not.toHaveBeenCalled();
     expect(v.dispatch).not.toHaveBeenCalled(); // 当场不 dispatch
-    deferred!();
+    await deferred!();
+    expect(await pending).toBe(true);
     expect(v.dispatch).toHaveBeenCalledWith({ changes: [{ from: 0, to: 1, insert: 'Z' }] }); // 区间未变 → 落地
   });
 
@@ -115,9 +115,10 @@ describe('applyRangeEdits', () => {
     queue.mockImplementation((_v, _k, cb) => {
       deferred = cb as () => void;
     });
-    await applyRangeEdits('a.md', 'x', [{ from: 0, to: 1, insert: 'Z' }]);
+    const pending = applyRangeEdits('a.md', 'x', [{ from: 0, to: 1, insert: 'Z' }]);
     holder.s = 'QQXbc'; // 组合期前插入字符：偏移 0 处已不再是捕获时的 'X'
-    deferred!();
+    await deferred!();
+    expect(await pending).toBe(false);
     expect(v.dispatch).not.toHaveBeenCalled(); // 期望旧值不符 → 整体放弃
   });
 

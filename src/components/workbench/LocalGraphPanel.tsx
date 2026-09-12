@@ -1,12 +1,13 @@
 import { Waypoints } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { useCallback } from 'react';
 import { openFileByPath } from '../../editor/fileOpenFlow';
 import { buildVaultGraph, localGraph } from '../../graph/buildGraph';
 import GraphCanvas from '../../graph/GraphCanvas';
-import type { VaultGraph } from '../../graph/types';
 import { queryGraphData } from '../../ipc/indexService';
 import { useEditorStore } from '../../stores/useEditorStore';
 import EmptyState from '../common/EmptyState';
+import IndexQueryMessage from './IndexQueryMessage';
+import { useIndexQuery } from './useIndexQuery';
 
 /**
  * 局部图谱面板（Phase 10 / LINK-06）：RightPanel Local Graph tab，显示活动文件 1 跳邻域。
@@ -15,23 +16,14 @@ import EmptyState from '../common/EmptyState';
  */
 export default function LocalGraphPanel() {
   const activePath = useEditorStore((s) => s.activePath);
-  const [graph, setGraph] = useState<VaultGraph | null>(null);
-
-  useEffect(() => {
-    if (!activePath) {
-      setGraph(null);
-      return;
-    }
-    let alive = true;
-    void queryGraphData().then((data) => {
-      if (!alive) return;
-      const full = buildVaultGraph(data.files, data.links);
-      setGraph(localGraph(full, activePath, 1));
-    });
-    return () => {
-      alive = false;
-    };
+  const load = useCallback(async () => {
+    if (!activePath) return { nodes: [], edges: [] };
+    const data = await queryGraphData();
+    return localGraph(buildVaultGraph(data.files, data.links), activePath, 1);
   }, [activePath]);
+  const query = useIndexQuery(load, !!activePath);
+  if (activePath && (query.loading || query.error || query.disabled)) return <IndexQueryMessage {...query} />;
+  const graph = query.data;
 
   if (!activePath || !graph || graph.nodes.length <= 1) {
     return (

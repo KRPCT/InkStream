@@ -1,0 +1,121 @@
+{
+  "sourceRelease": "Typst assets v0.13.1; Noto CJK Serif official SC snapshot f8d157532fbfaeda587e826d4cd5b21a49186f7c",
+  "files": [
+    {
+      "file": "LibertinusSerif-Regular.otf",
+      "url": "https://raw.githubusercontent.com/typst/typst-assets/ad8080d46d42fca909562572cfa14a86f00eb945/files/fonts/LibertinusSerif-Regular.otf",
+      "bytes": 337132,
+      "sha256": "fcf06307a77367394fcb0ccb241e59eea70dba3d732be309647611224679c733",
+      "modified": false,
+      "fontMetadata": {
+        "0": "Copyright © 2012-2024 The Libertinus Project Authors.",
+        "1": "Libertinus Serif",
+        "5": "Version 7.051;RELEASE",
+        "13": "This Font Software is licensed under the SIL Open Font License, Version 1.1. This license is available with a FAQ at: https://openfontlicense.org",
+        "14": "https://openfontlicense.org"
+      }
+    },
+    {
+      "file": "LibertinusSerif-Bold.otf",
+      "url": "https://raw.githubusercontent.com/typst/typst-assets/ad8080d46d42fca909562572cfa14a86f00eb945/files/fonts/LibertinusSerif-Bold.otf",
+      "bytes": 293908,
+      "sha256": "0264914210ed51b3231ebc92ce529e9f2e166ba9eebf0cd4a579558690a27b64",
+      "modified": false,
+      "fontMetadata": {
+        "0": "Copyright © 2012-2024 The Libertinus Project Authors.",
+        "1": "Libertinus Serif",
+        "5": "Version 7.051;RELEASE",
+        "13": "This Font Software is licensed under the SIL Open Font License, Version 1.1. This license is available with a FAQ at: https://openfontlicense.org",
+        "14": "https://openfontlicense.org"
+      }
+    },
+    {
+      "file": "LibertinusSerif-Italic.otf",
+      "url": "https://raw.githubusercontent.com/typst/typst-assets/ad8080d46d42fca909562572cfa14a86f00eb945/files/fonts/LibertinusSerif-Italic.otf",
+      "bytes": 332312,
+      "sha256": "9a393d63d6e05f620d3dc0190dfd35a8ede58c0808cf0fc9de7fcb9c723e4c24",
+      "modified": false,
+      "fontMetadata": {
+        "0": "Copyright © 2012-2024 The Libertinus Project Authors.",
+        "1": "Libertinus Serif",
+        "5": "Version 7.051;RELEASE",
+        "13": "This Font Software is licensed under the SIL Open Font License, Version 1.1. This license is available with a FAQ at: https://openfontlicense.org",
+        "14": "https://openfontlicense.org"
+      }
+    },
+    {
+      "file": "LibertinusSerif-BoldItalic.otf",
+      "url": "https://raw.githubusercontent.com/typst/typst-assets/ad8080d46d42fca909562572cfa14a86f00eb945/files/fonts/LibertinusSerif-BoldItalic.otf",
+      "bytes": 259176,
+      "sha256": "47a665259f09f554f5d133d7718cdad43ff462c6a6b2328f38023465e62d57ce",
+      "modified": false,
+      "fontMetadata": {
+        "0": "Copyright © 2012-2024 The Libertinus Project Authors.",
+        "1": "Libertinus Serif",
+        "5": "Version 7.051;RELEASE",
+        "13": "This Font Software is licensed under the SIL Open Font License, Version 1.1. This license is available with a FAQ at: https://openfontlicense.org",
+        "14": "https://openfontlicense.org"
+      }
+    },
+    {
+      "file": "NewCMMath-Regular.otf",
+      "url": "https://raw.githubusercontent.com/typst/typst-assets/ad8080d46d42fca909562572cfa14a86f00eb945/files/fonts/NewCMMath-Regular.otf",
+      "bytes": 1150844,
+      "sha256": "bfd2f9b22caacd41b8b29cfe3f6d72f976f221a65362e07eda35cbae863721b7",
+      "modified": false,
+      "fontMetadata": {
+        "0": "(C) 2019-2021 Antonis Tsolomitis. \nThis work is released under the GUST Font License -- see http://tug.org/fonts/licenses/GUST-FONT-LICENSE.txt for details.",
+        "1": "NewComputerModernMath",
+        "5": "4.0"
+      }
+    },
+    {
+      "file": "NewCMMath-Bold.otf",
+      "url": "https://raw.githubusercontent.com/typst/typst-assets/ad8080d46d42fca909562572cfa14a86f00eb945/files/fonts/NewCMMath-Bold.otf",
+      "bytes": 1073052,
+      "sha256": "8956f7ef6c212ea647fe689abb66a3f3359126abcbb673fb58f3ecf033c7d1a7",
+      "modified": false,
+      "fontMetadata": {
+        "0": "(C) 2019-2021 Antonis Tsolomitis. \nThis work is released under the GUST Font License -- see http://tug.org/fonts/licenses/GUST-FONT-LICENSE.txt for details.",
+        "1": "NewComputerModernMath",
+        "5": "5.3.0"
+      }
+    },
+    {
+      "file": "NotoSerifCJKsc-Regular.otf",
+      "url": "https://raw.githubusercontent.com/notofonts/noto-cjk/f8d157532fbfaeda587e826d4cd5b21a49186f7c/Serif/OTF/SimplifiedChinese/NotoSerifCJKsc-Regular.otf",
+      "bytes": 24543080,
+      "sha256": "2a2eae2628df83556c54018c41e20fa532c1b862c5256ae8b3f23feb918d12ca",
+      "modified": false,
+      "fontMetadata": {
+        "0": "© 2017-2024 Adobe (http://www.adobe.com/).",
+        "1": "Noto Serif CJK SC",
+        "5": "Version 2.003;hotconv 1.1.1;makeotfexe 2.6.0",
+        "13": "This Font Software is licensed under the SIL Open Font License, Version 1.1. This Font Software is distributed on an \"AS IS\" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the SIL Open Font License for the specific language, permissions and limitations governing your use of this Font Software.",
+        "14": "http://scripts.sil.org/OFL"
+      }
+    }
+  ],
+  "licenses": [
+    {
+      "file": "LICENSE-Libertinus.txt",
+      "url": "https://raw.githubusercontent.com/alerque/libertinus/9c31f8b436b8ea33dccffbca3972a88d5ff75b0f/OFL.txt",
+      "sha256": "9aeecc8107c489ec1ec0068b0313e531a760edf3493705b32ab8ab8215a8794e"
+    },
+    {
+      "file": "LICENSE-Noto-CJK.txt",
+      "url": "https://raw.githubusercontent.com/notofonts/noto-cjk/f8d157532fbfaeda587e826d4cd5b21a49186f7c/Serif/LICENSE",
+      "sha256": "6a73f9541c2de74158c0e7cf6b0a58ef774f5a780bf191f2d7ec9cc53efe2bf2"
+    },
+    {
+      "file": "LICENSE-GUST.txt",
+      "url": "https://www.gust.org.pl/projects/e-foundry/licenses/GUST-FONT-LICENSE.txt",
+      "sha256": "5eb61bb836bb1845ef668717cb15b382e997748ce2629e4388cc5e4c3fa4e433"
+    },
+    {
+      "file": "LICENSE-LPPL-1.3c.txt",
+      "url": "https://www.latex-project.org/lppl/lppl-1-3c.txt",
+      "sha256": "3d262cdf34dafa6955f703c634a8c238ec44109bc8dd6ef34fb7aa54809f7e66"
+    }
+  ]
+}

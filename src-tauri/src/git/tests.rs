@@ -130,3 +130,73 @@ fn diff_workdir_reports_modified_hunks() {
     assert!(fd.hunks.iter().any(|h| h.lines.iter().any(|l| l.origin == '+')));
     std::fs::remove_dir_all(&dir).ok();
 }
+
+#[test]
+fn generic_abort_restores_a_real_local_rebase() {
+    use std::process::{Command, Stdio};
+    use std::time::{Duration, Instant};
+
+    fn git(root: &Path, args: &[&str]) -> std::process::Output {
+        let mut command = Command::new("git");
+        #[cfg(windows)] {
+            use std::os::windows::process::CommandExt;
+            command.creation_flags(0x08000000);
+        }
+        let mut child = command.current_dir(root)
+            .env_remove("GIT_DIR").env_remove("GIT_WORK_TREE").env_remove("GIT_INDEX_FILE")
+            .env("GIT_TERMINAL_PROMPT", "0").env("GIT_EDITOR", "true")
+            .args(args).stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::piped())
+            .spawn().expect("fixture Git must start");
+        let deadline = Instant::now() + Duration::from_secs(10);
+        loop {
+            if child.try_wait().unwrap().is_some() { return child.wait_with_output().unwrap(); }
+            if Instant::now() >= deadline {
+                let _ = child.kill();
+                let _ = child.wait();
+                panic!("fixture Git exceeded its 10 second deadline");
+            }
+            std::thread::sleep(Duration::from_millis(10));
+        }
+    }
+
+    let dir = temp_dir("rebase-abort");
+    let repo = Repository::init(&dir).unwrap();
+    let hooks = dir.join("empty-hooks");
+    std::fs::create_dir(&hooks).unwrap();
+    {
+        let mut config = repo.config().unwrap();
+        config.set_bool("core.autocrlf", false).unwrap();
+        config.set_bool("commit.gpgsign", false).unwrap();
+        config.set_str("core.hooksPath", hooks.to_str().unwrap()).unwrap();
+        config.set_str("user.name", "Rebase Fixture").unwrap();
+        config.set_str("user.email", "rebase-fixture@example.invalid").unwrap();
+    }
+    repo.set_head("refs/heads/topic").unwrap();
+    let base = commit_file(&repo, "文稿.md", "共同版本\n", "base");
+    repo.branch("upstream", &repo.find_commit(base).unwrap(), false).unwrap();
+    let original = commit_file(&repo, "文稿.md", "主题稿\n", "topic text");
+    repo.set_head("refs/heads/upstream").unwrap();
+    repo.checkout_head(Some(git2::build::CheckoutBuilder::new().force())).unwrap();
+    commit_file(&repo, "文稿.md", "基线稿\n", "upstream text");
+    repo.set_head("refs/heads/topic").unwrap();
+    repo.checkout_head(Some(git2::build::CheckoutBuilder::new().force())).unwrap();
+
+    let start = git(&dir, &["rebase", "--merge", "--no-gpg-sign", "--no-autostash", "upstream"]);
+    assert!(!start.status.success(), "fixture must stop at a real textual conflict");
+    assert!(Repository::open(&dir).unwrap().index().unwrap().has_conflicts());
+    let result = tauri::async_runtime::block_on(super::commit::git_abort_op(dir.to_string_lossy().into_owned(), None));
+    let after = Repository::open(&dir).unwrap();
+    let actual_head = after.head().unwrap().target();
+    let actual_body = std::fs::read_to_string(dir.join("文稿.md")).unwrap();
+    let active = after.path().join("rebase-merge").exists() || after.path().join("rebase-apply").exists();
+    drop(after);
+    // Even the intended RED run cleans its own sequencer before removing fixtures.
+    if active { assert!(git(&dir, &["rebase", "--abort"]).status.success()); }
+    drop(repo);
+    std::fs::remove_dir_all(&dir).unwrap();
+
+    assert!(result.is_ok(), "app abort rejected the live rebase: {result:?}");
+    assert_eq!(actual_head, Some(original));
+    assert_eq!(actual_body, "主题稿\n");
+    assert!(!active);
+}

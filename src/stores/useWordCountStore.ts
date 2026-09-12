@@ -2,17 +2,24 @@ import { create } from 'zustand';
 
 /**
  * 字数镜像（CREA-04）：单向自 editor/wordCount 写入，store 永不回写 CM（同 useOutlineStore 纪律）。
- * - activeCount：活动文档当前正文字数（剔除 frontmatter）。
+ * - activeCount：活动文档当前正文字数（剔除 frontmatter）；null 表示基础编辑暂停统计。
  * - todayWritten：今日净写入字数（换日重置、仅记编辑增量，切 tab 不计），驱动 StatusBar 进度条。
  */
 interface WordCountState {
-  activeCount: number;
+  activeCount: number | null;
+  selectedCount: number | null;
+  hasSelection: boolean;
   todayWritten: number;
+  /** 暂停期间的编辑没有计入今日统计，恢复后明确标为部分统计。 */
+  todayComplete: boolean;
   report: (activeCount: number, todayWritten: number) => void;
 }
 
 export const useWordCountStore = create<WordCountState>((set) => ({
   activeCount: 0,
+  selectedCount: 0,
+  hasSelection: false,
   todayWritten: 0,
+  todayComplete: true,
   report: (activeCount, todayWritten) => set({ activeCount, todayWritten }),
 }));

@@ -6,6 +6,11 @@ import { promptInput } from '../stores/usePromptStore';
 import { showToast } from '../stores/useToastStore';
 import { useWorkbenchStore } from '../stores/useWorkbenchStore';
 import type { GitOpResult, GitProgress, ResetMode } from '../types/git';
+import { captureGitWorktreeScope, isCurrentGitScope, runGitWorktreeMutation, type GitWorktreeScope } from './gitWorktreeMutation';
+import { runLocalGitOperation } from './gitLocalOperation';
+
+export { rebaseCurrentOnto } from './gitRebaseActions';
+export { stashChanges } from './gitStashActions';
 
 /**
  * git 写操作编排（Phase 6 GIT-03，非 React 模块，经 getState 调用）。
@@ -19,15 +24,12 @@ function errText(e: unknown): string {
   return typeof e === 'string' ? e : e instanceof Error ? e.message : String(e);
 }
 
-function repo(): string | null {
-  return useGitStore.getState().repoRoot;
-}
-
 /** 写后重刷：状态/分支 + （若 git-graph 打开）提交图。 */
-async function refreshAfter(repoRoot: string): Promise<void> {
+async function refreshAfter(scope: GitWorktreeScope): Promise<void> {
+  if (!isCurrentGitScope(scope)) return;
   await useGitStore.getState().refresh();
-  if (useWorkbenchStore.getState().centralView === 'gitGraph') {
-    await useGitGraphStore.getState().loadLog(repoRoot);
+  if (isCurrentGitScope(scope) && useWorkbenchStore.getState().centralView === 'gitGraph') {
+    await useGitGraphStore.getState().loadLog(scope.repoRoot);
   }
 }
 
@@ -37,8 +39,10 @@ async function refreshAfter(repoRoot: string): Promise<void> {
  * 而 watcher 又跳过 `.git/*` 事件，导致左下角状态栏冻结在旧分支/旧脏标记（git 全局状态不同步）。
  */
 export async function refreshGitAll(repoRoot: string): Promise<void> {
+  const scope = captureGitWorktreeScope();
+  if (!scope || scope.repoRoot !== repoRoot) return;
   await useGitStore.getState().refresh();
-  await useGitGraphStore.getState().loadLog(repoRoot);
+  if (isCurrentGitScope(scope)) await useGitGraphStore.getState().loadLog(repoRoot);
 }
 
 /** 冲突结果 → 警告 + 打开 prose 三向解决器（merge/cherry-pick/revert 共用；解决器内可中止）。 */
@@ -54,14 +58,14 @@ function reportConflict(res: GitOpResult, label: string): void {
 
 /** 中止进行中的 merge/cherry-pick/revert（冲突卡死时的安全出口）。返回是否成功。 */
 export async function abortOp(): Promise<boolean> {
-  const root = repo();
-  if (!root) return false;
+  const scope = captureGitWorktreeScope();
+  if (!scope) return false;
+  const root = scope.repoRoot;
   try {
-    await git.gitAbortOp(root);
-    await refreshAfter(root);
-    return true;
+    const result = await runGitWorktreeMutation(scope, () => runLocalGitOperation(scope, '中止 Git 操作', (id) => git.gitAbortOp(root, id)), { preserveDirty: true });
+    return result.kind === 'executed' && isCurrentGitScope(scope);
   } catch (e) {
-    showToast('error', `中止失败：${errText(e)}`);
+    if (isCurrentGitScope(scope)) showToast('error', `中止失败：${errText(e)}`);
     return false;
   }
 }
@@ -71,8 +75,9 @@ export async function abortOp(): Promise<boolean> {
  * 供侧栏内联提交（簇①）与命令式提交复用。冲突中间态先确认防误提交字面冲突标记。
  */
 export async function commitWithMessage(message: string): Promise<boolean> {
-  const root = repo();
-  if (!root || !message.trim()) return false;
+  const scope = captureGitWorktreeScope();
+  if (!scope || !message.trim()) return false;
+  const root = scope.repoRoot;
   const status = useGitStore.getState().status;
   if (status?.files.some((f) => f.status === 'conflicted')) {
     const ok = await confirmDestructive({
@@ -83,18 +88,18 @@ export async function commitWithMessage(message: string): Promise<boolean> {
     if (!ok) return false;
   }
   try {
-    await git.gitCommit(root, message);
-    await refreshAfter(root);
-    return true;
+    const result = await runGitWorktreeMutation(scope, () => runLocalGitOperation(scope, '提交', (id) => git.gitCommit(root, message, [], id)));
+    return result.kind === 'executed' && isCurrentGitScope(scope);
   } catch (e) {
-    showToast('error', `提交失败：${errText(e)}`);
+    if (isCurrentGitScope(scope)) showToast('error', `提交失败：${errText(e)}`);
     return false;
   }
 }
 
 /** 提交更改（弹输入框拿提交信息 → commitWithMessage）。 */
 export async function commitChanges(): Promise<void> {
-  if (repo() === null) return;
+  const scope = captureGitWorktreeScope();
+  if (!scope) return;
   const message = await promptInput({
     title: '提交更改',
     label: '提交信息（Conventional Commits）',
@@ -102,18 +107,19 @@ export async function commitChanges(): Promise<void> {
     confirmLabel: '提交',
     multiline: true,
   });
-  if (message === null) return;
+  if (message === null || !isCurrentGitScope(scope)) return;
   await commitWithMessage(message);
 }
 
 /** checkout 分支/提交；失败（多为未提交改动）→ 询问是否丢弃并强制切换。 */
 export async function checkoutTarget(target: string): Promise<void> {
-  const root = repo();
-  if (!root) return;
+  const scope = captureGitWorktreeScope();
+  if (!scope) return;
+  const root = scope.repoRoot;
   try {
-    await git.gitCheckout(root, target, false);
-    await refreshAfter(root);
+    await runGitWorktreeMutation(scope, () => git.gitCheckout(root, target, false));
   } catch (e) {
+    if (!isCurrentGitScope(scope)) return;
     const msg = errText(e);
     // 仅「未提交改动冲突」才提示丢弃强切；其它真错误（找不到目标/内部错误等）直接报错，绝不诱导丢无关数据。
     if (!/未提交改动|冲突|conflict/i.test(msg)) {
@@ -127,74 +133,76 @@ export async function checkoutTarget(target: string): Promise<void> {
     });
     if (!ok) return;
     try {
-      await git.gitCheckout(root, target, true);
-      await refreshAfter(root);
+      await runGitWorktreeMutation(scope, () => git.gitCheckout(root, target, true));
     } catch (e2) {
-      showToast('error', `切换失败：${errText(e2)}`);
+      if (isCurrentGitScope(scope)) showToast('error', `切换失败：${errText(e2)}`);
     }
   }
 }
 
 /** 在某提交（null=HEAD）创建分支并切过去。 */
 export async function createBranchAt(targetOid: string | null): Promise<void> {
-  const root = repo();
-  if (!root) return;
+  const scope = captureGitWorktreeScope();
+  if (!scope) return;
+  const root = scope.repoRoot;
   const name = await promptInput({ title: '创建分支', label: '分支名', confirmLabel: '创建' });
   if (name === null) return;
   try {
-    await git.gitCreateBranch(root, name, targetOid, true);
-    await refreshAfter(root);
+    await runGitWorktreeMutation(scope, () => git.gitCreateBranch(root, name, targetOid, true));
   } catch (e) {
-    showToast('error', `创建分支失败：${errText(e)}`);
+    if (isCurrentGitScope(scope)) showToast('error', `创建分支失败：${errText(e)}`);
   }
 }
 
 /** 删除本地分支（二次确认）。 */
 export async function deleteBranchNamed(name: string): Promise<void> {
-  const root = repo();
-  if (!root) return;
+  const scope = captureGitWorktreeScope();
+  if (!scope) return;
   const ok = await confirmDestructive({
     title: '删除分支',
     body: `删除分支「${name}」？未合并的提交可能丢失。`,
     confirmLabel: '删除',
   });
-  if (!ok) return;
+  if (!ok || !isCurrentGitScope(scope)) return;
   try {
-    await git.gitDeleteBranch(root, name);
-    await refreshAfter(root);
+    await git.gitDeleteBranch(scope.repoRoot, name);
+    await refreshAfter(scope);
   } catch (e) {
-    showToast('error', `删除分支失败：${errText(e)}`);
+    if (isCurrentGitScope(scope)) showToast('error', `删除分支失败：${errText(e)}`);
   }
 }
 
 /** 合并分支到当前分支。 */
 export async function mergeBranchInto(branch: string): Promise<void> {
-  const root = repo();
-  if (!root) return;
+  const scope = captureGitWorktreeScope();
+  if (!scope) return;
+  const root = scope.repoRoot;
   try {
-    reportConflict(await git.gitMerge(root, branch), '合并');
-    await refreshAfter(root);
+    const result = await runGitWorktreeMutation(scope, () => runLocalGitOperation(scope, '合并', (id) => git.gitMerge(root, branch, id)));
+    if (result.kind === 'executed' && isCurrentGitScope(scope)) reportConflict(result.value, '合并');
   } catch (e) {
-    showToast('error', `合并失败：${errText(e)}`);
+    if (isCurrentGitScope(scope)) showToast('error', `合并失败：${errText(e)}`);
   }
 }
 
 /** cherry-pick 一个提交到当前分支。 */
 export async function cherryPickCommit(oid: string): Promise<void> {
-  const root = repo();
-  if (!root) return;
+  const scope = captureGitWorktreeScope();
+  if (!scope) return;
+  const root = scope.repoRoot;
   try {
-    reportConflict(await git.gitCherryPick(root, oid), 'cherry-pick');
-    await refreshAfter(root);
+    const result = await runGitWorktreeMutation(scope, () => runLocalGitOperation(scope, '拣选提交', (id) => git.gitCherryPick(root, oid, id)));
+    if (result.kind === 'executed' && isCurrentGitScope(scope)) reportConflict(result.value, 'cherry-pick');
   } catch (e) {
-    showToast('error', `cherry-pick 失败：${errText(e)}`);
+    if (isCurrentGitScope(scope)) showToast('error', `cherry-pick 失败：${errText(e)}`);
   }
 }
 
 /** revert 一个提交（二次确认）。 */
 export async function revertCommit(oid: string): Promise<void> {
-  const root = repo();
-  if (!root) return;
+  const scope = captureGitWorktreeScope();
+  if (!scope) return;
+  const root = scope.repoRoot;
   const ok = await confirmDestructive({
     title: '撤销提交',
     body: `生成一个反向提交以撤销 ${oid.slice(0, 8)} 的更改？`,
@@ -202,17 +210,18 @@ export async function revertCommit(oid: string): Promise<void> {
   });
   if (!ok) return;
   try {
-    reportConflict(await git.gitRevert(root, oid), 'revert');
-    await refreshAfter(root);
+    const result = await runGitWorktreeMutation(scope, () => runLocalGitOperation(scope, '撤销提交', (id) => git.gitRevert(root, oid, id)));
+    if (result.kind === 'executed' && isCurrentGitScope(scope)) reportConflict(result.value, 'revert');
   } catch (e) {
-    showToast('error', `revert 失败：${errText(e)}`);
+    if (isCurrentGitScope(scope)) showToast('error', `revert 失败：${errText(e)}`);
   }
 }
 
 /** reset 到某提交（soft/mixed/hard；hard 强确认）。 */
 export async function resetTo(oid: string, mode: ResetMode): Promise<void> {
-  const root = repo();
-  if (!root) return;
+  const scope = captureGitWorktreeScope();
+  if (!scope) return;
+  const root = scope.repoRoot;
   const ok = await confirmDestructive({
     title: `reset --${mode}`,
     body:
@@ -223,42 +232,41 @@ export async function resetTo(oid: string, mode: ResetMode): Promise<void> {
   });
   if (!ok) return;
   try {
-    await git.gitReset(root, oid, mode, mode === 'hard');
-    await refreshAfter(root);
+    await runGitWorktreeMutation(scope, () => git.gitReset(root, oid, mode, mode === 'hard'));
   } catch (e) {
-    showToast('error', `reset 失败：${errText(e)}`);
+    if (isCurrentGitScope(scope)) showToast('error', `reset 失败：${errText(e)}`);
   }
 }
 
 /** 在某提交（null=HEAD）创建轻量 tag。 */
 export async function createTagAt(targetOid: string | null): Promise<void> {
-  const root = repo();
-  if (!root) return;
+  const scope = captureGitWorktreeScope();
+  if (!scope) return;
   const name = await promptInput({ title: '创建标签', label: '标签名', confirmLabel: '创建' });
-  if (name === null) return;
+  if (name === null || !isCurrentGitScope(scope)) return;
   try {
-    await git.gitTagCreate(root, name, targetOid, null);
-    await refreshAfter(root);
+    await git.gitTagCreate(scope.repoRoot, name, targetOid, null);
+    await refreshAfter(scope);
   } catch (e) {
-    showToast('error', `创建标签失败：${errText(e)}`);
+    if (isCurrentGitScope(scope)) showToast('error', `创建标签失败：${errText(e)}`);
   }
 }
 
 /** 删除 tag（二次确认）。 */
 export async function deleteTagNamed(name: string): Promise<void> {
-  const root = repo();
-  if (!root) return;
+  const scope = captureGitWorktreeScope();
+  if (!scope) return;
   const ok = await confirmDestructive({
     title: '删除标签',
     body: `删除标签「${name}」？`,
     confirmLabel: '删除',
   });
-  if (!ok) return;
+  if (!ok || !isCurrentGitScope(scope)) return;
   try {
-    await git.gitTagDelete(root, name);
-    await refreshAfter(root);
+    await git.gitTagDelete(scope.repoRoot, name);
+    await refreshAfter(scope);
   } catch (e) {
-    showToast('error', `删除标签失败：${errText(e)}`);
+    if (isCurrentGitScope(scope)) showToast('error', `删除标签失败：${errText(e)}`);
   }
 }
 
@@ -280,71 +288,52 @@ function currentBranch(action: string): string | null {
 
 /** fetch 远程（更新远程跟踪分支，不改工作区）。 */
 export async function fetchRemote(): Promise<void> {
-  const root = repo();
-  if (!root) return;
+  const scope = captureGitWorktreeScope();
+  if (!scope) return;
   useGitGraphStore.setState({ remoteBusy: '获取中…' });
   try {
-    await git.gitFetch(root, 'origin', (p) => onProg('获取', p));
-    await refreshAfter(root);
+    await git.gitFetch(scope.repoRoot, 'origin', (p) => { if (isCurrentGitScope(scope)) onProg('获取', p); });
+    await refreshAfter(scope);
   } catch (e) {
-    showToast('error', `获取失败：${errText(e)}`);
+    if (isCurrentGitScope(scope)) showToast('error', `获取失败：${errText(e)}`);
   } finally {
-    useGitGraphStore.setState({ remoteBusy: null });
+    if (isCurrentGitScope(scope)) useGitGraphStore.setState({ remoteBusy: null });
   }
 }
 
 /** 推送当前分支到 origin。 */
 export async function pushCurrent(): Promise<void> {
-  const root = repo();
-  if (!root) return;
+  const scope = captureGitWorktreeScope();
+  if (!scope) return;
   const branch = currentBranch('推送');
   if (!branch) return;
   useGitGraphStore.setState({ remoteBusy: '推送中…' });
   try {
-    await git.gitPush(root, 'origin', branch, (p) => onProg('推送', p));
-    await refreshAfter(root);
+    await git.gitPush(scope.repoRoot, 'origin', branch, (p) => { if (isCurrentGitScope(scope)) onProg('推送', p); });
+    await refreshAfter(scope);
   } catch (e) {
-    showToast('error', `推送失败：${errText(e)}`);
+    if (isCurrentGitScope(scope)) showToast('error', `推送失败：${errText(e)}`);
   } finally {
-    useGitGraphStore.setState({ remoteBusy: null });
+    if (isCurrentGitScope(scope)) useGitGraphStore.setState({ remoteBusy: null });
   }
 }
 
 /** 拉取当前分支（fast-forward 自动；分叉提示手动处理）。 */
 export async function pullCurrent(): Promise<void> {
-  const root = repo();
-  if (!root) return;
+  const scope = captureGitWorktreeScope();
+  if (!scope) return;
+  const root = scope.repoRoot;
   const branch = currentBranch('拉取');
   if (!branch) return;
   useGitGraphStore.setState({ remoteBusy: '拉取中…' });
   try {
-    const outcome = await git.gitPull(root, 'origin', branch, (p) => onProg('拉取', p));
-    if (outcome.kind === 'diverged') {
+    const result = await runGitWorktreeMutation(scope, () => git.gitPull(root, 'origin', branch, (p) => { if (isCurrentGitScope(scope)) onProg('拉取', p); }));
+    if (result.kind === 'executed' && isCurrentGitScope(scope) && result.value.kind === 'diverged') {
       showToast('warning', '本地与远程已分叉，请手动合并或 rebase 后再推送。');
     }
-    await refreshAfter(root);
   } catch (e) {
-    showToast('error', `拉取失败：${errText(e)}`);
+    if (isCurrentGitScope(scope)) showToast('error', `拉取失败：${errText(e)}`);
   } finally {
-    useGitGraphStore.setState({ remoteBusy: null });
-  }
-}
-
-/** 暂存当前改动（含未跟踪）。 */
-export async function stashChanges(): Promise<void> {
-  const root = repo();
-  if (!root) return;
-  const message = await promptInput({
-    title: '暂存改动',
-    label: '备注（可留空）',
-    placeholder: 'WIP',
-    confirmLabel: '暂存',
-  });
-  if (message === null) return;
-  try {
-    await git.gitStashSave(root, message);
-    await refreshAfter(root);
-  } catch (e) {
-    showToast('error', `暂存失败：${errText(e)}`);
+    if (isCurrentGitScope(scope)) useGitGraphStore.setState({ remoteBusy: null });
   }
 }

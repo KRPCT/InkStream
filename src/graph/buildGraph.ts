@@ -1,10 +1,10 @@
 import type { GraphEdgeData, GraphNodeData, VaultGraph } from './types';
+import { createWikiResolver, wikiTargetPath } from '../editor/livepreview/wikiTarget';
 
 /**
  * 由索引库 files + links 构建知识图谱（Phase 10 / LINK-06）。
  *
- * 边解析在查询期做：links.target_resolved 恒为 NULL（index.rs 注释），故沿用 indexService.queryBacklinks
- * 的三形态匹配（裸名 / 无扩展路径 / 全路径）的逆向——把每条 link 的 target_raw 解析到具体文件。纯函数，可单测。
+ * 边解析与点击导航/反链共用 wikiTarget 规则，显式路径与裸名歧义不会猜到另一份文档。
  */
 
 /** 索引库 links 行的最小投影（图谱只需引用方与目标内核）。 */
@@ -18,7 +18,7 @@ function toSlash(p: string): string {
 }
 
 function stripMd(p: string): string {
-  return p.endsWith('.md') ? p.slice(0, -3) : p;
+  return p.replace(/\.(?:md|markdown)$/i, '');
 }
 
 function basename(p: string): string {
@@ -41,22 +41,13 @@ function adjOf(m: Map<string, Set<string>>, k: string): Set<string> {
 
 /**
  * 全库图谱：节点=所有 .md 文件（含孤立点），边=去重后的解析链接（排除自环与断链）。
- * 重名解析确定性：路径排序后首个占据裸名键；精确路径形态优先于裸名。
+ * 精确路径优先；裸名多个候选时不建边，保留与导航一致的歧义语义。
  */
 export function buildVaultGraph(files: string[], links: RawLink[]): VaultGraph {
   const paths = files.map(toSlash);
   const known = new Set(paths);
-  const byPathNoMd = new Map<string, string>();
-  const byName = new Map<string, string>();
-  for (const p of [...paths].sort()) {
-    byPathNoMd.set(stripMd(p), p);
-    const name = basename(p);
-    if (!byName.has(name)) byName.set(name, p);
-  }
-  const resolve = (raw: string): string | null => {
-    const r = stripMd(toSlash(raw));
-    return byPathNoMd.get(r) ?? byName.get(r) ?? null;
-  };
+  const entries = paths.map((path) => ({ path, name: path.split('/').pop() ?? path }));
+  const resolve = createWikiResolver(entries);
 
   const seen = new Set<string>();
   const edges: GraphEdgeData[] = [];
@@ -64,7 +55,7 @@ export function buildVaultGraph(files: string[], links: RawLink[]): VaultGraph {
   for (const l of links) {
     const source = toSlash(l.source_path);
     if (!known.has(source)) continue;
-    const target = resolve(l.target_raw);
+    const target = resolve(wikiTargetPath(l.target_raw));
     if (target === null || target === source) continue;
     const key = `${source}\t${target}`;
     if (seen.has(key)) continue;

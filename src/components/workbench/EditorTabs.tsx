@@ -8,10 +8,8 @@ import {
   type LucideIcon,
 } from 'lucide-react';
 import { execute } from '../../commands/registry';
-import { flushAutosave } from '../../stores/autosave';
-import { isDraftPath } from '../../editor/draftPath';
-import { disposeState, switchToTab } from '../../editor/editorState';
-import { confirmDestructive } from '../../stores/useConfirmStore';
+import { closeDocument } from '../../editor/documentSession';
+import { switchToTab } from '../../editor/editorState';
 import { useEditorStore } from '../../stores/useEditorStore';
 import { useWorkbenchStore } from '../../stores/useWorkbenchStore';
 
@@ -19,35 +17,18 @@ import { useWorkbenchStore } from '../../stores/useWorkbenchStore';
  * 编辑器 tab 栏（D-01 标签页模型）：tab 并存、可关闭、带脏标记。
  *
  * 切 tab 经 switchToTab(path)——单内核 view.setState 换装 + 快照 + 滚动还原（D-03）全在
- * editorState 内完成，组件不重复实现。关 tab 先 flushAutosave 落盘再 closeTab + disposeState。
+ * editorState 内完成，组件不重复实现。关闭统一交给 documentSession 保存并释放。
  * 高 36 / 内边距 12 / active 2px 底 accent 指示条 + 600 字重；脏态 6px 圆点 ↔ hover 变 x。
  */
 
 /**
  * 关 tab：先 await flush 落盘（CR-02 必须等落盘完成再释放，否则在途写落到已 dispose 的
  * state / 已切换的活动 tab，叠加 CR-01 会把错误内容写入本文件）→ 释放 state/滚动缓存 → store 移除。
- * 不弹拦截（Ctrl+W 同路）。flush 失败由 autosave 内部保留脏态 + 错误 toast 兜底，仍继续关闭。
+ * Ctrl+W 同路。保存失败或存在新修订时保留脏态、编辑内容和标签。
  *
  * 草稿（draft://）无落盘路径：脏草稿先弹丢弃确认（取消则保留），确认/干净直接释放——不 flush。
  */
-async function closeTabFlow(path: string): Promise<void> {
-  if (isDraftPath(path)) {
-    const { dirty, tabs } = useEditorStore.getState();
-    if (dirty[path] === true) {
-      const name = tabs.find((t) => t.path === path)?.name ?? path;
-      const ok = await confirmDestructive({
-        title: '放弃草稿',
-        body: `「${name}」尚未保存，关闭将丢弃全部内容。可先按 Ctrl+S 另存为文件。`,
-        confirmLabel: '放弃草稿',
-      });
-      if (!ok) return;
-    }
-  } else {
-    await flushAutosave(path);
-  }
-  disposeState(path);
-  useEditorStore.getState().closeTab(path);
-}
+const closeTabFlow = closeDocument;
 
 /**
  * tab 栏贴边面板开关（R4 §3.2）：复用 Sidebar HeaderAction 几何（32px 命中区 / 16px 图标 /

@@ -32,6 +32,9 @@ export interface CslName {
   family?: string;
   given?: string;
   literal?: string;
+  'dropping-particle'?: string;
+  'non-dropping-particle'?: string;
+  suffix?: string;
 }
 
 /**
@@ -39,6 +42,8 @@ export interface CslName {
  * 字段按 CSL 规范命名（含连字符键）；本应用按样式渲染时只读其中常用子集，全部可选。
  */
 export interface CslItem {
+  [field: string]: unknown;
+  id?: string | number;
   type?: string;
   title?: string;
   'citation-key'?: string;

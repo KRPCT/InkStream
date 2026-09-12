@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { EditorView } from '@codemirror/view';
 import { destroyTestView, makeTestView } from '../../test/composition';
 import { extensionsForLanguage } from '../languages';
+import { useConfirmStore } from '../../stores/useConfirmStore';
 
 /**
  * 链接跳转手势回归门（D-10 / RESEARCH「链接手势」/ 威胁 T-03-16）三路分流。
@@ -44,9 +45,10 @@ vi.mock('../fileTreeData', () => ({ refreshTree: () => refreshTree() }));
 const showToast = vi.fn();
 vi.mock('../../stores/useToastStore', () => ({ showToast: (...a: unknown[]) => showToast(...a) }));
 let vaultFiles: Array<{ name: string; path: string }> = [];
+const wikiVault = { root: '/v', repoRoot: null, name: 'v' };
 vi.mock('../../stores/useVaultStore', () => ({
   useVaultStore: {
-    getState: () => ({ vault: { root: '/v', repoRoot: null, name: 'v' }, files: vaultFiles }),
+    getState: () => ({ vault: wikiVault, files: vaultFiles }),
   },
 }));
 
@@ -56,6 +58,7 @@ const { handleLinkMousedown, resolveVaultRelative } = await import('./linkGestur
 let view: EditorView | null = null;
 
 afterEach(() => {
+  useConfirmStore.getState().request?.resolve(false);
   destroyTestView(view);
   view = null;
 });
@@ -104,15 +107,15 @@ describe('handleLinkMousedown wiki-link 跳转（Phase 4 W3 / LINK-03）', () =>
     expect(openFileByPath).toHaveBeenCalledWith('a.md');
   });
 
-  it('Ctrl+点击不存在目标 → createFile + 打开 + 提示', async () => {
+  it('Ctrl+点击不存在目标 → 确认创建后才 createFile + 打开', async () => {
     view = mdView('[[新页]]');
     Object.defineProperty(view, 'posAtCoords', { configurable: true, value: () => 3 });
     handleLinkMousedown(ctrlDown(), view);
+    expect(useConfirmStore.getState().request?.confirmLabel).toBe('创建并打开');
+    expect(createFile).not.toHaveBeenCalled();
+    useConfirmStore.getState().request?.resolve(true);
+    await vi.waitFor(() => expect(openFileByPath).toHaveBeenCalledWith('新页.md'));
     expect(createFile).toHaveBeenCalledWith('/v', '新页.md');
-    await Promise.resolve();
-    await Promise.resolve();
-    expect(openFileByPath).toHaveBeenCalledWith('新页.md');
-    expect(showToast).toHaveBeenCalled();
   });
 
   it('普通点击（无 Ctrl）命中 wiki-link → 不跳转 return false', () => {

@@ -32,14 +32,14 @@ beforeEach(() => {
   docFor.mockReset();
   applyOpen.mockReset();
   read.mockReset();
-  flush.mockReset().mockResolvedValue(undefined);
+  flush.mockReset().mockResolvedValue({ kind: 'saved' });
   writeFile.mockReset().mockResolvedValue(true);
   view.mockReset().mockReturnValue(null); // 默认无 view：组合期分支不触发
   composing.mockReset().mockReturnValue(false);
   queue.mockReset();
   useVaultStore.setState({ vault: { root: 'D:/v', repoRoot: null, name: 'v' }, files: [] });
   useEditorStore.setState({ frozen: {}, externalChanged: {}, dirty: {}, activePath: null });
-  useProjectSearchStore.setState({ results: [], query: '', totalMatches: 0, truncated: false, status: 'done' });
+  useProjectSearchStore.setState({ results: [], query: '', totalMatches: 0, truncated: false, status: 'done', scope: useVaultStore.getState().vault });
 });
 
 describe('replaceAllInProject', () => {
@@ -98,12 +98,21 @@ describe('replaceAllInProject', () => {
     expect(report.failed).toEqual(['gone.md']);
   });
 
-  it('短词 / 无 vault：空报告，不动任何文件', async () => {
+  it('空词 / 无 vault：空报告，不动任何文件', async () => {
     useProjectSearchStore.setState({ results: [fm('a.md')] });
-    expect(await replaceAllInProject('ab', 'x')).toEqual({ files: 0, replaced: 0, skipped: [], failed: [] });
+    expect(await replaceAllInProject('  ', 'x')).toEqual({ files: 0, replaced: 0, skipped: [], failed: [] });
     useVaultStore.setState({ vault: null, files: [] });
     expect(await replaceAllInProject('foobar', 'x')).toEqual({ files: 0, replaced: 0, skipped: [], failed: [] });
     expect(applyOpen).not.toHaveBeenCalled();
+  });
+
+  it('双字中文在当前全文重算替换，保留 CRLF、emoji 与尾部正文', async () => {
+    useProjectSearchStore.setState({ results: [fm('研究.Markdown')] });
+    docFor.mockReturnValue(null);
+    read.mockResolvedValue('😀前言\r\n研究与研究。\r\n尾部原文');
+    applyOpen.mockReturnValue(false);
+    expect(await replaceAllInProject('研究', '论证')).toEqual({ files: 1, replaced: 2, skipped: [], failed: [] });
+    expect(writeFile).toHaveBeenCalledWith('研究.Markdown', '😀前言\r\n论证与论证。\r\n尾部原文');
   });
 
   it('冲突态按写盘时刻实时判定：循环中途被冻结的文件仍跳过（非循环起点快照）', async () => {
@@ -134,10 +143,13 @@ describe('replaceAllInProject', () => {
     queue.mockImplementation((_v, _k, cb) => {
       deferred = cb as () => void;
     });
-    const report = await replaceAllInProject('foo', 'X');
-    expect(queue).toHaveBeenCalledWith(fakeView, 'mb-write:act.md', expect.any(Function));
+    const pending = replaceAllInProject('foo', 'X');
+    expect(queue).toHaveBeenCalledWith(fakeView, expect.stringMatching(/^mb-write:act\.md:/), expect.any(Function));
     expect(applyOpen).not.toHaveBeenCalled(); // 组合期不当场改 doc
-    expect(report.files).toBe(1); // 乐观计入，drain 时落地
     expect(deferred).toBeTypeOf('function');
+    await deferred!();
+    const report = await pending;
+    expect(flush).toHaveBeenCalledWith('act.md');
+    expect(report.files).toBe(1);
   });
 });

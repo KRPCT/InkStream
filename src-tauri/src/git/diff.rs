@@ -32,18 +32,26 @@ pub fn build_diff(repo: &Repository, target: DiffTarget) -> Result<Vec<FileDiff>
             repo.diff_tree_to_tree(Some(&ot), Some(&nt), Some(&mut opts))?
         }
     };
-    collect_file_diffs(&diff)
+    collect_file_diffs(repo, &diff)
 }
 
 /// Diff → Vec<FileDiff>：逐 delta 经 Patch::from_diff 取 hunk/line。
 /// 用 Patch 而非 Diff::foreach——避开「四个 &mut 闭包同时借用累加器」的借用检查难题。
-fn collect_file_diffs(diff: &Diff) -> Result<Vec<FileDiff>, GitError> {
+fn collect_file_diffs(repo: &Repository, diff: &Diff) -> Result<Vec<FileDiff>, GitError> {
+    const BUDGET: usize = 1024 * 1024;
+    if diff.deltas().len() > 100 { return Err(GitError::Git("差异超过旧接口的 100 文件预算，请使用分页完整提交比较。".into())); }
     let mut out = Vec::new();
+    let mut captured = 0usize;
     for idx in 0..diff.deltas().len() {
         let delta = diff
             .get_delta(idx)
             .ok_or_else(|| GitError::Internal("diff delta 越界".into()))?;
         let status = classify_delta(delta.status());
+        for file in [delta.old_file(), delta.new_file()] {
+            let length = if file.id().is_zero() { file.size() as usize }
+                else { repo.odb()?.read_header(file.id())?.0 };
+            if length > BUDGET / 4 { return Err(GitError::Git("正文超过旧 patch 接口预算，请使用 Raw 完整提交比较。".into())); }
+        }
         let patch = Patch::from_diff(diff, idx)?;
         // patch 为 None：二进制或纯模式/重命名无内容变更。renamed 不当二进制处理。
         let binary = patch.is_none() && status != "renamed";
@@ -54,6 +62,8 @@ fn collect_file_diffs(diff: &Diff) -> Result<Vec<FileDiff>, GitError> {
                 let mut lines = Vec::new();
                 for l in 0..patch.num_lines_in_hunk(h)? {
                     let line = patch.line_in_hunk(h, l)?;
+                    captured = captured.saturating_add(line.content().len() + 128);
+                    if captured > BUDGET / 2 { return Err(GitError::Git("差异超过旧 JSON 接口预算，请使用 Raw 完整提交比较。".into())); }
                     lines.push(DiffLine {
                         origin: line.origin(),
                         old_lineno: line.old_lineno(),
@@ -74,6 +84,9 @@ fn collect_file_diffs(diff: &Diff) -> Result<Vec<FileDiff>, GitError> {
             binary,
             hunks,
         });
+    }
+    if serde_json::to_vec(&out).map_err(|error| GitError::Internal(error.to_string()))?.len() > BUDGET {
+        return Err(GitError::Git("差异超过旧 JSON 接口预算，请使用 Raw 完整提交比较。".into()));
     }
     Ok(out)
 }

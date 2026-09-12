@@ -8,6 +8,7 @@ const zoteroItems = vi.fn<() => Promise<ZoteroItem[]>>(() => Promise.resolve([])
 // 面板经 zoteroItemsResilient（在线优先、离线回退）取数；此处直通替身并标记非离线。
 vi.mock('../../ipc/zotero', () => ({
   zoteroItemsResilient: async () => ({ items: await zoteroItems(), offline: false }),
+  onZoteroLibraryChanged: () => () => {},
 }));
 const insertCitekey = vi.fn<(k: string) => void>();
 vi.mock('../../editor/academicActions', () => ({ insertCitekey: (k: string) => insertCitekey(k) }));

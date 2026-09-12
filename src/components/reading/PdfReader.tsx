@@ -24,6 +24,7 @@ export default function PdfReader({ doc }: { doc: ReadingDoc }) {
 
   useEffect(() => {
     let alive = true;
+    const transfer = new AbortController();
     let task: PDFDocumentLoadingTask | null = null;
     let observer: IntersectionObserver | null = null;
     let reportObs: IntersectionObserver | null = null;
@@ -35,7 +36,8 @@ export default function PdfReader({ doc }: { doc: ReadingDoc }) {
       pdfjs.GlobalWorkerOptions.workerSrc = (
         await import('pdfjs-dist/build/pdf.worker.min.mjs?url')
       ).default;
-      const bytes = await readFileBytes(doc.path);
+      const bytes = await readFileBytes(doc.path, { signal: transfer.signal });
+      if (!alive) return;
       task = pdfjs.getDocument({ data: bytes });
       const pdf: PDFDocumentProxy = await task.promise;
       const host = hostRef.current;
@@ -154,6 +156,7 @@ export default function PdfReader({ doc }: { doc: ReadingDoc }) {
 
     return () => {
       alive = false;
+      transfer.abort();
       observer?.disconnect();
       reportObs?.disconnect();
       canvases.forEach((c) => {

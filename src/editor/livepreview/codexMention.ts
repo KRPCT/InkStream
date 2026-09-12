@@ -37,13 +37,20 @@ function triggers(): { trigger: string; entry: CodexEntry }[] {
   const entries = useCodexStore.getState().entries;
   if (entries === cachedEntries) return cachedTriggers;
   const list: { trigger: string; entry: CodexEntry }[] = [];
+  const owners = new Map<string, Set<string>>();
   for (const e of entries) {
-    for (const t of [e.name, ...e.aliases]) if (t) list.push({ trigger: t, entry: e });
+    for (const t of new Set([e.name, ...e.aliases])) if (t) {
+      const key = t.normalize('NFC');
+      const paths = owners.get(key) ?? new Set<string>();
+      paths.add(e.path); owners.set(key, paths);
+      list.push({ trigger: t, entry: e });
+    }
   }
-  list.sort((a, b) => b.trigger.length - a.trigger.length); // longest-first：长触发词优先，避免短别名先命中
+  const unambiguous = list.filter(({ trigger }) => owners.get(trigger.normalize('NFC'))?.size === 1);
+  unambiguous.sort((a, b) => b.trigger.length - a.trigger.length);
   cachedEntries = entries;
-  cachedTriggers = list;
-  return list;
+  cachedTriggers = unambiguous;
+  return unambiguous;
 }
 
 /** 仅可视区扫描，最长优先 + 词边界校验，逐段构建 mark。 */

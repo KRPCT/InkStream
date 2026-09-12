@@ -1,11 +1,15 @@
 import { ArrowLeft, ExternalLink, Plus, RefreshCw } from 'lucide-react';
-import { useEffect, useState } from 'react';
-import { ghIssueCreate, ghIssueList } from '../../ipc/git';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { ghIssueCreate } from '../../ipc/git';
+import { githubIssuePage } from '../../ipc/githubPage';
 import { openExternal } from '../../ipc/opener';
 import { useGitStore } from '../../stores/useGitStore';
 import { showToast } from '../../stores/useToastStore';
 import type { Issue } from '../../types/git';
 import CommentThread from './CommentThread';
+import { useGithubPage } from './useGithubPage';
+import GithubPageControls from './GithubPageControls';
+import { useGithubScopeKey } from './githubScope';
 
 function errText(e: unknown): string {
   return e instanceof Error ? e.message : String(e);
@@ -64,54 +68,38 @@ function IssueDetail({
  */
 export default function IssuePanel() {
   const repoRoot = useGitStore((s) => s.repoRoot);
-  const [issues, setIssues] = useState<Issue[]>([]);
+  const scope = useGithubScopeKey(repoRoot);
+  return repoRoot ? <RepositoryIssues key={scope} repoRoot={repoRoot} /> : <p className="p-3">当前不是 GitHub 仓库。</p>;
+}
+
+function RepositoryIssues({ repoRoot }: { repoRoot: string }) {
   const [filter, setFilter] = useState<StateFilter>('open');
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  return <FilteredIssues key={filter} repoRoot={repoRoot} filter={filter} setFilter={setFilter} />;
+}
+
+function FilteredIssues({ repoRoot, filter, setFilter }: { repoRoot: string; filter: StateFilter; setFilter: (filter: StateFilter) => void }) {
+  const load = useCallback((page: number) => githubIssuePage(repoRoot, filter, page), [repoRoot, filter]);
+  const { data, loading, error, pageNumber, setPageNumber, refresh: reload } = useGithubPage(load);
+  const issues = data?.items ?? [];
   const [selected, setSelected] = useState<Issue | null>(null);
   const [creating, setCreating] = useState(false);
   const [title, setTitle] = useState('');
-
-  const [tick, setTick] = useState(0);
-  const reload = (): void => setTick((t) => t + 1);
-
-  // 竞态守卫：filter/repoRoot 变化或重载时旧请求回填判废。
-  useEffect(() => {
-    if (!repoRoot) {
-      setIssues([]);
-      return;
-    }
-    let cancelled = false;
-    setLoading(true);
-    setError(null);
-    void ghIssueList(repoRoot, filter)
-      .then((is) => {
-        if (!cancelled) {
-          setIssues(is);
-          setLoading(false);
-        }
-      })
-      .catch((e) => {
-        if (!cancelled) {
-          setError(errText(e));
-          setLoading(false);
-        }
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [repoRoot, filter, tick]);
+  const [busy, setBusy] = useState(false);
+  const alive = useRef(true);
+  useEffect(() => { alive.current = true; return () => { alive.current = false; }; }, []);
 
   const submitCreate = async (): Promise<void> => {
-    if (!repoRoot || !title.trim()) return;
+    if (!repoRoot || !title.trim() || busy || useGitStore.getState().repoRoot !== repoRoot) return;
+    setBusy(true);
     try {
       await ghIssueCreate(repoRoot, title.trim(), '');
+      if (!alive.current || useGitStore.getState().repoRoot !== repoRoot) return;
       setTitle('');
       setCreating(false);
       reload();
     } catch (e) {
-      showToast('error', errText(e));
-    }
+      if (alive.current && useGitStore.getState().repoRoot === repoRoot) showToast('error', errText(e));
+    } finally { if (alive.current) setBusy(false); }
   };
 
   if (!repoRoot) {
@@ -169,7 +157,7 @@ export default function IssuePanel() {
           />
           <button
             type="button"
-            disabled={!title.trim()}
+            disabled={!title.trim() || busy}
             onClick={() => void submitCreate()}
             className="rounded-[4px] bg-[var(--accent)] px-3 py-1 text-[12px] text-[var(--background-primary)] disabled:opacity-40"
           >
@@ -202,6 +190,7 @@ export default function IssuePanel() {
           ))
         )}
       </div>
+      <GithubPageControls page={pageNumber} next={data?.nextPage ?? null} loading={loading} onPage={setPageNumber} />
     </div>
   );
 }

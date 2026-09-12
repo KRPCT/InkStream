@@ -12,8 +12,16 @@ export default function WordCountIndicator() {
   const mode = useWorkbenchStore((s) => s.mode);
   const goal = useSettingsStore((s) => s.dailyWordGoal);
   const written = useWordCountStore((s) => s.todayWritten);
+  const paused = useWordCountStore((s) => s.activeCount === null);
+  const complete = useWordCountStore((s) => s.todayComplete);
 
   if (mode !== 'creative' || goal <= 0) return null;
+  if (paused) {
+    return <div data-testid="word-count-indicator" className="flex h-full items-center border-l border-[var(--background-modifier-border)] px-2" title="基础编辑期间不自动统计全文；启用完整排版后可恢复。">统计已暂停</div>;
+  }
+  if (!complete) {
+    return <div data-testid="word-count-indicator" className="flex h-full items-center border-l border-[var(--background-modifier-border)] px-2" title="今日部分统计，不含基础编辑期间的改动。">部分统计 {written}/{goal}</div>;
+  }
   const pct = Math.min(100, Math.round((written / goal) * 100));
   const reached = written >= goal;
 

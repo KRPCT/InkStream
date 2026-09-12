@@ -107,7 +107,7 @@ describe('fileTreeOps', () => {
     const ops = createFileTreeOps();
     await ops.create({ parentPath: '', name: 'intro', isDir: false });
     expect(createFile).toHaveBeenCalledWith('/v', 'intro.md');
-    expect(openFileByPath).toHaveBeenCalledWith('intro.md');
+    expect(openFileByPath).toHaveBeenCalledWith('intro.md', expect.any(Number));
     expect(refreshTree).toHaveBeenCalled();
   });
 

@@ -3,11 +3,12 @@ import { isDraftPath } from '../editor/draftPath';
 import { getDocForPath } from '../editor/editorState';
 import { getView } from '../editor/viewHandle';
 import { writeFileAtomic, writeFileToPath } from '../ipc/files';
-import { indexUpsertDoc, isIndexable } from '../ipc/indexService';
+import { captureIndexScope, indexRefreshFile, isIndexable } from '../ipc/indexService';
 import { useEditorStore } from './useEditorStore';
 import { useSettingsStore } from './useSettingsStore';
 import { useToastStore } from './useToastStore';
 import { useVaultStore } from './useVaultStore';
+import type { SaveOutcome } from '../types/documentSession';
 
 /**
  * 编辑防抖落盘管线（D-02 / FILE-01）。照 persistSettings 500ms 防抖范式。
@@ -46,7 +47,7 @@ interface AutosaveDeps {
   /** 读 vault 根绝对路径（默认自 useVaultStore）。 */
   getRoot: () => string | null;
   /** 读某 path 当前文档内容（默认自单内核 view.state.doc）。 */
-  getDoc: (path: string) => string;
+  getDoc: (path: string) => string | null;
 }
 
 function defaultDeps(): AutosaveDeps {
@@ -54,7 +55,7 @@ function defaultDeps(): AutosaveDeps {
     getRoot: () => useVaultStore.getState().vault?.root ?? null,
     // CR-01：按 path 取真相源——活动文件读 live view，非活动文件读其缓存 state，
     // 绝不恒读当前活动 view（否则切 tab 后 A 的在途写会落 B 的内容到 A）。
-    getDoc: (path) => getDocForPath(path) ?? '',
+    getDoc: (path) => getDocForPath(path),
   };
 }
 
@@ -69,19 +70,32 @@ const suppressedUntil = new Map<string, number>();
  * 每 path 在途写串行链（WR-08）：scheduleAutosave 与 flushAutosave 的写都挂到同一 path 的
  * 链尾，保证 temp+rename 顺序执行，杜绝两个 rename 竞态导致旧内容覆盖新存。
  */
-const inflight = new Map<string, Promise<void>>();
+const inflight = new Map<string, Promise<SaveOutcome>>();
 
 /**
  * 切库挂起标志：suspendAutosave 后 writeOnce 一律早返回，杜绝旧 tab 的排队/在途写在切库瞬间
  * 落到刚切入的新库（#3 数据丢失根因——旧相对路径 + 新库根 = 覆盖新库同名文件）。
  * 配合 cancelPendingAutosave 清防抖定时器；rehome 重归位完成后 resumeAutosave。
  */
-let suspended = false;
+let suspended = 0;
 export function suspendAutosave(): void {
-  suspended = true;
+  suspended += 1;
 }
 export function resumeAutosave(): void {
-  suspended = false;
+  suspended = Math.max(0, suspended - 1);
+}
+/** After admission is paused, wait for the already admitted writes before changing paths. */
+export async function waitForPendingAutosaves(): Promise<void> {
+  await Promise.all([...inflight.values()]);
+}
+const fileMutations = new Map<string, number>();
+export function beginFileMutation(paths: readonly string[]): (committed?: boolean) => void {
+  paths.forEach((path) => fileMutations.set(path, (fileMutations.get(path) ?? 0) + 1));
+  return (committed = true) => paths.forEach((path) => {
+    const count = (fileMutations.get(path) ?? 1) - 1;
+    if (count === 0) fileMutations.delete(path); else fileMutations.set(path, count);
+    if (committed) suppressNextWatch(path);
+  });
 }
 /** 取消所有未落盘的防抖定时器（切库前调）。已在飞的写不动——它们已捕获旧库根、写对位置。 */
 export function cancelPendingAutosave(): void {
@@ -103,9 +117,20 @@ function displayName(path: string): string {
  * 串行执行某 path 的落盘：先 await 该 path 的在途写（WR-08），再排到链尾。
  * 返回的 Promise 在本次写完成时解析；链上异常已被内部吞并，不会断链。
  */
-function enqueueWrite(path: string): Promise<void> {
+function enqueueWrite(path: string): Promise<SaveOutcome> {
+  const root = deps.getRoot();
+  const tab = useEditorStore.getState().tabs.find((item) => item.path === path);
+  return enqueuePersistence(path, () => {
+    if (useEditorStore.getState().tabs.find((item) => item.path === path) !== tab || (!tab?.external && deps.getRoot() !== root)) {
+      return Promise.resolve({ kind: 'blocked', reason: 'missing' });
+    }
+    return writeOnce(path);
+  });
+}
+
+function enqueuePersistence(path: string, action: () => Promise<SaveOutcome>): Promise<SaveOutcome> {
   const prev = inflight.get(path) ?? Promise.resolve();
-  const next = prev.then(() => writeOnce(path));
+  const next = prev.catch(() => {}).then(action);
   inflight.set(path, next);
   // 写完后若自己仍是链尾则清理（避免 Map 无界增长）。
   void next.finally(() => {
@@ -115,15 +140,18 @@ function enqueueWrite(path: string): Promise<void> {
 }
 
 /** 执行一次落盘（suspend/frozen 时跳过；成功才自激抑制；失败保留脏态 + toast + 清抑制）。 */
-async function writeOnce(path: string): Promise<void> {
-  if (suspended) return; // 切库期间一律不落盘——防旧 tab 的排队/在途写落到新库（#3 数据丢失）。
+async function writeOnce(path: string): Promise<SaveOutcome> {
+  if (suspended) return { kind: 'blocked', reason: 'suspended' };
   const { frozen, clearDirty, markDirty, tabs } = useEditorStore.getState();
-  if (frozen[path]) return; // 02-04 冲突期冻结，防误覆盖
+  if (frozen[path]) return { kind: 'blocked', reason: 'conflict' };
   // 库外（非工作区）文件：path 即绝对路径，写其真实位置；库内文件：vault 根 + 相对 path。
-  const external = tabs.find((t) => t.path === path)?.external === true;
+  const tab = tabs.find((t) => t.path === path);
+  const external = tab?.external === true;
   const root = external ? null : deps.getRoot();
-  if (!external && root === null) return; // 库内文件无 vault 根不落盘
+  if (!external && root === null) return { kind: 'blocked', reason: 'missing' };
   const content = deps.getDoc(path);
+  if (content === null) return { kind: 'blocked', reason: 'missing' };
+  const indexScope = captureIndexScope();
   // 落盘前开窗：原子写（temp+rename）紧随的多个 watcher 事件在窗口内一并被吞，不误报
   // "外部变更"（Layer 2 自激抑制）。写成功后续窗，覆盖 rename 的尾随事件抖动。
   suppressNextWatch(path);
@@ -135,11 +163,14 @@ async function writeOnce(path: string): Promise<void> {
     }
     // 写成功：从落盘完成时刻起续窗，确保 rename 的尾随事件全落在窗口内被吞。
     suppressNextWatch(path);
-    clearDirty(path);
-    // Phase 4 W1：库内 .md 写盘成功后增量更新 FTS5 索引（autosave 主路径，已有内存内容无需读盘）。
+    const sameDocument = useEditorStore.getState().tabs.find((t) => t.path === path) === tab;
+    const current = sameDocument && (external || deps.getRoot() === root) && deps.getDoc(path) === content;
+    if (current) clearDirty(path);
+    // 库内 .md 原子落盘后只提交路径，actor读取磁盘，避免把大正文再次经JSON传回原生。
     // 库外文件不属当前 vault、不入索引。fire-and-forget——索引投递失败绝不阻断/回滚保存。
     if (!external && isIndexable(path) && !useSettingsStore.getState().simpleMode)
-      void indexUpsertDoc(path, content).catch(() => {});
+      void indexRefreshFile(path, indexScope).catch(() => {});
+    return { kind: current ? 'saved' : 'changed' };
   } catch {
     // WR-01：写失败时无 watcher 事件落地，必须撤回抑制窗口，否则它会吞掉
     // 下一次该路径的真实外部变更（consumeSuppressedWatch 误返 true）。
@@ -147,6 +178,7 @@ async function writeOnce(path: string): Promise<void> {
     // 落盘失败：保留脏态（不清脏标记）+ 错误 toast，不关 tab（UI-SPEC 错误态）
     markDirty(path);
     useToastStore.getState().showToast('error', errorMessage(displayName(path)));
+    return { kind: 'failed' };
   }
 }
 
@@ -165,7 +197,7 @@ export function scheduleAutosave(path: string): void {
       // 非组合期立即 enqueueWrite（行为同今天非组合路径）；组合期按 path 去重挂起，compositionend
       // drain 写一次——消除旧 Layer 3 的 500ms 轮询自旋，组合结束即落盘。
       const view = getView();
-      if (view) queueAfterComposition(view, 'autosave:' + path, () => enqueueWrite(path));
+      if (view) queueAfterComposition(view, 'autosave:' + path, async () => { await enqueueWrite(path); });
       else void enqueueWrite(path); // 无 view（测试/未挂载）直接写
     }, useSettingsStore.getState().autosaveDelayMs),
   );
@@ -176,14 +208,14 @@ export function scheduleAutosave(path: string): void {
  * WR-08：经 enqueueWrite 串到该 path 在途写链尾——若已有写在飞，先等它完成再写本次，
  * 保证落盘顺序、杜绝两个 rename 竞态。草稿（draft://）一律跳过（保存走 saveDraftAs）。
  */
-export async function flushAutosave(path: string): Promise<void> {
-  if (isDraftPath(path)) return;
+export async function flushAutosave(path: string): Promise<SaveOutcome> {
+  if (isDraftPath(path)) return { kind: 'blocked', reason: 'draft' };
   const existing = timers.get(path);
   if (existing !== undefined) {
     clearTimeout(existing);
     timers.delete(path);
   }
-  await enqueueWrite(path);
+  return enqueueWrite(path);
 }
 
 /**
@@ -198,17 +230,22 @@ export async function writeProjectFile(path: string, content: string): Promise<b
   if (suspended) return false; // 切库期间不落盘（同 writeOnce）。
   const root = deps.getRoot();
   if (root === null) return false;
+  const indexScope = captureIndexScope();
+  const outcome = await enqueuePersistence(path, async () => {
+  if (suspended || deps.getRoot() !== root || useEditorStore.getState().tabs.some((tab) => tab.path === path)) return { kind: 'blocked', reason: 'suspended' };
   suppressNextWatch(path); // 自激抑制：自己的原子写不触发 watcher 误判（Layer 2）。
   try {
     await writeFileAtomic(root, path, content);
     suppressNextWatch(path); // 写成功续窗，覆盖 rename 尾随事件。
     if (isIndexable(path) && !useSettingsStore.getState().simpleMode)
-      void indexUpsertDoc(path, content).catch(() => {});
-    return true;
+      void indexRefreshFile(path, indexScope).catch(() => {});
+    return { kind: 'saved' };
   } catch {
     suppressedUntil.delete(path); // 写失败无事件落地，撤回抑制窗（同 writeOnce 的 WR-01）。
-    return false;
+    return { kind: 'failed' };
   }
+  });
+  return outcome.kind === 'saved';
 }
 
 /** 冻结某文件自动保存（转发 store；02-04 仲裁接）。 */
@@ -226,6 +263,11 @@ export function suppressNextWatch(path: string): void {
 
 /** watcher 收到事件时调：该路径仍在抑制窗口内则返回 true（事件被吞）；过期自动清理。 */
 export function consumeSuppressedWatch(path: string): boolean {
+  for (const prefix of fileMutations.keys()) if (path === prefix || path.startsWith(prefix + '/')) return true;
+  for (const [prefix, until] of suppressedUntil) {
+    if (now() >= until) suppressedUntil.delete(prefix);
+    else if (path === prefix || path.startsWith(prefix + '/')) return true;
+  }
   const until = suppressedUntil.get(path);
   if (until === undefined) return false;
   if (now() < until) return true; // 窗口内：吞掉自激事件（不消费，覆盖后续多事件）
@@ -239,6 +281,7 @@ export function resetAutosave(): void {
   timers.clear();
   suppressedUntil.clear();
   inflight.clear();
-  suspended = false;
+  suspended = 0;
+  fileMutations.clear();
   deps = defaultDeps();
 }

@@ -3,14 +3,11 @@ import type { EditorState } from '@codemirror/state';
 import { EditorView } from '@codemirror/view';
 import type { SyntaxNode } from '@lezer/common';
 import { openExternal } from '../../ipc/opener';
-import { createFile } from '../../ipc/files';
 import { useEditorStore } from '../../stores/useEditorStore';
-import { useVaultStore } from '../../stores/useVaultStore';
-import { showToast } from '../../stores/useToastStore';
 import { openFileByPath } from '../fileOpenFlow';
-import { refreshTree } from '../fileTreeData';
 import { WIKI_LINK_NODE, WIKI_LINK_TARGET } from './nodeNames';
-import { resolveWikiTarget, wikiTargetPath, wikiTargetToCreatePath } from './wikiTarget';
+import { navigateWikiTarget } from './wikiNavigation';
+import { navigateEquationTarget } from '../equations/navigation';
 
 /**
  * 链接跳转手势（D-10 / RESEARCH「链接手势」/ 威胁 T-03-16）三路分流。
@@ -29,9 +26,8 @@ import { resolveWikiTarget, wikiTargetPath, wikiTargetToCreatePath } from './wik
  *   - 相对打开仅解析在 vault 根内的路径——上跳越界（`../../secret`）、绝对路径、含 scheme 的 url 一律
  *     不 openFileByPath（镜像 ImageWidget.resolveVaultImage 的 vault 边界收口纪律，T-03-19 同源）。
  *
- * Phase 4 W3（已落地）：`[[wiki-link]]` 内部跳转 + 缺失目标即建——Ctrl/Cmd+点击优先命中 WikiLink 节点，
- * 解析 WikiLinkTarget（剥 #heading/^block）经 wikiTarget.ts 解析为 vault 文件，命中即单内核打开，
- * 不存在则新建 `target.md` + 打开 + 刷新树 + 提示（Obsidian 风）。`[[` fuzzy 补全见 wikiLinkComplete.ts。
+ * Phase 4 W3 的 wiki-link 路径现由 wikiNavigation 保留完整 #heading/^block 目标：
+ * 精确文件身份 → 活动文档提交 → 正文锚点定位；缺失文件先提示创建。`[[` fuzzy 补全见 wikiLinkComplete.ts。
  */
 
 /**
@@ -99,12 +95,6 @@ export function resolveVaultRelative(url: string, activePath: string | null): st
   return stack.join('/');
 }
 
-/** 取文件名末段（toast 用）。 */
-function baseName(path: string): string {
-  const segs = path.split('/');
-  return segs[segs.length - 1] || path;
-}
-
 /** 从 pos 向上找最近的 WikiLink 节点（点渲染出的 alias/target 落其子节点，上溯到容器）；无则 null。 */
 function findWikiLinkNode(state: EditorState, pos: number): SyntaxNode | null {
   let node: SyntaxNode | null = syntaxTree(state).resolve(pos, -1);
@@ -116,32 +106,13 @@ function findWikiLinkNode(state: EditorState, pos: number): SyntaxNode | null {
 }
 
 /**
- * wiki-link 跳转（Phase 4 W3 / LINK-03）：解析 WikiLinkTarget 内核（剥 #heading/^block）→ vault 文件。
- * 命中即单内核打开；目标不存在 → 新建 `target.md` + 打开 + 刷新树 + 提示（Obsidian 风，点击即建）。
+ * 手势层只取完整目标文本；身份、锚点与创建确认由 wikiNavigation 协调。
  */
 async function navigateWikiLink(view: EditorView, wiki: SyntaxNode): Promise<void> {
   const targetNode = wiki.getChild(WIKI_LINK_TARGET);
-  const path = wikiTargetPath(targetNode ? view.state.doc.sliceString(targetNode.from, targetNode.to) : '');
-  if (!path) {
-    showToast('warning', '无法解析该 wiki 链接的目标。');
-    return;
-  }
-  const vault = useVaultStore.getState().vault;
-  if (!vault) return;
-  const resolved = resolveWikiTarget(path, useVaultStore.getState().files);
-  if (resolved !== null) {
-    void openFileByPath(resolved);
-    return;
-  }
-  const rel = wikiTargetToCreatePath(path);
-  try {
-    await createFile(vault.root, rel);
-    await openFileByPath(rel);
-    void refreshTree();
-    showToast('warning', `「${baseName(rel)}」不存在，已新建并打开。`);
-  } catch {
-    showToast('error', `无法新建「${baseName(rel)}」（目标目录可能不存在）。`);
-  }
+  const target = targetNode ? view.state.doc.sliceString(targetNode.from, targetNode.to) : '';
+  if (navigateEquationTarget(view, target)) return;
+  await navigateWikiTarget(target);
 }
 
 /**

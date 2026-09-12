@@ -127,6 +127,7 @@ export function ShortcutsSection() {
   const rows: [string, string][] = [
     ['Ctrl+S', '保存当前文件'],
     ['Ctrl+P', '快速打开文件'],
+    ['Ctrl+Alt+P', '打开 / 关闭项目档案'],
     ['Ctrl+Shift+P', '命令面板'],
     ['Ctrl+,', '设置'],
     ['Ctrl+E', '切换源码 / 实时预览'],

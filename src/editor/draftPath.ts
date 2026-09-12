@@ -1,14 +1,21 @@
 /**
  * 未命名草稿 path 方案（纯逻辑叶子模块，零依赖）。
  *
- * 草稿是纯内存文档：path 用合成标识 `draft://N`（N 会话内递增），**永不落盘到该 path**。
+ * 草稿 path 用合成标识 `draft://N`，正文经项目会话保存在本机应用数据中，不写到该合成路径。
  * 守卫集中于 isDraftPath：autosave 跳过落盘、Ctrl+S 走另存为转正（draftFlow.saveDraftAs）、
- * 关 tab 走丢弃确认（EditorTabs）。草稿不进 watcher、不持久化。
+ * 关 tab 走丢弃确认（EditorTabs）。草稿不进内容目录 watcher。
  */
 
 const DRAFT_PREFIX = 'draft://';
 
 let counter = 0;
+
+export function reserveDraftPaths(paths: Iterable<string>): void {
+  for (const path of paths) {
+    const number = /^draft:\/\/(\d+)$/.exec(path)?.[1];
+    if (number) counter = Math.max(counter, Number(number));
+  }
+}
 
 /** 是否为草稿合成 path（draft:// 前缀）。 */
 export function isDraftPath(path: string): boolean {

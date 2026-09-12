@@ -1,11 +1,12 @@
+import type { EditorView } from '@codemirror/view';
 import { zoteroCayw } from '../ipc/zotero';
 import { useEditorStore } from '../stores/useEditorStore';
 import { showToast } from '../stores/useToastStore';
 import { languageFromDoc } from './languages';
-import { getView } from './viewHandle';
+import { applyCommandIntent, captureCommandIntent, getWritableCommandView, runWritableCommand } from './commandView';
 
 /**
- * 学术写作动作（Phase 8 ZOT / ACAD）。经 getView() 取单内核 EditorView（EditorView 不进 store 纪律）。
+ * 学术写作动作只面向可见的可写文档；异步结果必须仍属于发起时的正文与选区。
  */
 
 function errText(e: unknown): string {
@@ -40,8 +41,9 @@ let citing = false;
  * 并发守卫：一次只允许一个 CAYW（Zotero 集成命令串行）。
  */
 export async function insertCitation(): Promise<void> {
-  const view = getView();
+  const view = getWritableCommandView();
   if (!view) return;
+  const intent = captureCommandIntent(view);
   if (citing) {
     showToast('warning', '引用选择已在进行中——请先在 Zotero 选择器里完成或按 Esc 取消。');
     return;
@@ -51,21 +53,23 @@ export async function insertCitation(): Promise<void> {
   try {
     cite = await zoteroCayw();
   } catch (e) {
-    showToast('error', `插入引用失败：${errText(e)}`);
+    if (intent.isCurrent()) showToast('error', `插入引用失败：${errText(e)}`);
     return;
   } finally {
     citing = false;
   }
-  if (!cite.trim()) return; // 用户取消
+  if (!cite.trim() || !intent.isCurrent()) return;
   // ZOT-05：按当前文档语言重排（typst #cite(<k>) / latex \cite{k} / 其余 pandoc [@k]）。
+  await applyCommandIntent(intent, (target) => {
+    insertCitationText(target, cite);
+  });
+}
+
+function insertCitationText(view: EditorView, cite: string): void {
   const path = useEditorStore.getState().activePath ?? '';
   const text = formatCitationFor(cite, languageFromDoc(view.state.doc.toString(), path));
   const { from, to } = view.state.selection.main;
-  view.dispatch({
-    changes: { from, to, insert: text },
-    selection: { anchor: from + text.length },
-    scrollIntoView: true,
-  });
+  view.dispatch({ changes: { from, to, insert: text }, selection: { anchor: from + text.length }, scrollIntoView: true });
   view.focus();
 }
 
@@ -73,17 +77,7 @@ export async function insertCitation(): Promise<void> {
  * 直接插入指定 citekey 的引用（ACAD-01 Sidebar 库点击）：不弹 CAYW，按文档语言重排后插光标处。
  */
 export function insertCitekey(citekey: string): void {
-  const view = getView();
-  if (!view) return;
-  const path = useEditorStore.getState().activePath ?? '';
-  const text = formatCitationFor(`[@${citekey}]`, languageFromDoc(view.state.doc.toString(), path));
-  const { from, to } = view.state.selection.main;
-  view.dispatch({
-    changes: { from, to, insert: text },
-    selection: { anchor: from + text.length },
-    scrollIntoView: true,
-  });
-  view.focus();
+  runWritableCommand((view) => insertCitationText(view, `[@${citekey}]`));
 }
 
 /**
@@ -91,24 +85,24 @@ export function insertCitekey(citekey: string): void {
  * N 取文档内未用的最小正整数。
  */
 export function insertFootnote(): void {
-  const view = getView();
-  if (!view) return;
-  const doc = view.state.doc.toString();
-  const used = new Set([...doc.matchAll(/\[\^(\d+)\]/g)].map((m) => Number(m[1])));
-  let n = 1;
-  while (used.has(n)) n += 1;
-  const ref = `[^${n}]`;
-  const def = `${doc.endsWith('\n') ? '' : '\n'}[^${n}]: `;
-  const docLen = view.state.doc.length;
-  const { from } = view.state.selection.main;
-  view.dispatch({
-    changes: [
-      { from, insert: ref },
-      { from: docLen, insert: def },
-    ],
-    // 两处插入按原坐标应用；ref 在 from(<docLen) 前插使其后整体右移 ref.length，故定义末尾 = 原 docLen + ref + def。
-    selection: { anchor: docLen + ref.length + def.length },
-    scrollIntoView: true,
+  runWritableCommand((view) => {
+    const doc = view.state.doc.toString();
+    const used = new Set([...doc.matchAll(/\[\^(\d+)\]/g)].map((m) => Number(m[1])));
+    let n = 1;
+    while (used.has(n)) n += 1;
+    const ref = `[^${n}]`;
+    const def = `${doc.endsWith('\n') ? '' : '\n'}[^${n}]: `;
+    const docLen = view.state.doc.length;
+    const { from } = view.state.selection.main;
+    view.dispatch({
+      changes: [
+        { from, insert: ref },
+        { from: docLen, insert: def },
+      ],
+      // Two changes use the original coordinates; the reference shifts the final definition.
+      selection: { anchor: docLen + ref.length + def.length },
+      scrollIntoView: true,
+    });
+    view.focus();
   });
-  view.focus();
 }

@@ -1,5 +1,12 @@
 import { create } from 'zustand';
-import { ghPrDiff, gitDiff, gitLog, gitRefs } from '../ipc/git';
+import { gitLog, gitRefs } from '../ipc/git';
+import { gitCommitFiles } from '../ipc/gitCompare';
+import { currentComparisonDocument } from '../editor/gitCompareActions';
+import { githubPrDiffPage } from '../ipc/githubPage';
+import { useGitStore } from './useGitStore';
+import { useVaultStore } from './useVaultStore';
+import type { GithubPrDiffPage } from '../types/githubPage';
+import type { GitComparePage, GitComparison } from '../types/gitCompare';
 import type { CommitInfo, FileDiff, GitRef, PullRequest } from '../types/git';
 
 /**
@@ -10,6 +17,8 @@ import type { CommitInfo, FileDiff, GitRef, PullRequest } from '../types/git';
 
 /** 一次加载的最大提交数（千级足够；W5 接触底分页 append）。 */
 const LOG_LIMIT = 500;
+let logGeneration = 0;
+let diffGeneration = 0;
 
 function pathOf(f: FileDiff): string {
   return f.newPath ?? f.oldPath ?? '';
@@ -21,18 +30,28 @@ interface GitGraphState {
   refs: GitRef[];
   loading: boolean;
   selectedOid: string | null;
-  /** 选中 commit 的 diff（vs 首父）：文件列表 + 各文件 hunks 一次取齐。 */
+  /** Current commit page metadata; bodies are fetched separately through Raw channels. */
   commitFiles: FileDiff[];
+  commitPage: GitComparePage | null;
+  commitSkip: number;
+  loadCommitPage: (skip: number, focusPath?: string | null) => void;
   filesLoading: boolean;
   selectedFile: string | null;
   /** 远程操作进行中的提示文案（W4，fetch/push/pull 期间显示；null=空闲）。 */
   remoteBusy: string | null;
-  /** git-graph 左栏视图：提交图谱 / 分支管理 / Pull Requests / Issues。 */
-  leftMode: 'graph' | 'branches' | 'pr' | 'issues';
-  setLeftMode: (mode: 'graph' | 'branches' | 'pr' | 'issues') => void;
+  /** git-graph 左栏视图：提交图谱 / 分支管理 / 暂存记录 / Pull Requests / Issues。 */
+  leftMode: 'graph' | 'branches' | 'compare' | 'stashes' | 'pr' | 'issues';
+  setLeftMode: (mode: 'graph' | 'branches' | 'compare' | 'stashes' | 'pr' | 'issues') => void;
   /** 选中的 PR（leftMode==='pr' 时中栏显详情、右栏复用 commitFiles 显其文件 diff）；null=未选。 */
   selectedPr: PullRequest | null;
-  selectPr: (pr: PullRequest) => void;
+  selectedPrRepoRoot: string | null;
+  prDiff: GithubPrDiffPage | null;
+  prPage: number;
+  filesError: string | null;
+  comparisonStart: { comparison: GitComparison; path: string | null } | null;
+  selectPr: (pr: PullRequest, sourceRepoRoot?: string) => void;
+  loadPrPage: (page: number) => void;
+  clearRepository: () => void;
   /** Find Widget 开关（W5）：提交搜索栏显隐。 */
   findOpen: boolean;
   setFindOpen: (open: boolean) => void;
@@ -57,17 +76,31 @@ export const useGitGraphStore = create<GitGraphState>((set, get) => ({
   loading: false,
   selectedOid: null,
   selectedPr: null,
+  selectedPrRepoRoot: null,
+  prDiff: null,
+  prPage: 1,
+  filesError: null,
+  comparisonStart: null,
   commitFiles: [],
+  commitPage: null,
+  commitSkip: 0,
   filesLoading: false,
   selectedFile: null,
   remoteBusy: null,
   leftMode: 'graph',
-  setLeftMode: (mode) =>
+  setLeftMode: (mode) => {
+    if (get().leftMode !== mode) diffGeneration++;
     set((s) =>
       s.leftMode === mode
         ? s
-        : { leftMode: mode, selectedPr: null, selectedOid: null, commitFiles: [], selectedFile: null },
-    ),
+        : { leftMode: mode, selectedPr: null, selectedPrRepoRoot: null, selectedOid: null, prDiff: null, commitPage: null, commitSkip: 0, commitFiles: [], selectedFile: null, filesLoading: false, filesError: null },
+    );
+  },
+  clearRepository: () => {
+    logGeneration++; diffGeneration++;
+    set({ repoRoot: null, commits: [], refs: [], loading: false, selectedPr: null, selectedPrRepoRoot: null,
+      selectedOid: null, prDiff: null, commitPage: null, commitSkip: 0, commitFiles: [], selectedFile: null, filesLoading: false, filesError: null, comparisonStart: null });
+  },
   findOpen: false,
   setFindOpen: (findOpen) => set({ findOpen }),
   filterRefs: [],
@@ -86,61 +119,98 @@ export const useGitGraphStore = create<GitGraphState>((set, get) => ({
   setDateRelative: (dateRelative) => set({ dateRelative }),
 
   loadLog: async (repoRoot) => {
+    const request = ++logGeneration;
+    const vault = useVaultStore.getState().vault;
+    if (get().repoRoot !== repoRoot) { diffGeneration++; set({ commits: [], refs: [], selectedPr: null, selectedPrRepoRoot: null, selectedOid: null, prDiff: null, commitFiles: [], selectedFile: null }); }
+    const selectedGeneration = diffGeneration;
     set({ repoRoot, loading: true });
     try {
       const [commits, refs] = await Promise.all([
         gitLog(repoRoot, get().filterRefs, 0, get().graphLimit),
         gitRefs(repoRoot),
       ]);
-      if (get().repoRoot !== repoRoot) return; // 防竞态：加载期间切了仓库
+      if (request !== logGeneration || get().repoRoot !== repoRoot || useGitStore.getState().repoRoot !== repoRoot || useVaultStore.getState().vault !== vault) return;
       set({ commits, refs, loading: false });
-      if (commits.length > 0) get().selectCommit(commits[0].oid); // 默认选最新
+      if (commits.length > 0 && get().leftMode === 'graph' && selectedGeneration === diffGeneration
+        && !commits.some((commit) => commit.oid === get().selectedOid)) get().selectCommit(commits[0].oid);
     } catch {
-      if (get().repoRoot === repoRoot) set({ commits: [], refs: [], loading: false });
+      if (request === logGeneration && get().repoRoot === repoRoot) set({ commits: [], refs: [], loading: false });
     }
   },
 
   selectCommit: (oid) => {
+    diffGeneration++;
+    set({ selectedOid: oid, selectedPr: null, selectedPrRepoRoot: null, prDiff: null, commitPage: null, commitFiles: [], selectedFile: null, filesError: null });
+    get().loadCommitPage(0);
+  },
+
+  loadCommitPage: (skip, focusPath = null) => {
     const repoRoot = get().repoRoot;
-    if (!repoRoot) return;
-    set({ selectedOid: oid, selectedPr: null, commitFiles: [], selectedFile: null, filesLoading: true });
-    void gitDiff(repoRoot, { commit: { oid } })
-      .then((files) => {
-        if (get().selectedOid !== oid) return; // 防竞态：期间又点了别的
+    const oid = get().selectedOid;
+    if (!repoRoot || !oid) return;
+    const request = ++diffGeneration;
+    const vault = useVaultStore.getState().vault;
+    const current = () => request === diffGeneration && get().repoRoot === repoRoot && useGitStore.getState().repoRoot === repoRoot && useVaultStore.getState().vault === vault;
+    set({ commitSkip: skip, commitPage: null, commitFiles: [], selectedFile: null, filesLoading: true, filesError: null });
+    void gitCommitFiles(repoRoot, oid, skip, focusPath)
+      .then((page) => {
+        if (!current() || get().selectedOid !== oid) return;
+        const active = currentComparisonDocument(repoRoot)?.path;
+        const files: FileDiff[] = page.files.map((file) => ({ oldPath: file.old?.path ?? null, newPath: file.new?.path ?? null,
+          status: file.status === 'unchanged' ? 'modified' : file.status, binary: false, hunks: [] }));
         set({
+          commitPage: page,
           commitFiles: files,
           filesLoading: false,
-          selectedFile: files.length > 0 ? pathOf(files[0]) : null,
+          selectedFile: active && files.some((file) => file.newPath === active || file.oldPath === active) ? active : files.length > 0 ? pathOf(files[0]) : null,
         });
       })
-      .catch(() => {
-        if (get().selectedOid === oid) set({ filesLoading: false });
+      .catch((error: unknown) => {
+        if (current() && get().selectedOid === oid) set({ filesLoading: false, filesError: String(error) });
       });
   },
 
-  selectPr: (pr) => {
-    const repoRoot = get().repoRoot;
-    if (!repoRoot) return;
+  selectPr: (pr, sourceRepoRoot) => {
+    const repoRoot = sourceRepoRoot ?? useGitStore.getState().repoRoot;
+    if (!repoRoot || repoRoot !== useGitStore.getState().repoRoot) return;
     set({
+      repoRoot,
       selectedPr: pr,
+      selectedPrRepoRoot: repoRoot,
       selectedOid: null,
       commitFiles: [],
+      prDiff: null,
       selectedFile: null,
       filesLoading: true,
     });
-    void ghPrDiff(repoRoot, pr.number)
-      .then((files) => {
-        if (get().selectedPr?.number !== pr.number) return; // 防竞态：期间又点了别的
+    get().loadPrPage(1);
+  },
+
+  loadPrPage: (page) => {
+    const { selectedPr: pr, selectedPrRepoRoot: repoRoot, prDiff } = get();
+    if (!repoRoot || !pr || useGitStore.getState().repoRoot !== repoRoot) return;
+    const request = ++diffGeneration;
+    const vault = useVaultStore.getState().vault;
+    const current = () => request === diffGeneration && get().selectedPr === pr && get().selectedPrRepoRoot === repoRoot
+      && useGitStore.getState().repoRoot === repoRoot && useVaultStore.getState().vault === vault;
+    set({ prPage: page, prDiff: null, selectedFile: null, filesLoading: true, filesError: null });
+    void githubPrDiffPage(repoRoot, pr.number, page, prDiff?.headOid ?? pr.headOid ?? null, prDiff?.baseOid ?? pr.baseOid ?? null)
+      .then((value) => {
+        if (!current()) return;
         set({
-          commitFiles: files,
+          prDiff: value,
           filesLoading: false,
-          selectedFile: files.length > 0 ? pathOf(files[0]) : null,
+          selectedFile: value.items[0]?.newPath ?? value.items[0]?.oldPath ?? null,
         });
       })
-      .catch(() => {
-        if (get().selectedPr?.number === pr.number) set({ filesLoading: false });
+      .catch((error: unknown) => {
+        if (current()) set({ filesLoading: false, filesError: String(error) });
       });
   },
 
   selectFile: (selectedFile) => set({ selectedFile }),
 }));
+
+// Synchronous retirement closes the interval before React remounts repository panels.
+useGitStore.subscribe((state, before) => { if (state.repoRoot !== before.repoRoot) useGitGraphStore.getState().clearRepository(); });
+useVaultStore.subscribe((state, before) => { if (state.vault !== before.vault) useGitGraphStore.getState().clearRepository(); });

@@ -33,14 +33,14 @@ describe('commitExcerptEdit', () => {
     docFor.mockReturnValue('hello world');
     const r = await commitExcerptEdit('a.md', 6, 'world', 'WORLD');
     expect(r).toBe('applied');
-    expect(write).toHaveBeenCalledWith('a.md', 'hello world', [{ from: 6, to: 11, insert: 'WORLD' }]);
+    expect(write).toHaveBeenCalledWith('a.md', 'hello world', [{ from: 6, to: 11, insert: 'WORLD' }], useVaultStore.getState().vault);
   });
 
   it('落点漂移但原文唯一 → 内容重锚 applied', async () => {
     docFor.mockReturnValue('XX hello world'); // 'world' 唯一出现在偏移 9，而非陈旧的 sourceFrom=0
     const r = await commitExcerptEdit('a.md', 0, 'world', 'WORLD');
     expect(r).toBe('applied');
-    expect(write).toHaveBeenCalledWith('a.md', 'XX hello world', [{ from: 9, to: 14, insert: 'WORLD' }]);
+    expect(write).toHaveBeenCalledWith('a.md', 'XX hello world', [{ from: 9, to: 14, insert: 'WORLD' }], useVaultStore.getState().vault);
   });
 
   it('原文多处歧义 → moved 拒写', async () => {

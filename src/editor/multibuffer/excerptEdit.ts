@@ -23,17 +23,20 @@ export async function commitExcerptEdit(
   sourceFrom: number,
   originalText: string,
   newText: string,
+  scope = useVaultStore.getState().vault,
 ): Promise<ExcerptCommitResult> {
+  if (scope !== useVaultStore.getState().vault) return 'failed';
   if (newText === originalText) return 'unchanged'; // 无改动：不写、不刷新。
   const root = useVaultStore.getState().vault?.root ?? null;
   if (root === null) return 'failed';
   const { frozen, externalChanged } = useEditorStore.getState();
   if (frozen[path] || externalChanged[path]) return 'skipped'; // 冲突中：不覆盖未和解的外部变更。
   const truth = getDocForPath(path) ?? (await readFile(root, path).catch(() => null));
+  if (scope !== useVaultStore.getState().vault) return 'failed';
   if (truth === null) return 'failed';
   const range = locateRange(truth, sourceFrom, originalText);
   if (range === null) return 'moved'; // 原文已变/歧义：拒写。
-  const ok = await applyRangeEdits(path, truth, [{ from: range.from, to: range.to, insert: newText }]);
+  const ok = await applyRangeEdits(path, truth, [{ from: range.from, to: range.to, insert: newText }], scope);
   return ok ? 'applied' : 'failed';
 }
 

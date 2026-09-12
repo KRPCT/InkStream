@@ -1,6 +1,5 @@
 import { onVaultChange, type UnlistenFn, type VaultChangePayload } from '../ipc/events';
-import { readFile } from '../ipc/files';
-import { indexRemoveDoc, indexUpsertDoc, isIndexable } from '../ipc/indexService';
+import { captureIndexScope, indexRefreshFile, indexRemoveDoc, isIndexable } from '../ipc/indexService';
 import { consumeSuppressedWatch, freezeAutosave } from '../stores/autosave';
 import { useGitStore } from '../stores/useGitStore';
 import { useSettingsStore } from '../stores/useSettingsStore';
@@ -8,7 +7,7 @@ import { showToast } from '../stores/useToastStore';
 import { useEditorStore } from '../stores/useEditorStore';
 import { useVaultStore } from '../stores/useVaultStore';
 import { isComposing, queueAfterComposition } from './composition';
-import { reloadFromDisk } from './editorState';
+import { invalidateDocumentState, reloadFromDisk } from './editorState';
 import { getView } from './viewHandle';
 import { refreshTree } from './fileTreeData';
 
@@ -43,19 +42,19 @@ function baseName(path: string): string {
 /**
  * 外部变更后同步 FTS5 索引（Phase 4 W1，仅挂实际反映磁盘新态的分支：reload 成功 / refreshTree，
  * **绝不挂 freeze 分支**——freeze 时磁盘新内容尚未被采纳，索引留旧待用户裁决重载后由后续路径补齐）。
- * remove → 删索引；create/modify → 读盘 upsert（仅 .md，与 rebuild 一致）。fire-and-forget 不阻断仲裁。
+ * remove → 删索引；create/modify → actor按路径刷新（仅 .md，与 rebuild 一致）。不把正文绕经前端再传回。
  */
 function reindexExternal(root: string, rel: string, kind: string): void {
   if (useSettingsStore.getState().simpleMode) return; // 简易模式不建/不更新索引
   if (!isIndexable(rel)) return;
+  const scope = captureIndexScope();
+  if (scope?.root !== root) return;
   try {
     if (kind === 'remove') {
-      void indexRemoveDoc(rel).catch(() => {});
+      void indexRemoveDoc(rel, scope).catch(() => {});
       return;
     }
-    void readFile(root, rel)
-      .then((content) => indexUpsertDoc(rel, content))
-      .catch(() => {}); // 文件已删/读失败：忽略（下次变更或重建补齐）。
+    void indexRefreshFile(rel, scope).catch(() => {}); // 当前scope的失败已由indexSession置为明确error。
   } catch {
     // 索引/读盘依赖不可用：彻底吞掉，绝不抛进仲裁流程（fire-and-forget，doc 真相源不受影响）。
   }
@@ -108,7 +107,8 @@ export async function arbitrateVaultChange(payload: VaultChangePayload): Promise
     return;
   }
 
-  // 其余（非打开文件 / 干净的后台文件）：仅刷新文件树。
+  if (isOpen) invalidateDocumentState(rel);
+  // 其余（非打开文件 / 干净的后台文件）：刷新文件树，已打开快照须先失效。
   // 干净的后台文件无需重载——下次打开自然读最新盘（reloadFromDisk 仅对活动文件换装）。
   await refreshTree();
   reindexExternal(vault.root, rel, payload.kind); // 反映磁盘新态：新增/改/删的非活动 .md 同步索引。

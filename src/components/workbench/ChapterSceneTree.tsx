@@ -12,32 +12,34 @@ import { useWordCountStore } from '../../stores/useWordCountStore';
  * 活动场景字数实时叠加 useWordCountStore（编辑即更新，不重读盘）。无章节内容则不渲染（不占位）。
  */
 export default function ChapterSceneTree() {
-  const root = useVaultStore((s) => s.vault?.root ?? null);
+  const vault = useVaultStore((s) => s.vault);
   const tree = useVaultStore((s) => s.tree);
   const chapters = useChapterTreeStore((s) => s.chapters);
   const activePath = useEditorStore((s) => s.activePath);
   const liveCount = useWordCountStore((s) => s.activeCount);
+  const error = useChapterTreeStore((s) => s.error);
 
   // vault 根 / 结构（tree 引用）变更时重建；autosave 自激抑制的写不变 tree，故不会每键重建。
   useEffect(() => {
-    if (!root) {
-      useChapterTreeStore.getState().setChapters([]);
+    if (!vault) {
+      useChapterTreeStore.setState({ chapters: [], scope: null, error: null, loading: false });
       return;
     }
     let cancelled = false;
-    useChapterTreeStore.getState().setLoading(true);
-    void buildChapterTree(root)
+    useChapterTreeStore.setState({ chapters: [], scope: vault, error: null, loading: true });
+    void buildChapterTree(vault.root)
       .then((c) => {
-        if (!cancelled) useChapterTreeStore.getState().setChapters(c);
+        if (!cancelled && useVaultStore.getState().vault === vault) useChapterTreeStore.getState().setChapters(c);
       })
-      .catch(() => {
-        if (!cancelled) useChapterTreeStore.getState().setChapters([]);
+      .catch((error: unknown) => {
+        if (!cancelled && useVaultStore.getState().vault === vault) useChapterTreeStore.setState({ chapters: [], loading: false, error: String(error) });
       });
     return () => {
       cancelled = true;
     };
-  }, [root, tree]);
+  }, [vault, tree]);
 
+  if (error) return <p role="alert" className="px-2 py-1 text-[12px] text-[var(--color-error)]">章节读取失败：{error}</p>;
   if (chapters.length === 0) return null;
 
   return (
@@ -61,7 +63,7 @@ export default function ChapterSceneTree() {
                 key={sc.path}
                 type="button"
                 onClick={() => void openFileByPath(sc.path)}
-                title={`${sc.name} · ${STATUS_LABEL[sc.status]} · ${words} 字`}
+                title={sc.error ? `${sc.name} · 读取失败：${sc.error}` : `${sc.name} · ${STATUS_LABEL[sc.status]} · ${words === null ? '统计已暂停' : `${words} 字`}`}
                 className={
                   'flex w-full items-center gap-1.5 py-0.5 pr-2 pl-4 text-left text-[13px] ' +
                   (active
@@ -70,13 +72,13 @@ export default function ChapterSceneTree() {
                 }
               >
                 <span
-                  aria-label={STATUS_LABEL[sc.status]}
+                  aria-label={sc.error ? '读取失败' : STATUS_LABEL[sc.status]}
                   className="h-1.5 w-1.5 shrink-0 rounded-full"
                   style={{ backgroundColor: STATUS_TOKEN[sc.status] }}
                 />
                 <span className="min-w-0 flex-1 truncate">{sc.name}</span>
                 <span className="shrink-0 text-[11px] tabular-nums text-[var(--text-faint)]">
-                  {words}
+                  {sc.error ? '读取失败' : words === null ? '暂停' : words}
                 </span>
               </button>
             );

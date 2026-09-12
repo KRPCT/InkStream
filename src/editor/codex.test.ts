@@ -14,7 +14,7 @@ beforeEach(() => {
 
 describe('buildCodex（CREA-02）', () => {
   it('解析 type/name/aliases/summary；缺 type 或 name 丢弃；点开头跳过；summary 缺取正文首段', async () => {
-    listDir.mockResolvedValue([
+    listDir.mockResolvedValueOnce([{ name: 'Codex', isDir: true }]).mockResolvedValue([
       { name: '林深.md', isDir: false },
       { name: '码头.md', isDir: false },
       { name: '无效.md', isDir: false }, // 缺 type → 丢弃
@@ -50,8 +50,12 @@ describe('buildCodex（CREA-02）', () => {
     });
   });
 
-  it('无 Codex/ 文件夹（listDir 抛错）→ []', async () => {
-    listDir.mockRejectedValue(new Error('no dir'));
+  it('根目录确认不存在 Codex/ 文件夹 → []', async () => {
+    listDir.mockResolvedValue([]);
     expect(await buildCodex('/v')).toEqual([]);
+  });
+  it('目录读取失败明确拒绝，不能伪装成没有条目', async () => {
+    listDir.mockRejectedValue(new Error('permission denied'));
+    await expect(buildCodex('/v')).rejects.toThrow('permission denied');
   });
 });

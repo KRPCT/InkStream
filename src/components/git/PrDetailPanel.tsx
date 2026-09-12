@@ -1,12 +1,18 @@
 import { ExternalLink } from 'lucide-react';
-import { useEffect, useState } from 'react';
-import { ghPrReviewCreate, ghPrReviews } from '../../ipc/git';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { ghPrReviewCreate } from '../../ipc/git';
+import { githubReviewPage } from '../../ipc/githubPage';
 import { openExternal } from '../../ipc/opener';
 import { useGitGraphStore } from '../../stores/useGitGraphStore';
 import { useGitStore } from '../../stores/useGitStore';
 import { showToast } from '../../stores/useToastStore';
-import type { Review, ReviewEvent } from '../../types/git';
+import type { PullRequest, ReviewEvent } from '../../types/git';
 import CommentThread from './CommentThread';
+import ReviewThreadList from './ReviewThreadList';
+import { useGithubPage } from './useGithubPage';
+import GithubPageControls from './GithubPageControls';
+import { useGithubScopeKey } from './githubScope';
+import PrChangedFiles from './PrChangedFiles';
 
 const REVIEW_ACTIONS: Array<{ event: ReviewEvent; label: string }> = [
   { event: 'APPROVE', label: '批准' },
@@ -21,32 +27,28 @@ const REVIEW_ACTIONS: Array<{ event: ReviewEvent; label: string }> = [
 export default function PrDetailPanel() {
   const repoRoot = useGitStore((s) => s.repoRoot);
   const pr = useGitGraphStore((s) => s.selectedPr);
-  const [reviews, setReviews] = useState<Review[]>([]);
+  const owner = useGitGraphStore((s) => s.selectedPrRepoRoot);
+  const scope = useGithubScopeKey(repoRoot);
+  if (!repoRoot || !pr || owner !== repoRoot) return <div className="p-4 text-[13px] text-[var(--text-muted)]">选择一个 PR 查看详情。</div>;
+  return <SelectedPr key={`${scope}:${pr.number}:${pr.headOid ?? ''}`} repoRoot={repoRoot} pr={pr} />;
+}
+
+function SelectedPr({ repoRoot, pr }: { repoRoot: string; pr: PullRequest }) {
+  const load = useCallback((page: number) => githubReviewPage(repoRoot, pr.number, page), [repoRoot, pr.number]);
+  const { data, error, loading, pageNumber, setPageNumber, refresh } = useGithubPage(load);
+  const reviews = data?.items ?? [];
   const [reviewBody, setReviewBody] = useState('');
   const [busy, setBusy] = useState(false);
-  const [tick, setTick] = useState(0);
-
-  // 竞态守卫：切换 PR（pr 变）时旧 review 请求回填判废。
-  useEffect(() => {
-    if (!repoRoot || !pr) return;
-    let cancelled = false;
-    void ghPrReviews(repoRoot, pr.number)
-      .then((rs) => {
-        if (!cancelled) setReviews(rs);
-      })
-      .catch(() => {
-        /* review 加载失败静默 */
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [repoRoot, pr, tick]);
+  const [submitted, setSubmitted] = useState(false);
+  const alive = useRef(true);
+  useEffect(() => { alive.current = true; return () => { alive.current = false; }; }, []);
 
   if (!repoRoot || !pr) {
     return <div className="p-4 text-[13px] text-[var(--text-muted)]">选择一个 PR 查看详情。</div>;
   }
 
   const submitReview = async (event: ReviewEvent): Promise<void> => {
+    if (busy || useGitStore.getState().repoRoot !== repoRoot || useGitGraphStore.getState().selectedPr !== pr) return;
     if (event !== 'APPROVE' && !reviewBody.trim()) {
       showToast('warning', '「请求修改」与「评论」需要填写内容。');
       return;
@@ -54,12 +56,14 @@ export default function PrDetailPanel() {
     setBusy(true);
     try {
       await ghPrReviewCreate(repoRoot, pr.number, event, reviewBody.trim());
+      if (!alive.current) return;
+      setSubmitted(true);
       setReviewBody('');
-      setTick((t) => t + 1);
+      refresh();
     } catch (e) {
-      showToast('error', e instanceof Error ? e.message : String(e));
+      if (alive.current) showToast('error', e instanceof Error ? e.message : String(e));
     } finally {
-      setBusy(false);
+      if (alive.current) setBusy(false);
     }
   };
 
@@ -87,7 +91,9 @@ export default function PrDetailPanel() {
         </div>
       ) : null}
 
-      {reviews.length > 0 ? (
+      <PrChangedFiles />
+      {error && <p role="alert" className="text-[12px] text-[var(--color-error)]">Review 读取失败：{error}<button type="button" className="ml-2 underline" onClick={refresh}>重试</button></p>}
+      {loading ? <p role="status">Review 加载中…</p> : reviews.length > 0 ? (
         <div className="mb-3">
           <div className="mb-1 text-[12px] font-semibold text-[var(--text-muted)]">Review</div>
           {reviews.map((r) => (
@@ -97,9 +103,12 @@ export default function PrDetailPanel() {
           ))}
         </div>
       ) : null}
+      <GithubPageControls page={pageNumber} next={data?.nextPage ?? null} loading={loading} onPage={setPageNumber} />
+      {submitted ? <p role="status" className="text-[12px]">Review 已提交；可翻页查看审阅历史。</p> : null}
 
       <div className="mb-3 flex flex-col gap-1">
         <textarea
+          disabled={busy}
           value={reviewBody}
           onChange={(e) => setReviewBody(e.target.value)}
           placeholder="Review 评语（批准可留空）…"
@@ -121,6 +130,7 @@ export default function PrDetailPanel() {
         </div>
       </div>
 
+      <ReviewThreadList repoRoot={repoRoot} number={pr.number} />
       <div className="mb-1 text-[12px] font-semibold text-[var(--text-muted)]">评论</div>
       <CommentThread repoRoot={repoRoot} number={pr.number} />
     </div>

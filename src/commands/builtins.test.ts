@@ -2,6 +2,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { windowControls } from '../ipc/window';
 import { useAboutStore } from '../stores/useAboutStore';
 import { usePaletteStore } from '../stores/usePaletteStore';
+import { useProjectStore } from '../stores/useProjectStore';
+import { registerLayoutRestore } from '../components/workbench/layoutRestore';
 import { useSettingsStore } from '../stores/useSettingsStore';
 import { useWorkbenchStore } from '../stores/useWorkbenchStore';
 import { DEFAULT_LAYOUT } from '../types/workbench';
@@ -10,6 +12,13 @@ import { dispose as disposeKeymap, init as initKeymap, normalizeEvent } from './
 import { hydrate } from './mru';
 import { execute, getAll } from './registry';
 import { toggleRenderMode } from '../editor/livepreview/renderMode';
+import { ACADEMIC_COMMANDS } from './academicCommands';
+import { BOOKSHELF_COMMANDS } from './bookshelfCommands';
+import { CORE_COMMANDS } from './coreCommands';
+import { EXPORT_COMMANDS } from './exportCommands';
+import { GIT_COMMANDS } from './gitCommands';
+import { TEXT_COMMANDS } from './textCommands';
+import { VIEW_COMMANDS } from './viewCommands';
 
 vi.mock('../editor/livepreview/renderMode', () => ({
   toggleRenderMode: vi.fn(() => null),
@@ -45,6 +54,7 @@ const TITLES: Record<string, string> = {
   'view.toggle-terminal': '视图：内置终端',
   'view.command-palette': '视图：命令面板',
   'view.settings': '视图：设置',
+  'project.archive': '项目：项目档案',
   'file.open-file': '文件：打开文件',
   'file.open-folder': '文件：打开文件夹',
   'file.open-recent': '文件：打开最近',
@@ -115,10 +125,11 @@ const TITLES: Record<string, string> = {
   // 学术组（Phase 8）
   'academic.cite': '学术：插入引用（Zotero）',
   'academic.footnote': '学术：插入脚注',
+  'academic.number-equations': '学术：公式编号',
   'academic.bibliography': '学术：插入参考文献',
-  'academic.biblio-gbt7714': '学术：参考文献（GB/T 7714）',
-  'academic.biblio-apa': '学术：参考文献（APA）',
-  'academic.biblio-vancouver': '学术：参考文献（Vancouver）',
+  'academic.biblio-gbt7714': '学术：参考文献（GB/T 7714-2015）',
+  'academic.biblio-apa': '学术：参考文献（APA 第7版）',
+  'academic.biblio-vancouver': '学术：参考文献（Vancouver / NLM）',
   // 书架（FEAT-SHELF ×4）
   'bookshelf.open': '书架：打开书架',
   'bookshelf.add-current': '书架：把当前阅读文档加入书架',
@@ -127,7 +138,10 @@ const TITLES: Record<string, string> = {
 };
 
 /** 生产命令总数：…前略… + pandoc 格式导出(×6) + 检查更新(×1) + 更新公告(×1) + 书架(open/add/import-files/import-folder ×4) + 内置终端(×1, #3) + 界面缩放(zoom-in/out/reset ×3, v1.2.1) = 91。 */
-const COMMAND_COUNT = 91;
+const EXPECTED_COMMAND_IDS = [
+  ...CORE_COMMANDS, ...VIEW_COMMANDS, ...EXPORT_COMMANDS, ...TEXT_COMMANDS,
+  ...GIT_COMMANDS, ...ACADEMIC_COMMANDS, ...BOOKSHELF_COMMANDS,
+].map((command) => command.id).sort();
 
 /** 生产命令（剔除 dev.* DEV-only 命令，如 IME 探针 dev.ime-probe）。 */
 function prodCommands() {
@@ -146,6 +160,7 @@ describe('builtins', () => {
     useSettingsStore.setState(useSettingsStore.getInitialState(), true);
     useWorkbenchStore.setState(useWorkbenchStore.getInitialState(), true);
     usePaletteStore.setState(usePaletteStore.getInitialState(), true);
+    useProjectStore.setState({ phase: 'idle', archiveOpen: false });
     delete document.documentElement.dataset.theme;
     delete document.documentElement.dataset.mode;
     requestOpenFolder.mockClear();
@@ -160,7 +175,7 @@ describe('builtins', () => {
 
   it('注册全部生产命令，标题与 UI-SPEC / R4 字面逐字一致', () => {
     const all = prodCommands();
-    expect(all).toHaveLength(COMMAND_COUNT);
+    expect(all.map((command) => command.id).sort()).toEqual(EXPECTED_COMMAND_IDS);
     for (const [id, title] of Object.entries(TITLES)) {
       expect(all.find((c) => c.id === id)?.title).toBe(title);
     }
@@ -180,6 +195,7 @@ describe('builtins', () => {
     expect(byId.get('view.toggle-right-panel')?.shortcut).toBe('Ctrl+Alt+B');
     expect(byId.get('view.command-palette')?.shortcut).toBe('Ctrl+Shift+P');
     expect(byId.get('go.quick-open')?.shortcut).toBe('Ctrl+P');
+    expect(byId.get('project.archive')?.shortcut).toBe('Ctrl+Alt+P');
     // Ctrl+O 给打开文件；打开文件夹让位 Ctrl+Shift+O
     expect(byId.get('file.open-file')?.shortcut).toBe('Ctrl+O');
     expect(byId.get('file.open-folder')?.shortcut).toBe('Ctrl+Shift+O');
@@ -215,7 +231,7 @@ describe('builtins', () => {
     expect(() => {
       disposeBuiltins = registerBuiltinCommands();
     }).not.toThrow();
-    expect(prodCommands()).toHaveLength(COMMAND_COUNT);
+    expect(prodCommands().map((command) => command.id).sort()).toEqual(EXPECTED_COMMAND_IDS);
   });
 
   it('合成 Ctrl+P 经 keymap 打开无前缀快速打开', () => {
@@ -223,6 +239,39 @@ describe('builtins', () => {
     window.dispatchEvent(key({ key: 'p', ctrlKey: true }));
     expect(usePaletteStore.getState().open).toBe(true);
     expect(usePaletteStore.getState().query).toBe('');
+  });
+
+  it('project archive shares its command and shortcut in simple mode, and cannot toggle during handover', async () => {
+    initKeymap();
+    useSettingsStore.setState({ simpleMode: true });
+    window.dispatchEvent(key({ key: 'p', ctrlKey: true, altKey: true }));
+    expect(useProjectStore.getState().archiveOpen).toBe(true);
+    await execute('project.archive');
+    expect(useProjectStore.getState().archiveOpen).toBe(false);
+    useProjectStore.setState({ phase: 'saving' });
+    await execute('project.archive');
+    expect(useProjectStore.getState().archiveOpen).toBe(false);
+    useProjectStore.setState({ archiveOpen: true });
+    window.dispatchEvent(key({ key: 'p', ctrlKey: true, altKey: true }));
+    expect(useProjectStore.getState().archiveOpen).toBe(true);
+  });
+
+  it('explicit layout reset restores the mounted panels once without subscribing to measurement write-back', async () => {
+    const restore = vi.fn();
+    const unregister = registerLayoutRestore(restore);
+    try {
+      useWorkbenchStore.getState().setLayout({ sidebarWidth: 410 });
+      await execute('view.reset-layout');
+      expect(restore).toHaveBeenCalledTimes(1);
+      expect(useWorkbenchStore.getState().layouts.standard.sidebarWidth).toBe(DEFAULT_LAYOUT.sidebarWidth);
+    } finally { unregister(); }
+  });
+
+  it('the actual app.exit command remains available while a project operation blocks editor commands', async () => {
+    const close = vi.spyOn(windowControls, 'close').mockResolvedValue(undefined);
+    useProjectStore.setState({ phase: 'restoring', archiveOpen: true });
+    try { await execute('app.exit'); expect(close).toHaveBeenCalledTimes(1); }
+    finally { close.mockRestore(); }
   });
 
   it('execute mode.switch-academic 切换模式且不占用全局快捷键（D-08）', async () => {

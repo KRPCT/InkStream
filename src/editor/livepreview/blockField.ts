@@ -1,23 +1,15 @@
 import { ensureSyntaxTree, syntaxTree } from '@codemirror/language';
 import { RangeSetBuilder, StateField, type EditorState } from '@codemirror/state';
 import { Decoration, type DecorationSet, EditorView } from '@codemirror/view';
-import {
-  BLOCK_MATH_CONTENT,
-  BLOCK_MATH_NODE,
-  BLOCK_REPLACE,
-  CODE_INFO_NODE,
-  CODE_TEXT_NODE,
-  FENCED_CODE_NODE,
-  LATEX_INFO,
-  MATH_INFO,
-  TYPST_INFO,
-} from './nodeNames';
+import { BLOCK_REPLACE, FENCED_CODE_NODE } from './nodeNames';
 import { TableWidget } from './widgets/TableWidget';
 import { MathWidget } from './widgets/MathWidget';
 import { LatexWidget } from './widgets/LatexWidget';
 import { TypstWidget } from './widgets/TypstWidget';
 import { FormulaEditWidget } from './widgets/FormulaEditWidget';
-import type { FormulaEngine } from './formulaPreview';
+import { formulaBlockFromNode } from './formulaBlocks';
+import { equationCatalog } from '../equations/catalog';
+import { EquationModeMarkerWidget, NumberedFormulaWidget, equationTheme } from '../equations/presentation';
 import { clearFormulaEdit, formulaEditState, setFormulaEdit } from './formulaEditState';
 import { tableModelFromNode } from './tableModel';
 import { tableStructFromNode } from './tableOps';
@@ -108,73 +100,45 @@ function buildBlockState(state: EditorState): BlockState {
   let prevTableLastLine = -1;
   // 强制解析整篇（长文档关键）：CM6 默认只解析到视口附近，远处 Table 节点未产出致表格显示源码。
   const tree = ensureSyntaxTree(state, state.doc.length, FORCE_PARSE_BUDGET_MS) ?? syntaxTree(state);
+  const equations = equationCatalog(state, tree);
+  const modeMarkers = new Map(equations.modeMarkers.map((marker) => [marker.from, marker]));
   tree.iterate({
     enter: (node) => {
-      // fenced 公式块（FencedCode + CodeInfo 首词）：math→KaTeX(MathWidget) / latex→MathJax(LatexWidget)。
-      // 光标进块还原源码、否则渲染 widget（与表格「恒渲染」各走各判定）；块 range 登记 formulaBlocks 供边界
-      // 判定（进/出触发还原↔渲染）。两引擎同范式（边界还原 + 占位重建），仅 widget 不同。
-      if (node.name === FENCED_CODE_NODE) {
-        const info = node.node.getChild(CODE_INFO_NODE);
-        const infoText = info
-          ? state.doc.sliceString(info.from, info.to).trim().split(/\s+/)[0]
-          : '';
-        if (infoText === MATH_INFO || infoText === LATEX_INFO || infoText === TYPST_INFO) {
-          formulaBlocks.push({ from: node.from, to: node.to });
-          const codeText = node.node.getChild(CODE_TEXT_NODE);
-          const src = codeText ? state.doc.sliceString(codeText.from, codeText.to) : '';
-          // 三态判定（W3）：① 双栏编辑态优先 → FormulaEditWidget；② 光标进块 → 显源码；③ 否则就地渲染。
-          if (fEdit && fEdit.blockFrom === node.from) {
-            builder.add(
-              node.from,
-              node.to,
-              Decoration.replace({
-                widget: new FormulaEditWidget(infoText as FormulaEngine, src, node.from),
-                block: true,
-              }),
-            );
-            return false;
-          }
-          const firstLine = state.doc.lineAt(node.from).number;
-          const lastLine = state.doc.lineAt(node.to).number;
-          const cursorInBlock = firstLine <= selLastLine && lastLine >= selFirstLine;
-          if (!cursorInBlock) {
-            const widget =
-              infoText === MATH_INFO
-                ? new MathWidget(src, node.from, node.to)
-                : infoText === LATEX_INFO
-                  ? new LatexWidget(src, node.from, node.to)
-                  : new TypstWidget(src, node.from, node.to);
-            builder.add(node.from, node.to, Decoration.replace({ widget, block: true }));
-          }
-        }
-        return false; // 不下钻 FencedCode 子树（公式块已处理；其它代码块本期不渲染）
+      const modeMarker = modeMarkers.get(node.from);
+      if (modeMarker && (node.name === 'CommentBlock' || node.name === 'HTMLBlock')) {
+        const line = state.doc.lineAt(node.from).number;
+        if (line < selFirstLine || line > selLastLine) builder.add(node.from, node.to, Decoration.replace({ widget: new EquationModeMarkerWidget(), block: true }));
+        return false;
       }
-      // 块公式 $$...$$（FEAT-INLINE-MATH，自研 BlockMath 节点，非 FencedCode）：与 ```math 围栏平行——同 MathWidget、
-      // 同 formulaBlocks 边界（光标进块显源码/出块渲染），共享 KaTeX；不入 atomicRanges（保光标能进块还原源码）。
-      if (node.name === BLOCK_MATH_NODE) {
-        formulaBlocks.push({ from: node.from, to: node.to });
-        const content = node.node.getChild(BLOCK_MATH_CONTENT);
-        const src = content ? state.doc.sliceString(content.from, content.to) : '';
-        if (fEdit && fEdit.blockFrom === node.from) {
+      const formula = formulaBlockFromNode(state, node.node);
+      if (formula) {
+        const { engine, source, from } = formula;
+        const numbered = equations.enabled ? equations.byFrom.get(from) : undefined;
+        const to = numbered?.renderTo ?? formula.to;
+        const decorate = (widget: MathWidget | LatexWidget | TypstWidget | FormulaEditWidget) => numbered
+          ? new NumberedFormulaWidget(widget, numbered.ordinal, numbered.label && equations.byLabel.has(numbered.label) ? numbered.label : null)
+          : widget;
+        formulaBlocks.push({ from, to });
+        if (fEdit && fEdit.blockFrom === from) {
           builder.add(
-            node.from,
-            node.to,
-            Decoration.replace({ widget: new FormulaEditWidget('math', src, node.from), block: true }),
+            from,
+            to,
+            Decoration.replace({ widget: decorate(new FormulaEditWidget(engine, source, from)), block: true }),
           );
           return false;
         }
-        const firstLine = state.doc.lineAt(node.from).number;
-        const lastLine = state.doc.lineAt(node.to).number;
+        const firstLine = state.doc.lineAt(from).number;
+        const lastLine = state.doc.lineAt(to).number;
         const cursorInBlock = firstLine <= selLastLine && lastLine >= selFirstLine;
         if (!cursorInBlock) {
-          builder.add(
-            node.from,
-            node.to,
-            Decoration.replace({ widget: new MathWidget(src, node.from, node.to), block: true }),
-          );
+          const widget = engine === 'math' ? new MathWidget(source, from, to)
+            : engine === 'latex' ? new LatexWidget(source, from, to)
+              : new TypstWidget(source, from, to);
+          builder.add(from, to, Decoration.replace({ widget: decorate(widget), block: true }));
         }
-        return false; // 整块处理，不下钻子节点
+        return false;
       }
+      if (node.name === FENCED_CODE_NODE) return false;
       if (!BLOCK_REPLACE.has(node.name)) return undefined;
       tables.push({ from: node.from, to: node.to });
       // 相邻表格分隔空行收口（任务一，TABLE-POLISH-DIAG §任务一）：本表与上一张表之间**恰好一行**
@@ -675,4 +639,5 @@ export const blockExtensions = [
   latexTheme,
   typstTheme,
   formulaEditTheme,
+  equationTheme,
 ];

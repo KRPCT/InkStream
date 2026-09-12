@@ -43,6 +43,7 @@ export function registerBuiltinCommands(): () => void {
     bind('Ctrl+Shift+P', 'view.command-palette'),
     bind('Ctrl+,', 'view.settings'),
     bind('Ctrl+P', 'go.quick-open'),
+    bind('Ctrl+Alt+P', 'project.archive'),
     bind('Ctrl+\\', 'view.toggle-sidebar'),
     bind('Ctrl+Alt+B', 'view.toggle-right-panel'),
     bind('Ctrl+N', 'file.new-document'),

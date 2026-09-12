@@ -49,6 +49,7 @@ export async function saveSettings(s: PersistedSettings): Promise<void> {
   await store.set('autosaveEnabled', s.autosaveEnabled);
   await store.set('autosaveDelayMs', s.autosaveDelayMs);
   await store.set('editorFontSize', s.editorFontSize);
+  await store.set('uiZoom', s.uiZoom);
   await store.set('dailyWordGoal', s.dailyWordGoal);
   await store.set('gitRemoteMode', s.gitRemoteMode);
   await store.set('gitCustomServer', s.gitCustomServer);
@@ -56,6 +57,7 @@ export async function saveSettings(s: PersistedSettings): Promise<void> {
   await store.set('exportBrandingFooter', s.exportBrandingFooter);
   await store.set('exportBrandingText', s.exportBrandingText);
   await store.set('bookshelfEnabled', s.bookshelfEnabled);
+  await store.set('terminalEnabled', s.terminalEnabled);
   await store.save();
 }
 

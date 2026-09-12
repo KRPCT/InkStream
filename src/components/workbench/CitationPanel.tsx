@@ -1,14 +1,14 @@
-import { useCallback, useEffect } from 'react';
-import { AlertCircle, Quote, RefreshCw } from 'lucide-react';
-import { zoteroCitekeys } from '../../ipc/zotero';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { AlertCircle, CloudOff, Quote, RefreshCw } from 'lucide-react';
+import { onZoteroLibraryChanged, zoteroItemsResilient } from '../../ipc/zotero';
+import { refreshCitationPreviews } from '../../editor/livepreview/citationPreview';
 import { useCitationStore } from '../../stores/useCitationStore';
-import { showToast } from '../../stores/useToastStore';
+import { useEditorStore } from '../../stores/useEditorStore';
 import EmptyState from '../common/EmptyState';
 
 /**
- * Citation Panel（Phase 8 ZOT-03，RightPanel 引用 tab）：列当前文档全部 `[@citekey]`（去重+计数），
- * 未在 Zotero 库中的标红（未解析）。citations 由 editor/citations.ts 单向镜像；validKeys 经
- * zotero_citekeys 解析（挂载 + 手动刷新）。resolved 前不判红（避免未解析即误标）。
+ * 文档引用由共享模型镜像；已知键来自当前库的在线条目或离线缓存。
+ * 读取期间不判定缺失，换账户/卸载后的迟到请求不能恢复旧库结果。
  */
 
 function errText(e: unknown): string {
@@ -16,29 +16,51 @@ function errText(e: unknown): string {
 }
 
 export default function CitationPanel() {
+  const paused = useEditorStore((s) => s.documentBudget?.mode === 'basic');
   const citations = useCitationStore((s) => s.citations);
   const validKeys = useCitationStore((s) => s.validKeys);
   const resolved = useCitationStore((s) => s.resolved);
   const setValidKeys = useCitationStore((s) => s.setValidKeys);
+  const resetResolution = useCitationStore((s) => s.resetResolution);
+  const request = useRef(0);
+  const [loading, setLoading] = useState(false);
+  const [offline, setOffline] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  const resolve = useCallback(async () => {
+  const resolve = useCallback(async (refresh = false) => {
+    const current = ++request.current;
+    resetResolution();
+    setError(null); setOffline(false);
+    if (refresh) refreshCitationPreviews();
+    if (paused) { setLoading(false); return; }
+    setLoading(true);
     try {
-      setValidKeys(await zoteroCitekeys());
+      const result = await zoteroItemsResilient();
+      if (current !== request.current) return;
+      setValidKeys([...new Set(result.items.map((item) => item.citekey))]);
+      setOffline(result.offline);
     } catch (e) {
-      showToast('error', `解析引用失败：${errText(e)}`);
+      if (current === request.current) setError(`解析引用失败：${errText(e)}`);
+    } finally {
+      if (current === request.current) setLoading(false);
     }
-  }, [setValidKeys]);
+  }, [setValidKeys, resetResolution, paused]);
 
   useEffect(() => {
+    const unsubscribe = onZoteroLibraryChanged(() => { void resolve(); });
     void resolve();
+    return () => { request.current += 1; unsubscribe(); };
   }, [resolve]);
 
+  if (paused) {
+    return <EmptyState icon={Quote} heading="引用分析已暂停" body="基础编辑模式下不自动扫描全文。可在状态栏启用完整排版。" />;
+  }
   if (citations.length === 0) {
     return (
       <EmptyState
         icon={Quote}
         heading="暂无引用"
-        body="在文档中插入 [@citekey] 后，引用条目会列在这里。"
+        body="Markdown、Typst 或 LaTeX 文档中的引用会列在这里。"
       />
     );
   }
@@ -48,8 +70,11 @@ export default function CitationPanel() {
 
   return (
     <div className="flex h-full flex-col">
+      {error ? <p role="status" className="px-3 py-2 text-[12px] text-[var(--color-error)]">{error}；尚未判定引用是否存在。</p> : null}
       <div className="flex h-8 shrink-0 items-center gap-2 border-b border-[var(--background-modifier-border)] px-3 text-[12px]">
         <span className="text-[var(--text-muted)]">引用 {citations.length}</span>
+        {loading ? <span role="status">解析中…</span> : null}
+        {offline ? <span className="flex items-center gap-1"><CloudOff size={12} aria-hidden="true" />离线缓存</span> : null}
         {unresolved > 0 ? (
           <span className="flex items-center gap-1 text-[var(--color-error)]">
             <AlertCircle size={12} aria-hidden="true" />
@@ -58,8 +83,9 @@ export default function CitationPanel() {
         ) : null}
         <button
           type="button"
-          title="重新解析（从 Zotero 刷新 citekey）"
-          onClick={() => void resolve()}
+          title="重新解析引用"
+          disabled={loading}
+          onClick={() => void resolve(true)}
           className="ml-auto rounded p-1 text-[var(--text-muted)] hover:bg-[var(--background-modifier-hover)] hover:text-[var(--text-normal)]"
         >
           <RefreshCw size={13} aria-hidden="true" />

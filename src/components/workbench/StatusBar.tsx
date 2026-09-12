@@ -10,38 +10,50 @@ import HudHintIndicator from './HudHintIndicator';
 import ModeIndicator from './ModeIndicator';
 import RenderModeIndicator from './RenderModeIndicator';
 import WordCountIndicator from './WordCountIndicator';
+import TypstIndicator from './TypstIndicator';
+import DocumentWordCountIndicator from './DocumentWordCountIndicator';
+import CreativeStatusIndicator from './CreativeStatusIndicator';
+import { useProjectStore } from '../../stores/useProjectStore';
+import { retryProjectSnapshot } from '../../projects/actions';
 
 /**
  * StatusBar 插槽：高 24px、顶部 1px 边框（UI-SPEC Layout Contract）。
  * 左侧 Phase 2 放文件信息；右侧渲染模式指示器（EDIT-02 / D-05）与三模式指示器（D-08）并列。
  */
 const FOOTER_CLS =
-  'flex h-6 shrink-0 items-center justify-between border-t border-[var(--background-modifier-border)] bg-[var(--background-secondary)] pl-2 text-[12px] text-[var(--text-muted)]';
+  'workbench-statusbar flex shrink-0 items-center justify-between text-[11px] text-[var(--text-muted)]';
 
 export default function StatusBar() {
   // 简易模式隐藏 git / 引用 / 模式 / 字数指示器，仅留文件路径 + 光标 + 渲染模式。
   const caps = getCapabilities(useSettingsStore((s) => s.simpleMode));
   const reading = useWorkbenchStore((s) => s.centralView === 'reading');
   const readingName = useReadingStore((s) => s.doc?.name ?? null);
+  const snapshotStatus = useProjectStore((s) => s.snapshotStatus);
+  const blocked = useProjectStore((s) => s.archiveOpen || s.phase !== 'idle');
   // 阅读模式：编辑器指示器一律无意义，折叠为极简阅读状态（守「沉浸」）。
   if (reading) {
     return (
-      <footer data-testid="status-bar" className={FOOTER_CLS}>
+      <footer data-testid="status-bar" className={FOOTER_CLS} inert={blocked}>
         <div className="flex h-full items-center px-1">阅读模式{readingName ? ` · ${readingName}` : ''}</div>
       </footer>
     );
   }
   return (
-    <footer data-testid="status-bar" className={FOOTER_CLS}>
+    <footer data-testid="status-bar" className={FOOTER_CLS} inert={blocked}>
       <div data-testid="status-bar-left" className="flex h-full min-w-0">
+        <span className="workbench-status-brand" aria-hidden="true">INKSTREAM</span>
         {caps.showGit ? <GitBranchIndicator /> : null}
         <FilePathIndicator />
       </div>
       <div data-testid="status-bar-right" className="flex h-full">
+        {snapshotStatus === 'error' ? <button type="button" className="snapshot-retry" onClick={() => void retryProjectSnapshot()}>会话暂存失败 · 重试</button> : snapshotStatus === 'saving' ? <span className="snapshot-saving" role="status">暂存会话…</span> : null}
         <CursorPositionIndicator />
+        {caps.showWordCount ? <DocumentWordCountIndicator /> : null}
         {caps.showWordCount ? <WordCountIndicator /> : null}
+        {caps.showWordCount ? <CreativeStatusIndicator /> : null}
         <HudHintIndicator />
         {caps.showCitation ? <CitationIndicator /> : null}
+        {caps.showCitation ? <TypstIndicator /> : null}
         <RenderModeIndicator />
         {caps.showModeSwitch ? <ModeIndicator /> : null}
       </div>

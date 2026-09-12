@@ -1,253 +1,162 @@
 import { GitMerge, X } from 'lucide-react';
-import { useEffect, useMemo, useState } from 'react';
-import {
-  assembleResolution,
-  conflictCount,
-  parseConflicts,
-  type ConflictChoice,
-  type MergePart,
-} from '../../diff/parseConflicts';
-import { proseDiff, type ProseStatus } from '../../diff/proseDiff';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { assembleResolution, conflictCount, type ConflictChoice, type ConflictPart, type ParsedConflicts } from '../../diff/parseConflicts';
+import { comparisonDisplayText, plainComparison, type TextComparison } from '../../diff/compareText';
+import { compareBranchText } from '../../editor/branchComparisonClient';
+import { parseConflictDocument } from '../../editor/conflictParserClient';
 import { abortOp } from '../../editor/gitActions';
-import { gitReadConflict, gitResolveConflict } from '../../ipc/git';
+import { resolveGitConflict } from '../../editor/gitConflictActions';
+import { captureGitWorktreeScope, isCurrentGitScope, type GitWorktreeScope } from '../../editor/gitWorktreeMutation';
+import { gitConflictSnapshot, gitConflictText } from '../../ipc/gitConflict';
 import { useGitStore } from '../../stores/useGitStore';
+import { useGitRebaseStore } from '../../stores/useGitRebaseStore';
+import { useVaultStore } from '../../stores/useVaultStore';
 import { useWorkbenchStore } from '../../stores/useWorkbenchStore';
 import { showToast } from '../../stores/useToastStore';
+import type { GitFileStatus } from '../../types/git';
+import type { ConflictBaseline } from '../../types/gitConflict';
+import ReadOnlyGitText from './ReadOnlyGitText';
+import RebaseControls from './RebaseControls';
 
-function segStyle(status: ProseStatus): React.CSSProperties {
-  if (status === 'insert') return { background: 'var(--graph-diff-add-bg)' };
-  if (status === 'delete')
-    return { background: 'var(--graph-diff-del-bg)', textDecoration: 'line-through' };
-  return {};
+const NO_FILES: GitFileStatus[] = [];
+const button = 'rounded border border-[var(--background-modifier-border)] px-2 py-1 text-[12px] disabled:opacity-40';
+interface LoadedConflict {
+  scope: GitWorktreeScope; path: string; revision: number; operation: string;
+  content: string; baseline: ConflictBaseline; parsed: ParsedConflicts; choices: (ConflictChoice | null)[];
 }
 
-const CHOICES: Array<{ key: ConflictChoice; label: string }> = [
-  { key: 'ours', label: '采纳本方' },
-  { key: 'theirs', label: '采纳对方' },
-  { key: 'both', label: '两者都要' },
-];
-
-/** 单冲突块：句级 diff（ours↔theirs，删=本方独有、增=对方独有）+ 采纳选择。 */
-function ConflictCard({
-  part,
-  choice,
-  onChoose,
-}: {
-  part: Extract<MergePart, { kind: 'conflict' }>;
-  choice: ConflictChoice;
-  onChoose: (c: ConflictChoice) => void;
+function ConflictCard({ part, choice, choose, disabled, rebasing }: {
+  part: ConflictPart; choice: ConflictChoice | null; choose: (value: ConflictChoice) => void; disabled: boolean; rebasing: boolean;
 }) {
-  const segs = useMemo(() => proseDiff(part.ours, part.theirs), [part.ours, part.theirs]);
-  return (
-    <div className="my-2 rounded-[4px] border border-[var(--accent)] p-2">
-      <div className="mb-1.5 flex items-center gap-1 text-[12px] text-[var(--text-muted)]">
-        <GitMerge size={12} aria-hidden="true" />
-        <span>冲突（本方 ↔ 对方）</span>
-        <div className="ml-auto flex gap-1">
-          {CHOICES.map((c) => (
-            <button
-              key={c.key}
-              type="button"
-              onClick={() => onChoose(c.key)}
-              className={`rounded-[3px] px-1.5 py-0.5 text-[11px] ${
-                choice === c.key
-                  ? 'bg-[var(--accent)] text-[var(--background-primary)]'
-                  : 'text-[var(--text-muted)] hover:bg-[var(--background-modifier-hover)]'
-              }`}
-            >
-              {c.label}
-            </button>
-          ))}
-        </div>
-      </div>
-      <div className="whitespace-pre-wrap break-words text-[13px] leading-relaxed text-[var(--text-normal)]">
-        {segs.map((s, i) => (
-          <span key={i} className="rounded-[2px] px-0.5" style={segStyle(s.status)}>
-            {s.text}
-          </span>
-        ))}
-      </div>
+  const [calculated, setCalculated] = useState<{ part: ConflictPart; value: TextComparison } | null>(null);
+  useEffect(() => {
+    const controller = new AbortController();
+    void compareBranchText(comparisonDisplayText(part.ours), comparisonDisplayText(part.theirs), controller.signal).then((value) => {
+      if (!controller.signal.aborted) setCalculated({ part, value });
+    }).catch(() => undefined);
+    return () => controller.abort();
+  }, [part]);
+  const comparison = calculated?.part === part ? calculated.value : plainComparison('正在计算差异，完整两侧可阅读。');
+  return <div className="flex min-h-0 flex-1 flex-col gap-2">
+    <div className="flex flex-wrap gap-2 text-[12px]">
+      {(['ours', 'theirs', 'both'] as const).map((value) => <button key={value} className={button} disabled={disabled} aria-pressed={choice === value} onClick={() => choose(value)}>
+        {value === 'both' ? '两者都要' : value === 'ours' ? rebasing ? '采纳目标分支' : '采纳本方' : rebasing ? '采纳正在重放的提交' : '采纳对方'}
+      </button>)}
+      <span role="status">{comparison.note}</span>
     </div>
-  );
+    {part.base !== null ? <section className="h-36 shrink-0 border border-[var(--background-modifier-border)]"><p className="px-2 text-[12px]">共同基线（diff3）</p><div className="h-28"><ReadOnlyGitText text={part.base} label="当前冲突共同基线" /></div></section> : null}
+    <div className="grid min-h-0 flex-1 grid-cols-2 gap-2">
+      <section className="flex min-h-0 flex-col border border-[var(--background-modifier-border)]"><p className="px-2 text-[12px]">{rebasing ? '目标分支及已重放提交' : '本方'}</p><div className="min-h-0 flex-1"><ReadOnlyGitText text={part.ours} label="冲突本方完整正文" ranges={comparison.oldRanges} /></div></section>
+      <section className="flex min-h-0 flex-col border border-[var(--background-modifier-border)]"><p className="px-2 text-[12px]">{rebasing ? '正在重放的提交' : '对方'}</p><div className="min-h-0 flex-1"><ReadOnlyGitText text={part.theirs} label="冲突对方完整正文" side="new" ranges={comparison.newRanges} /></div></section>
+    </div>
+  </div>;
 }
 
-/**
- * prose 三向合并解决器（Phase 12 DIFF-03，中央覆盖视图）。左栏列冲突文件；右栏把 git 合并产物按
- * 标记切成干净段（原样）与冲突块，对每块用句级 diff 呈现本方↔对方差异并按块采纳，组装写回 + git add。
- * 全部解决后该文件离开冲突列表；列表空 → 提示去 git 面板提交。打开不抢编辑器焦点（IME 安全）。
- */
 export default function MergeResolver() {
-  const repoRoot = useGitStore((s) => s.repoRoot);
-  const files = useGitStore((s) => s.status?.files ?? []);
-  const conflicted = useMemo(() => files.filter((f) => f.status === 'conflicted'), [files]);
-  const setCentralView = useWorkbenchStore((s) => s.setCentralView);
-
+  const repoRoot = useGitStore((state) => state.repoRoot);
+  const vault = useVaultStore((state) => state.vault);
+  const files = useGitStore((state) => state.status?.files ?? NO_FILES);
+  const rebase = useGitRebaseStore();
+  const rebasing = rebase.scope?.vault === vault && rebase.scope?.repoRoot === repoRoot && rebase.status?.inProgress === true;
+  const operation = rebasing ? `${rebase.status?.originalHead}:${rebase.status?.onto}:${rebase.status?.currentCommit}:${rebase.status?.step}` : '';
+  const conflicted = useMemo(() => files.filter((file) => file.status === 'conflicted'), [files]);
   const [selected, setSelected] = useState<string | null>(null);
-  const [parts, setParts] = useState<MergePart[]>([]);
-  const [choices, setChoices] = useState<ConflictChoice[]>([]);
+  const [loaded, setLoaded] = useState<LoadedConflict | null>(null);
+  const [revision, setRevision] = useState(0);
+  const [active, setActive] = useState(0);
+  const [view, setView] = useState<'conflicts' | 'working' | 'base' | 'ours' | 'theirs'>('conflicts');
+  const [error, setError] = useState('');
+  const [base, setBase] = useState<{ document: LoadedConflict; part: 'base' | 'ours' | 'theirs'; text: string } | null>(null);
   const [busy, setBusy] = useState(false);
-
-  // 默认选中首个冲突文件；冲突列表变化时若当前选中已解决则换选。
+  const saving = useRef<AbortController | null>(null);
+  const document = loaded && loaded.scope.repoRoot === repoRoot && loaded.scope.vault === vault && loaded.path === selected && loaded.revision === revision && loaded.operation === operation ? loaded : null;
+  const blocks = document?.parsed.kind === 'valid' ? document.parsed.parts.filter((part): part is ConflictPart => part.kind === 'conflict') : [];
+  const block = blocks[active];
+  const valid = document?.parsed.kind === 'valid';
+  const ready = document?.parsed.kind === 'valid' && document.choices.every((choice) => choice !== null);
+  useEffect(() => () => saving.current?.abort(), []);
   useEffect(() => {
-    if (conflicted.length === 0) {
-      setSelected(null);
-      return;
-    }
-    if (!selected || !conflicted.some((f) => f.path === selected)) {
-      setSelected(conflicted[0].path);
-    }
+    if (!conflicted.length) setSelected(null);
+    else if (!selected || !conflicted.some((file) => file.path === selected)) setSelected(conflicted[0].path);
   }, [conflicted, selected]);
-
-  // 读取并解析选中文件。
   useEffect(() => {
-    if (!repoRoot || !selected) {
-      setParts([]);
-      setChoices([]);
-      return;
-    }
-    let cancelled = false;
-    void gitReadConflict(repoRoot, selected)
-      .then((content) => {
-        if (cancelled) return;
-        const p = parseConflicts(content);
-        setParts(p);
-        setChoices(Array.from({ length: conflictCount(p) }, () => 'ours'));
-      })
-      .catch((e) => {
-        if (!cancelled) showToast('error', e instanceof Error ? e.message : String(e));
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [repoRoot, selected]);
+    setLoaded(null); setError(''); setBase(null); setActive(0); setView('conflicts');
+    const scope = captureGitWorktreeScope();
+    if (!repoRoot || !selected || scope?.repoRoot !== repoRoot) return;
+    const controller = new AbortController();
+    void (async () => {
+      const snapshot = await gitConflictSnapshot(repoRoot, selected);
+      const content = await gitConflictText(repoRoot, selected, snapshot.baseline, 'working', controller.signal);
+      let parsed: ParsedConflicts;
+      try { parsed = snapshot.markerError ? { kind: 'invalid', error: snapshot.markerError, line: 0 } : await parseConflictDocument(content, controller.signal); }
+      catch (reason) { parsed = { kind: 'invalid', error: String(reason), line: 0 }; }
+      if (controller.signal.aborted || !isCurrentGitScope(scope)) return;
+      setLoaded({ scope, path: selected, revision, operation, content, baseline: snapshot.baseline, parsed, choices: Array.from({ length: conflictCount(parsed) }, () => null) });
+    })().catch((reason: unknown) => { if (!controller.signal.aborted && isCurrentGitScope(scope)) setError(String(reason)); });
+    return () => controller.abort();
+  }, [repoRoot, selected, vault, revision, operation]);
+  useEffect(() => {
+    if (view === 'working' || view === 'conflicts' || !document) return;
+    const controller = new AbortController();
+    const snapshot = document;
+    void gitConflictText(snapshot.scope.repoRoot, snapshot.path, snapshot.baseline, view, controller.signal).then((text) => {
+      if (!controller.signal.aborted && isCurrentGitScope(snapshot.scope)) setBase({ document: snapshot, part: view, text });
+    }).catch((reason: unknown) => { if (!controller.signal.aborted) setError(String(reason)); });
+    return () => controller.abort();
+  }, [view, document]);
 
-  const save = async (): Promise<void> => {
-    if (!repoRoot || !selected || busy) return;
-    // 入口快照路径与内容，贯穿整个 await——避免期间冲突列表变化改写 selected/parts 致写错文件。
-    const path = selected;
-    const content = assembleResolution(parts, choices);
+  const save = async () => {
+    if (!document || !ready || busy || rebase.busy) return;
+    const snapshot = document;
+    const controller = new AbortController();
+    saving.current = controller;
     setBusy(true);
     try {
-      await gitResolveConflict(repoRoot, path, content);
-      await useGitStore.getState().refresh();
-      setSelected(null); // 该文件离开冲突列表即为反馈（ToastKind 仅 error/warning）
-    } catch (e) {
-      showToast('error', e instanceof Error ? e.message : String(e));
-    } finally {
-      setBusy(false);
-    }
+      const content = assembleResolution(snapshot.parsed, snapshot.choices);
+      if (await resolveGitConflict(snapshot.scope, snapshot.path, snapshot.content, content, snapshot.baseline, controller.signal)) setSelected(null);
+    } catch (reason) { if (!controller.signal.aborted) showToast('error', String(reason)); }
+    finally { saving.current = null; setBusy(false); }
   };
-
-  const abortMerge = async (): Promise<void> => {
-    if (busy) return;
-    setBusy(true);
-    try {
-      if (await abortOp()) setCentralView('editor'); // 仅中止成功才回编辑器，失败留在解决器
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  let conflictIdx = -1;
-
-  return (
-    <div className="flex h-full flex-col bg-[var(--background-primary)]">
-      <div className="flex h-8 shrink-0 items-center justify-between border-b border-[var(--background-modifier-border)] px-2">
-        <div className="flex items-center gap-1.5 text-[12px] text-[var(--text-muted)]">
-          <GitMerge size={14} aria-hidden="true" />
-          <span>合并冲突解决 · {conflicted.length} 个文件待解决</span>
-        </div>
-        <div className="flex items-center gap-1">
-          <button
-            type="button"
-            disabled={busy}
-            onClick={() => void abortMerge()}
-            className="rounded px-2 py-0.5 text-[12px] text-[var(--text-muted)] hover:bg-[var(--background-modifier-hover)] hover:text-[var(--text-normal)] disabled:opacity-50"
-          >
-            中止合并
-          </button>
-          <button
-            type="button"
-            title="关闭（回编辑器）"
-            onClick={() => setCentralView('editor')}
-            className="rounded p-1 text-[var(--text-muted)] hover:bg-[var(--background-modifier-hover)] hover:text-[var(--text-normal)]"
-          >
-            <X size={14} aria-hidden="true" />
-          </button>
-        </div>
-      </div>
-      {conflicted.length === 0 ? (
-        <div className="flex h-full items-center justify-center text-[13px] text-[var(--text-muted)]">
-          全部冲突已解决，请在左下角 git 面板提交合并结果。
-        </div>
-      ) : (
-        <div className="flex min-h-0 flex-1">
-          <div className="w-56 shrink-0 overflow-auto border-r border-[var(--background-modifier-border)]">
-            {conflicted.map((f) => (
-              <button
-                key={f.path}
-                type="button"
-                disabled={busy}
-                onClick={() => setSelected(f.path)}
-                className={`block w-full truncate px-3 py-2 text-left text-[13px] ${
-                  selected === f.path
-                    ? 'bg-[var(--background-modifier-active)] text-[var(--text-normal)]'
-                    : 'text-[var(--text-muted)] hover:bg-[var(--background-modifier-hover)]'
-                }`}
-                title={f.path}
-              >
-                {f.path}
-              </button>
-            ))}
+  const abort = async () => { setBusy(true); try { if (await abortOp()) useWorkbenchStore.getState().setCentralView('editor'); } finally { setBusy(false); } };
+  return <div className="flex h-full flex-col bg-[var(--background-primary)] text-[var(--text-normal)]">
+    <RebaseControls showResolve={false} />
+    <header className="flex shrink-0 items-center gap-2 border-b border-[var(--background-modifier-border)] p-2 text-[12px]">
+      <GitMerge size={14} /><span>{rebasing ? '变基冲突解决' : '合并冲突解决'} · {conflicted.length} 个文件待解决</span>
+      <span className="flex-1" />
+      {!rebasing ? <button className={button} disabled={busy} onClick={() => void abort()}>中止合并</button> : null}
+      <button title="关闭（回编辑器）" onClick={() => useWorkbenchStore.getState().setCentralView('editor')}><X size={14} /></button>
+    </header>
+    {!conflicted.length ? <p className="p-3 text-[13px]">{rebasing ? '全部冲突已标记解决，请继续变基。' : '全部冲突已解决，请在源代码管理面板提交。'}</p> : <div className="flex min-h-0 flex-1">
+      <aside className="w-48 shrink-0 overflow-auto border-r border-[var(--background-modifier-border)]">
+        {conflicted.map((file) => <button key={file.path} className="block w-full break-all p-2 text-left text-[12px]" disabled={busy} aria-pressed={selected === file.path} onClick={() => setSelected(file.path)}>{file.path}</button>)}
+      </aside>
+      <main className="flex min-h-0 min-w-0 flex-1 flex-col gap-2 p-3">
+        {error ? <p role="alert" className="text-[13px]">{error}</p> : null}
+        {!document && !error ? <p role="status">正在读取当前冲突文件…</p> : null}
+        {document ? <>
+          <div className="flex flex-wrap gap-2">
+            <button className={button} onClick={() => setView('conflicts')}>逐处解决</button>
+            <button className={button} onClick={() => setView('working')}>完整合并原文</button>
+            <button className={button} disabled={!document.baseline.stages[0]} onClick={() => setView('base')}>完整共同基线</button>
+            <button className={button} onClick={() => setView('ours')}>完整本方版本{document.baseline.stages[1] ? '' : '（无文件）'}</button>
+            <button className={button} onClick={() => setView('theirs')}>完整对方版本{document.baseline.stages[2] ? '' : '（无文件）'}</button>
+            {!document.baseline.stages[0] ? <span className="text-[12px]">Git 未提供完整共同基线（例如双方独立新增）。</span> : null}
           </div>
-          <div className="flex min-w-0 flex-1 flex-col">
-            <div className="min-h-0 flex-1 overflow-auto p-3">
-              {parts.map((p, i) => {
-                if (p.kind === 'clean') {
-                  if (!p.text.trim()) return null;
-                  return (
-                    <div
-                      key={i}
-                      className="whitespace-pre-wrap break-words text-[13px] leading-relaxed text-[var(--text-muted)]"
-                    >
-                      {p.text}
-                    </div>
-                  );
-                }
-                conflictIdx += 1;
-                const idx = conflictIdx;
-                return (
-                  <ConflictCard
-                    key={i}
-                    part={p}
-                    choice={choices[idx] ?? 'ours'}
-                    onChoose={(c) =>
-                      setChoices((prev) => {
-                        const next = [...prev];
-                        next[idx] = c;
-                        return next;
-                      })
-                    }
-                  />
-                );
-              })}
-            </div>
-            <div className="flex shrink-0 items-center justify-between border-t border-[var(--background-modifier-border)] px-3 py-2">
-              <span className="text-[12px] text-[var(--text-muted)]">
-                {conflictCount(parts)} 处冲突
-              </span>
-              <button
-                type="button"
-                disabled={busy || !selected}
-                onClick={() => void save()}
-                className="rounded-[4px] bg-[var(--accent)] px-3 py-1 text-[12px] font-medium text-[var(--background-primary)] disabled:opacity-50"
-              >
-                保存并标记解决
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-    </div>
-  );
+          {document.parsed.kind === 'invalid' ? <p role="alert">{document.parsed.error}</p> : null}
+          {view === 'working' || (!valid && view === 'conflicts') ? <div className="min-h-0 flex-1"><ReadOnlyGitText text={document.content} label="完整冲突原文" /></div>
+            : view !== 'conflicts' ? base?.document === document && base.part === view ? <div className="min-h-0 flex-1"><ReadOnlyGitText text={base.text} label={view === 'base' ? '完整共同基线' : view === 'ours' ? '完整本方版本' : '完整对方版本'} /></div> : <p role="status">正在读取固定冲突版本…</p>
+              : block ? <>
+                <div className="flex items-center gap-2 text-[12px]"><button className={button} disabled={active === 0} onClick={() => setActive((value) => value - 1)}>上一处</button><span>{active + 1} / {blocks.length}</span><button className={button} disabled={active >= blocks.length - 1} onClick={() => setActive((value) => value + 1)}>下一处</button><span>已选择 {document.choices.filter(Boolean).length} 处</span></div>
+                <ConflictCard part={block} choice={document.choices[active]} rebasing={rebasing} disabled={busy || rebase.busy} choose={(choice) => setLoaded((previous) => previous === document ? { ...previous, choices: previous.choices.map((value, index) => index === active ? choice : value) } : previous)} />
+              </> : <p className="text-[13px]">正文中已无冲突标记，可核对完整原文后标记解决。</p>}
+        </> : null}
+        <footer className="mt-auto flex shrink-0 items-center gap-2 border-t border-[var(--background-modifier-border)] pt-2 text-[12px]">
+          <span>{document?.parsed.kind === 'invalid' ? '标记损坏' : `${blocks.length} 处冲突`}</span><span className="flex-1" />
+          <button className={button} disabled={busy || rebase.busy || !selected} onClick={() => setRevision((value) => value + 1)}>重新读取冲突</button>
+          {busy ? <button className={button} onClick={() => saving.current?.abort()}>取消保存</button> : null}
+          <button className={button} disabled={busy || rebase.busy || !ready} onClick={() => void save()}>保存并标记解决</button>
+        </footer>
+      </main>
+    </div>}
+  </div>;
 }

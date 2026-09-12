@@ -8,8 +8,9 @@ InkStream（墨流）各功能的使用指南。每篇都从用户视角讲怎�
 
 - [编辑器与实时预览](./editor.md)：单内核、Source ↔ Live Preview 切换（Ctrl+E）、光标行展开、richtext 工具栏
 - [三模式与工作区](./modes.md)：Standard / Academic / Creative 切换、打开文件夹、文件树 CRUD、非工作区文件、自动保存
+- [项目与恢复](./projects.md)：本机项目档案、每项目会话、独立草稿、备份恢复与材质设置
 - [快捷键与命令面板](./shortcuts.md)：Ctrl+Shift+P 命令面板、快捷键表、F11 Focus Mode
-- [简易模式](./simple-mode.md)：轻度用户的精简界面、关闭高级功能、不创建 .inkstream 索引库
+- [简易模式](./simple-mode.md)：精简界面与高级功能开关
 
 ## 写作能力
 

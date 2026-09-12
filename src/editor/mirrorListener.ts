@@ -4,11 +4,14 @@ import { useEditorStore } from '../stores/useEditorStore';
 import { isComposing } from './composition';
 import { syncCitations } from './citations';
 import { syncRichtext } from './editorState';
-import { reconfigureLanguageFromDoc } from './languages';
+import { languageFromDoc, markAppliedLanguage, reconfigureLanguageFromDoc } from './languages';
 import { syncOutline } from './outline';
 import { syncSceneSummary } from './sceneSummary';
 import { syncTypingMetrics } from './writingMetrics';
-import { syncWordCount } from './wordCount';
+import { rebaseWordCount, syncWordCount, syncWordSelection } from './wordCount';
+import { isBasicEditing, readDocumentBudget } from './documentBudget';
+import { syncDocumentBudget } from './documentBudgetMirror';
+import { syncRenderMode } from './editorState.renderMode';
 
 /**
  * store 单向镜像 listener（P0 修复，PROD-RELAY-DESIGN §0）。
@@ -31,13 +34,20 @@ import { syncWordCount } from './wordCount';
  */
 export const mirrorListener = EditorView.updateListener.of((u) => {
   const activePath = useEditorStore.getState().activePath;
-  if (u.docChanged && !isComposing(u.view) && activePath) {
-    useEditorStore.getState().markDirty(activePath);
+  const before = readDocumentBudget(u.startState);
+  const after = readDocumentBudget(u.state);
+  const budgetChanged = before.mode !== after.mode || before.preference !== after.preference || before.large !== after.large;
+  if ((u.docChanged || budgetChanged) && !isComposing(u.view) && activePath) {
+    syncDocumentBudget(u.view);
+    if (u.docChanged) useEditorStore.getState().markDirty(activePath);
     // 编辑触发防抖自动落盘（D-02 原子写，500ms 防抖合并）。
-    scheduleAutosave(activePath);
+    if (u.docChanged) scheduleAutosave(activePath);
     // 手动编辑 frontmatter language 行 → 头部语言变化即热切（D-13 文档单一真相源）。
     // reconfigure 只发 effect（非 docChange），不会自激 updateListener。
-    reconfigureLanguageFromDoc(u.view, activePath);
+    if (before.mode !== after.mode && !isBasicEditing(u.state)) {
+      // 同一事务已按完整正文安装语言，不再重复配置/解析。
+      markAppliedLanguage(u.view, languageFromDoc(u.state.doc.toString(), activePath));
+    } else reconfigureLanguageFromDoc(u.view, activePath);
     // richtext 工具条显隐镜像（D-14）：单向自 CM 写入 store，与 dirty/cursor 同纪律。
     syncRichtext(u.view);
     // 大纲镜像（RightPanel 大纲 tab）：标题随编辑增删，同纪律单向写入 store（变化才更新）。
@@ -45,13 +55,16 @@ export const mirrorListener = EditorView.updateListener.of((u) => {
     // 引用镜像（ZOT-03，RightPanel 引用 tab）：[@key] 随编辑增删，同纪律单向写入 store。
     syncCitations(u.view);
     // 字数镜像（CREA-04）：编辑累加今日净写入（换日重置），单向写入 store。
-    syncWordCount(u.view);
+    if (u.docChanged) syncWordCount(u.view);
+    else rebaseWordCount(u.view);
     // 码字速度镜像（写作 HUD）：本次插入字符计入 60s 滑窗（组合期已被外层 !isComposing 排除）。
-    syncTypingMetrics(u);
+    if (u.docChanged) syncTypingMetrics(u);
     // 场景概要镜像（CREA-05）：frontmatter summary 随编辑更新，单向写入 store。
     syncSceneSummary(u.view);
+    if (budgetChanged) syncRenderMode(u.view, activePath);
   }
   if (u.selectionSet || u.docChanged) {
     useEditorStore.getState().setCursor(u.state.selection.main.head);
+    if (!isComposing(u.view)) syncWordSelection(u.view);
   }
 });

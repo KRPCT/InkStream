@@ -5,6 +5,7 @@ import { markdown } from '@codemirror/lang-markdown';
 import { GFM } from '@lezer/markdown';
 import { wikiLink } from './livepreview/wikiLink';
 import { inlineMath } from './livepreview/inlineMath';
+import { typstBlockSyntax } from './livepreview/typstBlockSyntax';
 import { codeLanguageFor } from './livepreview/codeLanguages';
 import { javascript } from '@codemirror/lang-javascript';
 import { python } from '@codemirror/lang-python';
@@ -17,6 +18,7 @@ import { stex } from '@codemirror/legacy-modes/mode/stex';
 import { shell } from '@codemirror/legacy-modes/mode/shell';
 import { queueAfterComposition } from './composition';
 import { readLanguage } from './frontmatter';
+import { budgetForLength, isBasicEditing } from './documentBudget';
 import { markdownEditKeymap } from './markdownCommands';
 import { richtextKeymap } from './richtext/keymap';
 import { richtextPasteHandler } from './richtext/commands';
@@ -43,8 +45,8 @@ function richtextPasteExtension(): Extension {
  * - 语言扩展放 langCompartment，热切只 reconfigure，绝不重建 EditorState（undo 不串味，Pitfall 3）。
  * - Markdown 用 markdown({...}) GFM base，留 Obsidian 变体（wiki-link/citation）注入点给 Phase 4。
  * - LaTeX/Shell 无一流 lezer 语法，经 @codemirror/legacy-modes 的 StreamLanguage.define 接入。
- * - Typst 经 codemirror-lang-typst@0.4.0：该包 import 即 __wbindgen_start() 实例化 320KB wasm，
- *   故用 dynamic import() 懒加载——首屏同步包不含此 wasm，仅在真正打开 Typst 文档时按需 load。
+ * - Typst 经 codemirror-lang-typst@0.4.0：Vite 窄适配将上游 bundler WASM 改为显式 ?init，
+ *   dynamic import() 只在真正打开 Typst 文档时加载 320KB 语法 WASM。
  */
 
 /** 全 App 单一语言 Compartment，承载当前语言扩展。 */
@@ -97,7 +99,7 @@ const EXT_TO_LANG: Record<string, LanguageId> = {
 const SYNC_FACTORY: Record<Exclude<LanguageId, 'typst' | 'richtext'>, () => Extension> = {
   markdown: () =>
     markdown({
-      extensions: [GFM, wikiLink, inlineMath /* citation MarkdownConfig 注入点（Phase 8）*/],
+      extensions: [GFM, wikiLink, inlineMath, typstBlockSyntax /* citation MarkdownConfig 注入点（Phase 8）*/],
       // fenced 围栏块嵌套语法高亮（函数形态懒加载；math/latex/typst 显式排除→不嵌套→留给 blockField widget）。
       codeLanguages: codeLanguageFor,
     }),
@@ -155,8 +157,8 @@ const switchGeneration = new WeakMap<EditorView, number>();
 /**
  * 懒加载 Typst 语言支持并热切进 compartment。
  *
- * codemirror-lang-typst 顶层有 __wbindgen_start() 副作用（实例化 320KB wasm），
- * 故必须 dynamic import()——只有打开 .typ 文档调用本函数时才付出该体积。
+ * codemirror-lang-typst 顶层初始化由 Vite 的 ?init 适配等待真实 WASM 就绪；
+ * 只有打开 .typ 文档调用本函数时才加载，不复用公式预览编译器。
  *
  * WR-10：以 import 发起时的 generation 为意图基线，await 后若 view 的 generation 已变
  * （用户切走了语言/文档），放弃 reconfigure，避免把 typst 高亮强加到错误文档。
@@ -164,11 +166,11 @@ const switchGeneration = new WeakMap<EditorView, number>();
 async function loadTypst(view: EditorView, intendedGeneration: number): Promise<void> {
   const mod = await import('codemirror-lang-typst');
   // 解析期间用户已切换语言/文档：意图作废，绝不在错误文档上 reconfigure。
-  if (switchGeneration.get(view) !== intendedGeneration) return;
+  if (switchGeneration.get(view) !== intendedGeneration || isBasicEditing(view.state)) return;
   // 组合期 reconfigure 同撕 DocView 风险（铁律 2）：经门排队，compositionend drain 时执行；
   // 排队任务体内复检 generation，组合结束后用户已切走则不落到错误文档。
   queueAfterComposition(view, 'lang', () => {
-    if (switchGeneration.get(view) !== intendedGeneration) return;
+    if (switchGeneration.get(view) !== intendedGeneration || isBasicEditing(view.state)) return;
     view.dispatch({ effects: langCompartment.reconfigure(mod.typst()) });
   });
 }
@@ -183,12 +185,13 @@ async function loadTypst(view: EditorView, intendedGeneration: number): Promise<
 export function switchLanguage(view: EditorView, lang: string): void {
   const generation = (switchGeneration.get(view) ?? 0) + 1;
   switchGeneration.set(view, generation);
+  if (isBasicEditing(view.state)) return;
   queueAfterComposition(view, 'lang', () => {
+    if (switchGeneration.get(view) !== generation || isBasicEditing(view.state)) return;
     view.dispatch({ effects: langCompartment.reconfigure(extensionsForLanguage(lang)) });
   });
   if (lang === 'typst') {
-    // 生产构建暂不打包 typst wasm（vite.config external，Phase 5 接 typst.ts 时正解）：
-    // 动态 import 失败保持占位空扩展（纯文本显示），不打扰用户。
+    // 成功载入后安装真实 Typst 解析器；加载失败仍保留可编辑正文。
     void loadTypst(view, generation).catch(() => {});
   }
 }
@@ -201,6 +204,11 @@ export function languageFromDoc(doc: string, path: string): string {
   return readLanguage(doc) ?? languageForPath(path);
 }
 
+/** 初建大文档时暂停头部派生；显式启用完整排版时再从完整正文解析 language。 */
+export function initialLanguageForDocument(doc: string, path: string): string {
+  return budgetForLength(doc.length).mode === 'basic' ? languageForPath(path) : languageFromDoc(doc, path);
+}
+
 /**
  * 头部 language 变化时热切（D-13：手动编辑 frontmatter 同样生效）。
  *
@@ -208,6 +216,7 @@ export function languageFromDoc(doc: string, path: string): string {
  * 经 updateListener（useCodeMirror）在 docChanged 时调用；reconfigure 不重建 state（Pitfall 3）。
  */
 export function reconfigureLanguageFromDoc(view: EditorView, path: string): void {
+  if (isBasicEditing(view.state)) return;
   const lang = languageFromDoc(view.state.doc.toString(), path);
   if (lang === lastAppliedLanguage.get(view)) return;
   lastAppliedLanguage.set(view, lang);
@@ -220,4 +229,8 @@ const lastAppliedLanguage = new WeakMap<EditorView, string>();
 /** openFile 后登记初始语言，使后续 reconfigureLanguageFromDoc 能正确比对差量。 */
 export function markAppliedLanguage(view: EditorView, lang: string): void {
   lastAppliedLanguage.set(view, lang);
+  const generation = (switchGeneration.get(view) ?? 0) + 1;
+  switchGeneration.set(view, generation);
+  // Initial Typst states contain the empty lazy placeholder, so opening must also start its loader.
+  if (lang === 'typst' && !isBasicEditing(view.state)) void loadTypst(view, generation).catch(() => {});
 }

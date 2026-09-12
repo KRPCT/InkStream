@@ -40,6 +40,7 @@ export default function ExternalChangeBar() {
     const store = useEditorStore.getState();
     store.unfreezeAutosave(path);
     store.clearExternalChange(path);
+    store.clearDirty(path);
   };
 
   const onKeepMine = async (): Promise<void> => {
@@ -53,7 +54,11 @@ export default function ExternalChangeBar() {
     // 先临时解冻再 flush：flushAutosave 在 frozen 时会跳过落盘。
     store.unfreezeAutosave(path);
     try {
-      await flushAutosave(path);
+      const outcome = await flushAutosave(path);
+      if (outcome.kind !== 'saved') {
+        store.freezeAutosave(path);
+        return;
+      }
     } catch {
       // WR-11：覆盖落盘失败时重新冻结、保留冲突标记 + 提示条，用户可重试。
       store.freezeAutosave(path);

@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 720 720" fill="none">
+  <title>InkStream</title>
+  <desc>Two overlapping upright panels opening into a flowing ink ribbon.</desc>
+  <defs>
+    <linearGradient id="graphite" x1="74" y1="146" x2="260" y2="626" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#242b31"/>
+      <stop offset=".56" stop-color="#20272d"/>
+      <stop offset="1" stop-color="#252c32"/>
+    </linearGradient>
+    <linearGradient id="frost" x1="204" y1="210" x2="453" y2="388" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#a0adbd" stop-opacity=".57"/>
+      <stop offset=".55" stop-color="#9aa9b9" stop-opacity=".55"/>
+      <stop offset="1" stop-color="#96a5b4" stop-opacity=".57"/>
+    </linearGradient>
+    <linearGradient id="ink" x1="196" y1="391" x2="485" y2="585" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#606c7b"/>
+      <stop offset=".37" stop-color="#333d47"/>
+      <stop offset=".7" stop-color="#20272d"/>
+      <stop offset="1" stop-color="#252c32"/>
+    </linearGradient>
+  </defs>
+  <g transform="translate(30 6)">
+    <path fill="url(#graphite)" d="M82 130 263 49C272 44 281 49 281 61V393C239 382 211 370 196 353V644L79 587C68 582 63 575 63 563V159C63 146 68 137 82 130Z"/>
+    <path fill="url(#frost)" d="M210 201 438 104C449 99 457 104 457 117V417C346 412 236 401 196 353V222C196 212 200 205 210 201Z"/>
+    <path fill="url(#ink)" d="M196 373C231 411 344 427 448 437C487 441 522 454 521 474C520 495 477 508 432 524C406 533 391 542 397 553C408 574 460 583 519 596C560 605 588 616 596 635C543 657 488 665 433 660C378 656 326 644 294 618C272 600 270 579 284 559C301 535 351 515 389 500C406 493 419 486 415 476C409 462 376 456 346 460C285 464 242 488 196 510Z"/>
+  </g>
+</svg>

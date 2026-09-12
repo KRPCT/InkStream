@@ -3,6 +3,7 @@ import { listDir } from '../ipc/vault';
 import { countWords } from '../lib/wordCount';
 import type { ChapterNode, SceneNode, SceneStatus } from '../types/creative';
 import { bodyStart, readFields } from './frontmatter';
+import { LARGE_DOCUMENT_UNITS } from './documentBudget';
 
 /**
  * 章节-场景树构建（CREA-01）。文件夹=章、其内 .md=场景；顶层散 .md 归入「未分章」（决策：folder/file 模型）。
@@ -40,22 +41,22 @@ function sceneName(file: string, title?: string): string {
 async function readScene(root: string, relPath: string, file: string): Promise<SceneNode> {
   try {
     const doc = await readFile(root, relPath);
-    const f = readFields(doc, ['title', 'status']);
+    const f = readFields(doc.slice(0, 65_536), ['title', 'status']);
     return {
       path: relPath,
       name: sceneName(file, f.title),
       status: toStatus(f.status),
-      words: countWords(doc.slice(bodyStart(doc))),
+      words: doc.length >= LARGE_DOCUMENT_UNITS ? null : countWords(doc.slice(bodyStart(doc))),
     };
-  } catch {
-    return { path: relPath, name: sceneName(file), status: 'draft', words: 0 };
+  } catch (error) {
+    return { path: relPath, name: sceneName(file), status: 'draft', words: null, error: error instanceof Error ? error.message : String(error) };
   }
 }
 
 /** 构建章节树。隐藏点开头项（.git/.inkstream）；文件夹/文件按 Intl.Collator 序（同 FileTree）。 */
 export async function buildChapterTree(root: string): Promise<ChapterNode[]> {
   const top = (await listDir(root, '')).filter((e) => !e.name.startsWith('.'));
-  const dirs = top.filter((e) => e.isDir).sort((a, b) => collator.compare(a.name, b.name));
+  const dirs = top.filter((e) => e.isDir && e.name !== 'Codex').sort((a, b) => collator.compare(a.name, b.name));
   const looseFiles = top
     .filter((e) => !e.isDir && MD.test(e.name))
     .sort((a, b) => collator.compare(a.name, b.name));
@@ -65,14 +66,24 @@ export async function buildChapterTree(root: string): Promise<ChapterNode[]> {
     const entries = (await listDir(root, dir.name))
       .filter((e) => !e.isDir && MD.test(e.name))
       .sort((a, b) => collator.compare(a.name, b.name));
-    const scenes = await Promise.all(
-      entries.map((e) => readScene(root, `${dir.name}/${e.name}`, e.name)),
-    );
+    const scenes = await readScenes(entries.map((e) => ({ path: `${dir.name}/${e.name}`, name: e.name })), root);
     if (scenes.length > 0) chapters.push({ name: dir.name, path: dir.name, scenes });
   }
   if (looseFiles.length > 0) {
-    const scenes = await Promise.all(looseFiles.map((e) => readScene(root, e.name, e.name)));
+    const scenes = await readScenes(looseFiles.map((e) => ({ path: e.name, name: e.name })), root);
     chapters.push({ name: '未分章', path: null, scenes });
   }
   return chapters;
+}
+
+async function readScenes(files: { path: string; name: string }[], root: string): Promise<SceneNode[]> {
+  const scenes = new Array<SceneNode>(files.length);
+  let cursor = 0;
+  await Promise.all(Array.from({ length: Math.min(4, files.length) }, async () => {
+    while (cursor < files.length) {
+      const index = cursor++;
+      scenes[index] = await readScene(root, files[index].path, files[index].name);
+    }
+  }));
+  return scenes;
 }

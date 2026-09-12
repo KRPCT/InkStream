@@ -1,3 +1,5 @@
+import type { GitRemoteMode } from './settings';
+
 /**
  * git 相关类型（前端真相源镜像，与 Rust git/types.rs 的 serde camelCase 形状对齐）。Phase 6 GIT-01。
  */
@@ -95,6 +97,27 @@ export interface GitOpResult {
   conflicted: boolean;
 }
 
+export type GitRebaseAction = { kind: 'start'; upstream: string } | { kind: 'continue' | 'skip' | 'abort' } | { kind: 'commit-continue'; commit: string };
+export type GitRebaseOutcome = 'completed' | 'paused' | 'aborted' | 'failed' | 'cancelled';
+export interface GitRebaseStatus {
+  inProgress: boolean;
+  headOid: string | null;
+  branch: string | null;
+  originalHead: string | null;
+  onto: string | null;
+  currentCommit: string | null;
+  step: number | null;
+  total: number | null;
+  conflicts: string[];
+  needsCommit: boolean;
+  source: 'application' | 'existing' | null;
+}
+export interface GitRebaseResult {
+  outcome: GitRebaseOutcome;
+  status: GitRebaseStatus;
+  error: string | null;
+}
+
 /** 单条 stash（index 越小越新）。 */
 export interface StashEntry {
   index: number;
@@ -137,6 +160,8 @@ export interface PullRequest {
   headRef: string;
   /** 目标分支名。 */
   baseRef: string;
+  headOid?: string | null;
+  baseOid?: string | null;
 }
 
 /** PR 合并方式（GitHub merge_method）。 */
@@ -171,6 +196,15 @@ export interface Comment {
   url: string;
 }
 
+/** Inline review discussions use GitHub pull-request review comments, distinct from issue comments. */
+export interface ReviewComment extends Comment {
+  inReplyToId: number | null;
+  path: string;
+  line: number | null;
+  originalLine: number | null;
+  diffHunk: string;
+}
+
 /** 提交 PR review 的 event 类型。 */
 export type ReviewEvent = 'APPROVE' | 'REQUEST_CHANGES' | 'COMMENT';
 
@@ -183,4 +217,10 @@ export interface Review {
   state: string;
   url: string;
   submittedAt: string | null;
+}
+
+/** 每次 Git 传输的设置快照。Rust 校验实际 URL 与认证主机，不接受无配置的旧调用。 */
+export interface GitRemoteOptions {
+  mode: GitRemoteMode;
+  customServer: string;
 }

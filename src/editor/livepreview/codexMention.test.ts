@@ -53,6 +53,12 @@ describe('codexMention 提及高亮（CREA-02）', () => {
     expect(markTexts(v)).toEqual([]);
     v.destroy();
   });
+  it('不同条目共有的别名不猜测目标，保留唯一名称的提及', () => {
+    useCodexStore.setState({ entries: [LIN, { ...SAM, aliases: ['小林'] }] });
+    const v = makeView('林深和Sam都被称作小林。');
+    expect(markTexts(v)).toEqual(['林深', 'Sam']);
+    v.destroy();
+  });
 });
 
 describe('codexMention IME 契约（逐字复制 inlinePlugin 冻结门）', () => {

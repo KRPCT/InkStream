@@ -4,16 +4,23 @@
 //! 安全：token 取自 keyring（auth::github_token），**绝不下发前端**——app 渲染用户 markdown 有 XSS 面，
 //! 令牌进 webview JS 即暴露。reqwest 在 Rust 侧直连 api.github.com，同 Zotero 范式（绕 CORS + 令牌不出 Rust）。
 //!
-//! owner/repo 由 origin 远程 URL 解析（支持 https / scp-like ssh / ssh:// 三式）。host=github.com→api.github.com，
-//! 其余 host→`https://<host>/api/v3`（GitHub Enterprise 约定，顺带支持「自定义服务器」）。
+//! owner/repo 由 origin 远程 URL 解析（支持 https / scp-like ssh / ssh:// 三式）。
+//! 应用保存的是 github.com 专用凭据，因此 REST 目标只允许 api.github.com；不能猜测 GHE 地址后复用该凭据。
 //! HTTP 异步（commands 直接 async，无需 spawn_blocking——纯网络不占阻塞线程）。
 
 use super::types::{DiffHunk, DiffLine, FileDiff};
 use serde::{Deserialize, Serialize};
-use std::process::Command;
+use self::http::{client, read};
 
 const UA: &str = "InkStream";
 const API_VERSION: &str = "2022-11-28";
+pub(crate) mod review_comments;
+mod http;
+pub(crate) mod pages;
+
+#[cfg(test)]
+#[path = "pr_scope_tests.rs"]
+mod scope_tests;
 
 /// 前端用 PR DTO（camelCase）。从 GitHub 响应映射的精简视图。
 #[derive(Serialize)]
@@ -29,6 +36,8 @@ pub struct PullRequest {
     pub author: String,
     pub head_ref: String,
     pub base_ref: String,
+    pub head_oid: Option<String>,
+    pub base_oid: Option<String>,
 }
 
 /// 合并结果。
@@ -50,6 +59,8 @@ struct GhUser {
 struct GhRef {
     #[serde(rename = "ref")]
     ref_: String,
+    #[serde(default)]
+    sha: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -65,6 +76,8 @@ struct GhPull {
     user: GhUser,
     head: GhRef,
     base: GhRef,
+    #[serde(default)]
+    changed_files: Option<u64>,
 }
 
 impl From<GhPull> for PullRequest {
@@ -79,14 +92,12 @@ impl From<GhPull> for PullRequest {
             author: p.user.login,
             head_ref: p.head.ref_,
             base_ref: p.base.ref_,
+            head_oid: p.head.sha,
+            base_oid: p.base.sha,
         }
     }
 }
 
-#[derive(Deserialize)]
-struct GhError {
-    message: String,
-}
 
 #[derive(Deserialize)]
 struct GhMerge {
@@ -135,39 +146,30 @@ fn non_empty(host: &str, owner: &str, repo: &str) -> Option<(String, String, Str
     Some((host.to_string(), owner.to_string(), repo.to_string()))
 }
 
-/// API base：github.com→api.github.com；其余→`https://<host>/api/v3`（GHE）。
-fn api_base(host: &str) -> String {
-    if host == "github.com" || host == "www.github.com" {
-        "https://api.github.com".to_string()
+/// 当前凭据只绑定 github.com；未提供独立主机账户之前，拒绝第三方/GHE REST 认证。
+fn api_base(host: &str) -> Result<String, String> {
+    if host.eq_ignore_ascii_case("github.com") || host.eq_ignore_ascii_case("www.github.com") {
+        Ok("https://api.github.com".to_string())
     } else {
-        format!("https://{host}/api/v3")
+        Err("当前 GitHub 账户功能仅支持 github.com；第三方服务器请使用 Git 同步，不会向其发送 GitHub 凭据。".into())
     }
 }
 
 fn origin_url(repo_root: &str) -> Option<String> {
-    Command::new("git")
-        .current_dir(repo_root)
-        .args(["remote", "get-url", "--", "origin"])
-        .output()
-        .ok()
-        .filter(|o| o.status.success())
-        .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
+    let repository = git2::Repository::open(repo_root).ok()?;
+    let origin = repository.find_remote("origin").ok()?;
+    origin.url().ok().map(str::to_owned)
 }
 
 /// 解析当前仓库的 (api_base, owner, repo)。
 fn repo_target(repo_root: &str) -> Result<(String, String, String), String> {
     let url = origin_url(repo_root).ok_or("这个仓库没有配置 origin 远程")?;
-    let (host, owner, repo) =
-        parse_remote(&url).ok_or_else(|| format!("无法从远程 URL 解析仓库：{url}"))?;
-    Ok((api_base(&host), owner, repo))
+    let (host, owner, repo) = parse_remote(&url).ok_or("无法从远程 URL 解析 GitHub 仓库")?;
+    Ok((api_base(&host)?, owner, repo))
 }
 
-fn token() -> Result<String, String> {
-    super::auth::github_token().ok_or("未登录 GitHub：请先在设置里登录".to_string())
-}
-
-fn client() -> reqwest::Client {
-    reqwest::Client::new()
+async fn token() -> Result<String, String> {
+    super::auth::github_token().await?.ok_or("未登录 GitHub：请先在设置里登录".to_string())
 }
 
 /// 给请求加通用头（认证 / UA / Accept / API 版本）。
@@ -178,33 +180,12 @@ fn with_headers(req: reqwest::RequestBuilder, tok: &str) -> reqwest::RequestBuil
         .header("X-GitHub-Api-Version", API_VERSION)
 }
 
-/// 解析响应：非 2xx → 提取 GitHub message 友好化；2xx → 反序列化目标类型。
-async fn read<T: serde::de::DeserializeOwned>(resp: reqwest::Response) -> Result<T, String> {
-    let status = resp.status();
-    let text = resp.text().await.map_err(|e| format!("读取响应失败: {e}"))?;
-    if !status.is_success() {
-        let msg = serde_json::from_str::<GhError>(&text)
-            .map(|e| e.message)
-            .unwrap_or_else(|_| text.clone());
-        return Err(format!("GitHub API 错误（{}）：{msg}", status.as_u16()));
-    }
-    serde_json::from_str::<T>(&text).map_err(|e| format!("解析 GitHub 响应失败: {e}"))
-}
-
 // ---- commands ----
 
-/// 列出仓库的开放 PR（按更新时间倒序，最多 50 条）。
+/// Small-list compatibility; larger results require the paged command.
 #[tauri::command]
 pub async fn gh_pr_list(repo_root: String) -> Result<Vec<PullRequest>, String> {
-    let (api, owner, repo) = repo_target(&repo_root)?;
-    let tok = token()?;
-    let url = format!("{api}/repos/{owner}/{repo}/pulls?state=open&sort=updated&direction=desc&per_page=50");
-    let resp = with_headers(client().get(&url), &tok)
-        .send()
-        .await
-        .map_err(|e| format!("连接 GitHub 失败: {e}"))?;
-    let pulls: Vec<GhPull> = read(resp).await?;
-    Ok(pulls.into_iter().map(PullRequest::from).collect())
+    pages::legacy_items(pages::gh_pr_page(repo_root, 1).await?)
 }
 
 /// 新建 PR：head（来源分支，通常当前分支）→ base（目标分支）。
@@ -220,10 +201,10 @@ pub async fn gh_pr_create(
         return Err("PR 标题不能为空".into());
     }
     let (api, owner, repo) = repo_target(&repo_root)?;
-    let tok = token()?;
+    let tok = token().await?;
     let url = format!("{api}/repos/{owner}/{repo}/pulls");
     let payload = serde_json::json!({ "title": title, "body": body, "base": base, "head": head });
-    let resp = with_headers(client().post(&url), &tok)
+    let resp = with_headers(client()?.post(&url), &tok)
         .json(&payload)
         .send()
         .await
@@ -238,16 +219,21 @@ pub async fn gh_pr_merge(
     repo_root: String,
     number: u64,
     method: String,
+    expected_head: Option<String>,
 ) -> Result<MergeResult, String> {
     let m = match method.as_str() {
         "merge" | "squash" | "rebase" => method.as_str(),
         _ => return Err(format!("不支持的合并方式：{method}")),
     };
     let (api, owner, repo) = repo_target(&repo_root)?;
-    let tok = token()?;
+    let tok = token().await?;
     let url = format!("{api}/repos/{owner}/{repo}/pulls/{number}/merge");
-    let payload = serde_json::json!({ "merge_method": m });
-    let resp = with_headers(client().put(&url), &tok)
+    let mut payload = serde_json::json!({ "merge_method": m });
+    if let Some(head) = expected_head {
+        if head.len() != 40 || !head.bytes().all(|byte| byte.is_ascii_hexdigit()) { return Err("PR 来源提交标识无效，请刷新列表。".into()); }
+        payload["sha"] = serde_json::Value::String(head);
+    }
+    let resp = with_headers(client()?.put(&url), &tok)
         .json(&payload)
         .send()
         .await
@@ -312,28 +298,10 @@ impl From<GhIssue> for Issue {
     }
 }
 
-/// 列出仓库 Issue（state ∈ open|closed|all，按更新倒序最多 50；滤掉混入的 PR）。
+/// Small-list compatibility; never silently omit later Issue pages.
 #[tauri::command]
 pub async fn gh_issue_list(repo_root: String, state: String) -> Result<Vec<Issue>, String> {
-    let s = match state.as_str() {
-        "open" | "closed" | "all" => state.as_str(),
-        _ => "open",
-    };
-    let (api, owner, repo) = repo_target(&repo_root)?;
-    let tok = token()?;
-    let url = format!(
-        "{api}/repos/{owner}/{repo}/issues?state={s}&sort=updated&direction=desc&per_page=50"
-    );
-    let resp = with_headers(client().get(&url), &tok)
-        .send()
-        .await
-        .map_err(|e| format!("连接 GitHub 失败: {e}"))?;
-    let raw: Vec<GhIssue> = read(resp).await?;
-    Ok(raw
-        .into_iter()
-        .filter(|i| i.pull_request.is_none())
-        .map(Issue::from)
-        .collect())
+    pages::legacy_items(pages::gh_issue_page(repo_root, state, 1).await?)
 }
 
 /// 新建 Issue。
@@ -347,10 +315,10 @@ pub async fn gh_issue_create(
         return Err("Issue 标题不能为空".into());
     }
     let (api, owner, repo) = repo_target(&repo_root)?;
-    let tok = token()?;
+    let tok = token().await?;
     let url = format!("{api}/repos/{owner}/{repo}/issues");
     let payload = serde_json::json!({ "title": title, "body": body });
-    let resp = with_headers(client().post(&url), &tok)
+    let resp = with_headers(client()?.post(&url), &tok)
         .json(&payload)
         .send()
         .await
@@ -396,15 +364,7 @@ impl From<GhComment> for Comment {
 /// 列出 issue/PR 的评论（PR number 即 issue number）。
 #[tauri::command]
 pub async fn gh_comment_list(repo_root: String, number: u64) -> Result<Vec<Comment>, String> {
-    let (api, owner, repo) = repo_target(&repo_root)?;
-    let tok = token()?;
-    let url = format!("{api}/repos/{owner}/{repo}/issues/{number}/comments?per_page=100");
-    let resp = with_headers(client().get(&url), &tok)
-        .send()
-        .await
-        .map_err(|e| format!("连接 GitHub 失败: {e}"))?;
-    let raw: Vec<GhComment> = read(resp).await?;
-    Ok(raw.into_iter().map(Comment::from).collect())
+    pages::legacy_items(pages::gh_comment_page(repo_root, number, 1).await?)
 }
 
 /// 给 issue/PR 发表评论。
@@ -418,10 +378,10 @@ pub async fn gh_comment_create(
         return Err("评论内容不能为空".into());
     }
     let (api, owner, repo) = repo_target(&repo_root)?;
-    let tok = token()?;
+    let tok = token().await?;
     let url = format!("{api}/repos/{owner}/{repo}/issues/{number}/comments");
     let payload = serde_json::json!({ "body": body });
-    let resp = with_headers(client().post(&url), &tok)
+    let resp = with_headers(client()?.post(&url), &tok)
         .json(&payload)
         .send()
         .await
@@ -526,42 +486,15 @@ fn parse_patch(patch: &str) -> Vec<DiffHunk> {
     hunks
 }
 
-/// 取 PR 的逐文件结构化 diff（最多 100 文件；二进制/超大无 patch 文件 hunks 空）。
+/// Compatibility command only returns a complete small patch set; the UI uses pages.
 #[tauri::command]
 pub async fn gh_pr_diff(repo_root: String, number: u64) -> Result<Vec<FileDiff>, String> {
-    let (api, owner, repo) = repo_target(&repo_root)?;
-    let tok = token()?;
-    let url = format!("{api}/repos/{owner}/{repo}/pulls/{number}/files?per_page=100");
-    let resp = with_headers(client().get(&url), &tok)
-        .send()
-        .await
-        .map_err(|e| format!("连接 GitHub 失败: {e}"))?;
-    let files: Vec<GhPrFile> = read(resp).await?;
-    Ok(files
-        .into_iter()
-        .map(|f| {
-            let status = map_file_status(&f.status);
-            // 纯重命名/纯模式变更也无 patch，但不是二进制（与 diff.rs 一致，避免误标）。
-            let binary = f.patch.is_none() && status != "renamed";
-            let hunks = f.patch.as_deref().map(parse_patch).unwrap_or_default();
-            let (old_path, new_path) = match status.as_str() {
-                "added" => (None, Some(f.filename.clone())),
-                "deleted" => (Some(f.filename.clone()), None),
-                "renamed" => (
-                    f.previous_filename.clone().or_else(|| Some(f.filename.clone())),
-                    Some(f.filename.clone()),
-                ),
-                _ => (Some(f.filename.clone()), Some(f.filename.clone())),
-            };
-            FileDiff {
-                old_path,
-                new_path,
-                status,
-                binary,
-                hunks,
-            }
-        })
-        .collect())
+    let page = pages::gh_pr_diff_page(repo_root, number, 1, None, None).await?;
+    if page.next_page.is_some() || page.limited || page.items.iter().any(|file| file.patch_status != "available") {
+        return Err("PR 差异需要分页或完整正文比较，请使用新的比较入口。未返回部分差异。".into());
+    }
+    http::checked_reply(page.items.into_iter().map(|file| FileDiff { old_path: file.old_path, new_path: file.new_path,
+        status: file.status, binary: false, hunks: file.hunks }).collect())
 }
 
 // ============================== PR Review（GH-03）==============================
@@ -607,15 +540,7 @@ impl From<GhReview> for Review {
 /// 列出 PR 的 review（按时间，最多 100）。
 #[tauri::command]
 pub async fn gh_pr_reviews(repo_root: String, number: u64) -> Result<Vec<Review>, String> {
-    let (api, owner, repo) = repo_target(&repo_root)?;
-    let tok = token()?;
-    let url = format!("{api}/repos/{owner}/{repo}/pulls/{number}/reviews?per_page=100");
-    let resp = with_headers(client().get(&url), &tok)
-        .send()
-        .await
-        .map_err(|e| format!("连接 GitHub 失败: {e}"))?;
-    let raw: Vec<GhReview> = read(resp).await?;
-    Ok(raw.into_iter().map(Review::from).collect())
+    pages::legacy_items(pages::gh_review_page(repo_root, number, 1).await?)
 }
 
 /// 提交 PR review。event ∈ {APPROVE, REQUEST_CHANGES, COMMENT}；后两者 body 必填。
@@ -634,10 +559,10 @@ pub async fn gh_pr_review_create(
         return Err("该 review 类型需要填写评论内容".into());
     }
     let (api, owner, repo) = repo_target(&repo_root)?;
-    let tok = token()?;
+    let tok = token().await?;
     let url = format!("{api}/repos/{owner}/{repo}/pulls/{number}/reviews");
     let payload = serde_json::json!({ "event": ev, "body": body });
-    let resp = with_headers(client().post(&url), &tok)
+    let resp = with_headers(client()?.post(&url), &tok)
         .json(&payload)
         .send()
         .await
@@ -682,8 +607,8 @@ mod tests {
 
     #[test]
     fn api_base_github_vs_ghe() {
-        assert_eq!(api_base("github.com"), "https://api.github.com");
-        assert_eq!(api_base("ghe.corp.com"), "https://ghe.corp.com/api/v3");
+        assert_eq!(api_base("github.com").unwrap(), "https://api.github.com");
+        assert!(api_base("ghe.corp.com").is_err());
     }
 
     #[test]

@@ -3,6 +3,7 @@ import { subscribeSystemTheme, type Unsubscribe } from '../ipc/theme';
 import { setWebviewZoom } from '../ipc/zoom';
 import { initBookshelf } from './persistBookshelf';
 import { useWorkbenchStore } from './useWorkbenchStore';
+import { effectiveCentralView } from './effectiveCentralView';
 import type { GitRemoteMode, ResolvedTheme, ThemeSetting } from '../types/settings';
 
 interface SettingsState {
@@ -22,6 +23,8 @@ interface SettingsState {
   exportBrandingText: string;
   bookshelfEnabled: boolean;
   terminalEnabled: boolean;
+  reducedMotion: boolean;
+  reducedTransparency: boolean;
   setAutosaveEnabled: (enabled: boolean) => void;
   setAutosaveDelayMs: (ms: number) => void;
   setEditorFontSize: (px: number) => void;
@@ -34,6 +37,8 @@ interface SettingsState {
   setExportBrandingText: (text: string) => void;
   setBookshelfEnabled: (on: boolean) => void;
   setTerminalEnabled: (on: boolean) => void;
+  setReducedMotion: (on: boolean) => void;
+  setReducedTransparency: (on: boolean) => void;
 }
 
 /** 字体大小落到 CSS 变量（编辑器 .cm-editor 经 var(--editor-font-size) 消费，见 app.css）。 */
@@ -83,7 +88,7 @@ function followSystem(set: (partial: Partial<SettingsState>) => void): void {
  * 主题三态状态层（D-13）。settings.json 落盘属 Plan 06，本阶段为内存态 + 镜像。
  * 任何变更同步三件事：写 documentElement data-theme、双写镜像、按需切换系统订阅。
  */
-export const useSettingsStore = create<SettingsState>((set) => ({
+export const useSettingsStore = create<SettingsState>((set, get) => ({
   theme: 'system',
   resolvedTheme: 'light',
   setTheme: (theme) => {
@@ -108,6 +113,10 @@ export const useSettingsStore = create<SettingsState>((set) => ({
   exportBrandingText: 'Made with InkStream',
   bookshelfEnabled: false,
   terminalEnabled: false,
+  reducedMotion: false,
+  reducedTransparency: false,
+  setReducedMotion: (reducedMotion) => set({ reducedMotion }),
+  setReducedTransparency: (reducedTransparency) => set({ reducedTransparency }),
   setAutosaveEnabled: (autosaveEnabled) => set({ autosaveEnabled }),
   setAutosaveDelayMs: (autosaveDelayMs) => set({ autosaveDelayMs }),
   setEditorFontSize: (editorFontSize) => {
@@ -123,11 +132,25 @@ export const useSettingsStore = create<SettingsState>((set) => ({
   setDailyWordGoal: (dailyWordGoal) => set({ dailyWordGoal }),
   setGitRemoteMode: (gitRemoteMode) => set({ gitRemoteMode }),
   setGitCustomServer: (gitCustomServer) => set({ gitCustomServer }),
-  setSimpleMode: (simpleMode) => set({ simpleMode }),
+  setSimpleMode: (simpleMode) => {
+    const workbench = useWorkbenchStore.getState();
+    const view = effectiveCentralView(workbench.centralView, {
+      simpleMode,
+      bookshelfEnabled: get().bookshelfEnabled,
+    });
+    if (view !== workbench.centralView) workbench.setCentralView(view);
+    set({ simpleMode });
+  },
   setExportBrandingFooter: (exportBrandingFooter) => set({ exportBrandingFooter }),
   setExportBrandingText: (exportBrandingText) => set({ exportBrandingText }),
   // 开启时即时启动书架持久化（hydrate + 订阅）；关闭只置标志、不清盘（req 6）。
   setBookshelfEnabled: (bookshelfEnabled) => {
+    const workbench = useWorkbenchStore.getState();
+    const view = effectiveCentralView(workbench.centralView, {
+      simpleMode: get().simpleMode,
+      bookshelfEnabled,
+    });
+    if (view !== workbench.centralView) workbench.setCentralView(view);
     if (bookshelfEnabled) void initBookshelf();
     set({ bookshelfEnabled });
   },

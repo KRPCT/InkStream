@@ -30,6 +30,18 @@ html[data-theme='light'] {
   --text-faint: hsl(230, 4%, 64%);
   --text-on-accent: hsl(0, 0%, 100%);
   --color-error: hsl(344, 84%, 43%);
+  /* Project archive: neutral paper surfaces with a restrained sage selection. */
+  --archive-canvas: hsl(90, 6%, 97%);
+  --archive-ink: hsl(150, 5%, 18%);
+  --archive-muted: hsl(150, 4%, 39%);
+  --archive-border: hsl(140, 5%, 81%);
+  --archive-divider: hsl(140, 5%, 88%);
+  --archive-control: hsl(0, 0%, 100%);
+  --archive-hover: hsl(140, 6%, 93%);
+  --archive-selected: hsl(140, 9%, 90%);
+  --archive-sage: hsl(145, 14%, 35%);
+  --archive-scrim: hsl(150, 5%, 13%, 0.2);
+  --archive-panel-shadow: hsl(150, 5%, 10%, 0.18);
   /* Phase 9 Creative（亮）：场景状态色点 草稿/已修/定稿 + 字数进度 + Codex 提及。进度填充为独立 token，非 --accent。 */
   --crea-status-draft: hsl(230, 6%, 58%);
   --crea-status-revised: hsl(38, 90%, 46%);
@@ -92,6 +104,17 @@ html[data-theme='dark'] {
   --text-faint: hsl(220, 10%, 40%);
   --text-on-accent: hsl(220, 13%, 18%);
   --color-error: hsl(355, 65%, 65%);
+  --archive-canvas: hsl(150, 5%, 14%);
+  --archive-ink: hsl(120, 5%, 90%);
+  --archive-muted: hsl(140, 5%, 68%);
+  --archive-border: hsl(145, 5%, 32%);
+  --archive-divider: hsl(145, 5%, 25%);
+  --archive-control: hsl(150, 5%, 18%);
+  --archive-hover: hsl(145, 5%, 21%);
+  --archive-selected: hsl(145, 9%, 25%);
+  --archive-sage: hsl(145, 16%, 72%);
+  --archive-scrim: hsl(150, 5%, 5%, 0.36);
+  --archive-panel-shadow: hsl(0, 0%, 0%, 0.38);
   /* Phase 9 Creative（暗）：场景状态色点 + 字数进度 + Codex 提及。进度填充为独立 token，非 --accent。 */
   --crea-status-draft: hsl(220, 10%, 52%);
   --crea-status-revised: hsl(38, 85%, 62%);

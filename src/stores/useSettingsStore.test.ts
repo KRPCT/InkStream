@@ -1,6 +1,7 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { setSystemColorScheme } from '../test/setup';
 import type { ResolvedTheme } from '../types/settings';
+import { useWorkbenchStore } from './useWorkbenchStore';
 
 // 隔离单元：mock ipc/theme，提供可手动触发的系统主题事件源
 const listeners = new Set<(t: ResolvedTheme) => void>();
@@ -89,5 +90,59 @@ describe('initSettingsFromDocument', () => {
     initSettingsFromDocument();
     expect(useSettingsStore.getState().theme).toBe('light');
     expect(listeners.size).toBe(0);
+  });
+});
+
+describe('关闭高级能力后的导航', () => {
+  beforeEach(() => {
+    useWorkbenchStore.setState(useWorkbenchStore.getInitialState(), true);
+    useSettingsStore.setState({ simpleMode: false, bookshelfEnabled: false });
+  });
+  afterEach(() => {
+    useWorkbenchStore.setState(useWorkbenchStore.getInitialState(), true);
+    useSettingsStore.setState({ simpleMode: false, bookshelfEnabled: false });
+  });
+
+  it('在知识图谱中开启简易模式会回到编辑器，重新启用不自动重开图谱', () => {
+    useWorkbenchStore.getState().setCentralView('graph');
+
+    useSettingsStore.getState().setSimpleMode(true);
+    expect(useWorkbenchStore.getState().centralView).toBe('editor');
+
+    useSettingsStore.getState().setSimpleMode(false);
+    expect(useWorkbenchStore.getState().centralView).toBe('editor');
+  });
+
+  it.each(['gitGraph', 'mergeResolve', 'multibuffer'] as const)(
+    '在 %s 中开启简易模式同样返回编辑器',
+    (view) => {
+      useWorkbenchStore.getState().setCentralView(view);
+      useSettingsStore.getState().setSimpleMode(true);
+      expect(useWorkbenchStore.getState().centralView).toBe('editor');
+    },
+  );
+
+  it('关闭当前书架能力会返回编辑器', () => {
+    useSettingsStore.setState({ bookshelfEnabled: true });
+    useWorkbenchStore.getState().setCentralView('bookshelf');
+    useSettingsStore.getState().setBookshelfEnabled(false);
+    expect(useWorkbenchStore.getState().centralView).toBe('editor');
+  });
+
+  it.each(['editor', 'reading', 'bookshelf'] as const)(
+    '简易模式保留仍可用的 %s 视图',
+    (view) => {
+      useSettingsStore.setState({ bookshelfEnabled: true });
+      useWorkbenchStore.getState().setCentralView(view);
+      useSettingsStore.getState().setSimpleMode(true);
+      expect(useWorkbenchStore.getState().centralView).toBe(view);
+    },
+  );
+
+  it('关闭书架不打断无关的阅读视图', () => {
+    useSettingsStore.setState({ bookshelfEnabled: true });
+    useWorkbenchStore.getState().setCentralView('reading');
+    useSettingsStore.getState().setBookshelfEnabled(false);
+    expect(useWorkbenchStore.getState().centralView).toBe('reading');
   });
 });

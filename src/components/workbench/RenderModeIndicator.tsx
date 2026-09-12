@@ -1,5 +1,6 @@
 import { execute } from '../../commands/registry';
 import { useEditorStore } from '../../stores/useEditorStore';
+import DocumentBudgetIndicator from './DocumentBudgetIndicator';
 
 /**
  * StatusBar 渲染模式指示器（EDIT-02 / D-05 第三入口）：点击即在 Source ↔ Live Preview 间切换。
@@ -13,6 +14,8 @@ import { useEditorStore } from '../../stores/useEditorStore';
  */
 export default function RenderModeIndicator() {
   const mode = useEditorStore((s) => s.activeRenderMode);
+  const budget = useEditorStore((s) => s.documentBudget);
+  if (budget && (budget.large || budget.mode === 'basic')) return <DocumentBudgetIndicator budget={budget} />;
   if (mode === null) return null;
 
   const isLive = mode === 'live';

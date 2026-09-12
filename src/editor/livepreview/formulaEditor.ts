@@ -1,6 +1,5 @@
-import { syntaxTree } from '@codemirror/language';
 import { EditorView } from '@codemirror/view';
-import { BLOCK_MATH_CONTENT, BLOCK_MATH_NODE, CODE_TEXT_NODE, FENCED_CODE_NODE } from './nodeNames';
+import { formulaBlockAt, formulaSourceEdit } from './formulaBlocks';
 import { clearFormulaEdit } from './formulaEditState';
 import { type FormulaEngine, renderPreview } from './formulaPreview';
 
@@ -43,8 +42,14 @@ export function destroyFormulaEditor(wrap: HTMLElement): void {
 /** 幂等挂载：已是同块 → 仅刷新预览（保 textarea caret/组合）；否则重建头部 + textarea + 预览。 */
 export function mountFormulaEditor(main: EditorView, wrap: HTMLElement, w: FormulaEditInfo): void {
   const existing = active.get(main);
-  if (existing && existing.blockFrom === w.blockFrom && wrap.contains(existing.textarea)) {
-    renderPreview(main, existing.engine, existing.preview, existing.textarea.value, w.blockFrom);
+  if (existing && existing.blockFrom === w.blockFrom && existing.engine === w.info && wrap.contains(existing.textarea)) {
+    if (!existing.composing && existing.textarea.value !== w.source) {
+      const start = existing.textarea.selectionStart;
+      const end = existing.textarea.selectionEnd;
+      existing.textarea.value = w.source;
+      existing.textarea.setSelectionRange(Math.min(start, w.source.length), Math.min(end, w.source.length));
+    }
+    renderPreview(main, existing.engine, existing.preview, w.source, w.blockFrom);
     return; // 复用：不重建，保用户编辑中的 textarea。
   }
   wrap.replaceChildren();
@@ -115,31 +120,14 @@ function buildHeader(wrap: HTMLElement, main: EditorView, engine: FormulaEngine)
 
 /** 写回主 doc 的 CodeText 区间（每次从 live 语法树重解析，防陈旧）+ 刷新预览。 */
 function sync(main: EditorView, a: ActiveFormula): void {
-  const range = codeRangeOf(main, a.blockFrom);
-  if (range && range.to <= main.state.doc.length) {
+  const block = formulaBlockAt(main.state, a.blockFrom);
+  if (block) {
     const insert = a.textarea.value;
-    if (insert !== main.state.doc.sliceString(range.from, range.to)) {
-      main.dispatch({ changes: { from: range.from, to: range.to, insert }, userEvent: 'input.formula.src' });
+    if (insert !== block.source) {
+      main.dispatch({ changes: formulaSourceEdit(block, insert), userEvent: 'input.formula.src' });
     }
   }
   renderPreview(main, a.engine, a.preview, a.textarea.value, a.blockFrom);
-}
-
-/** 从 live 语法树解析本块 CodeText 区间（空块兜底为围栏首行换行后的插入点）。 */
-function codeRangeOf(main: EditorView, blockFrom: number): { from: number; to: number } | null {
-  const node = syntaxTree(main.state).resolveInner(blockFrom, 1);
-  for (let n: typeof node | null = node; n; n = n.parent) {
-    if (n.name === FENCED_CODE_NODE) {
-      const ct = n.node.getChild(CODE_TEXT_NODE);
-      const line = main.state.doc.lineAt(n.from);
-      return ct ? { from: ct.from, to: ct.to } : { from: line.to + 1, to: line.to + 1 };
-    }
-    if (n.name === BLOCK_MATH_NODE) {
-      const ct = n.node.getChild(BLOCK_MATH_CONTENT);
-      return ct ? { from: ct.from, to: ct.to } : { from: n.from + 2, to: n.from + 2 };
-    }
-  }
-  return null;
 }
 
 /** 退出双栏 → 清编辑态 → blockField 重建 → 该块回落就地渲染（主 doc 已是最新源，回填天然正确）。 */

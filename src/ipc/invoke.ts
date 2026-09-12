@@ -1,4 +1,4 @@
-import { invoke as tauriInvoke, Channel } from '@tauri-apps/api/core';
+import { invoke as tauriInvoke, Channel, type InvokeOptions } from '@tauri-apps/api/core';
 import type { IpcCommands } from '../types/ipc';
 
 /**
@@ -8,8 +8,9 @@ import type { IpcCommands } from '../types/ipc';
 export function invoke<K extends keyof IpcCommands>(
   cmd: K,
   args: IpcCommands[K]['args'],
+  options?: InvokeOptions,
 ): Promise<IpcCommands[K]['result']> {
-  return tauriInvoke(cmd, args);
+  return options === undefined ? tauriInvoke(cmd, args) : tauriInvoke(cmd, args, options);
 }
 
 /**

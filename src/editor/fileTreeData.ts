@@ -95,6 +95,7 @@ export async function expandDir(id: string): Promise<void> {
   if (!node || !node.isDir || node.loaded === true) return;
   try {
     const children = entriesToNodes(await listDir(vault.root, id));
+    if (useVaultStore.getState().vault !== vault) return;
     useVaultStore.getState().setTree(updateNodeChildren(useVaultStore.getState().tree, id, children));
   } catch {
     // 子目录枚举失败：保持未加载态，下次展开可重试（不污染已有树）
@@ -142,12 +143,14 @@ export async function refreshTree(): Promise<void> {
         // 单个子目录重取失败（可能已删）：跳过，不阻断整体刷新
       }
     }
+    if (useVaultStore.getState().vault !== vault) return;
     useVaultStore.getState().setTree(tree);
   } catch {
     // 枚举失败不清空已有树（避免误删视图）；仅快照刷新尽力而为
   }
   try {
     const files = await listFiles(vault.root);
+    if (useVaultStore.getState().vault !== vault) return;
     useVaultStore.getState().setFiles(files);
   } catch {
     /* 快速打开快照刷新失败不阻断 */

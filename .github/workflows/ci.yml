@@ -1,4 +1,4 @@
-# 三平台冒烟 CI：install → typecheck → lint → test → build → cargo check
+# 三平台 CI：install → typecheck → lint → test → build → 独立 Unix 负控 + 全目标生产 cargo test
 # 供应链约定：仅 actions/* 官方 action，且按完整 commit SHA 锁定；
 # pnpm 经 corepack（与本地 packageManager 字段一致）、Rust 经 runner 自带 rustup，零第三方 action。
 name: CI
@@ -16,6 +16,7 @@ jobs:
       matrix:
         os: [ubuntu-latest, windows-latest, macos-latest]
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
     steps:
       - name: Checkout
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
@@ -26,10 +27,10 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y libwebkit2gtk-4.1-dev build-essential curl wget file libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev
 
-      - name: Setup Node 22
+      - name: Setup Node
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
-          node-version: 22
+          node-version-file: .node-version
 
       - name: Activate pnpm via corepack
         run: |
@@ -51,10 +52,30 @@ jobs:
         run: pnpm lint
 
       - name: Test
-        run: pnpm test
+        timeout-minutes: 15
+        run: pnpm test:ci
 
       - name: Build
         run: pnpm build
 
-      - name: Cargo check
-        run: cargo check --manifest-path src-tauri/Cargo.toml
+      - name: Unix permission negative control (isolated legacy strategy)
+        if: ${{ !cancelled() && runner.os != 'Windows' }}
+        timeout-minutes: 3
+        run: node scripts/acceptance/run-unix-negative.mjs
+
+      - name: Cargo tests (all production targets, serial)
+        if: ${{ !cancelled() }}
+        timeout-minutes: 25
+        # --all-targets typechecks and builds the application binary as well as the tested library.
+        # A separate cargo check would rebuild dependency metadata before this code-generation build.
+        # The wrapper preserves the hard timeout, process cleanup and Unix production assertion.
+        # Runs even if the separate negative fixture fails; no production assertion is skipped.
+        run: node scripts/acceptance/run-rust.mjs
+
+      - name: Upload acceptance evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4; same locked SHA as release.yml
+        with:
+          name: inkstream-acceptance-${{ matrix.os }}
+          path: coverage/acceptance/
+          if-no-files-found: error

@@ -7,6 +7,8 @@ import {
   typstReady,
 } from '../typst/typstClient';
 import { buildFormulaToolbar } from '../formulaToolbar';
+import { isTypstDocumentManaged } from '../typst/typstDocumentPresence';
+import { typstSvgElement } from '../typst/typstSvg';
 
 /**
  * ```typst 块渲染 widget（Phase 5 W3 / BLOCK-02，块级层 Decoration.replace({block:true})）。
@@ -71,8 +73,10 @@ export class TypstWidget extends WidgetType {
     // 未编译：Worker 未就绪 → 加载中占位 + 懒建 Worker；就绪 → 编译中占位 + 防抖请求编译。
     wrap.classList.add('cm-ink-typst-loading');
     mount.textContent = this.source;
-    if (!typstReady()) ensureTypst(view);
-    else requestCompile(view, String(this.from), this.source);
+    if (!isTypstDocumentManaged(view)) {
+      if (!typstReady()) ensureTypst(view);
+      else void requestCompile(view, String(this.from), this.source);
+    }
     return wrap;
   }
 }
@@ -83,9 +87,9 @@ export class TypstWidget extends WidgetType {
  * html 文档），text/html 宽松、经外来内容正确处理 SVG，querySelector('svg') 取根节点稳。
  */
 function injectSvg(svg: string, mount: HTMLElement, wrap: HTMLElement): void {
-  const el = new DOMParser().parseFromString(svg, 'text/html').querySelector('svg');
+  const el = typstSvgElement(svg);
   if (el) {
-    mount.appendChild(document.importNode(el, true));
+    mount.appendChild(el);
   } else {
     wrap.classList.add('cm-ink-typst-error');
     mount.textContent = 'typst 预览解析失败';

@@ -1,6 +1,8 @@
 import { EditorSelection } from '@codemirror/state';
 import type { EditorView } from '@codemirror/view';
 import { setFormulaEdit } from './formulaEditState';
+import { formulaBlockAt } from './formulaBlocks';
+import { exportEquationPdfAt } from '../export/equationPdf';
 
 /**
  * 就地渲染公式 widget 的悬浮工具栏（块编辑增强 W3，仿 tableToolbar）：编辑 / 复制源码 / 删除。
@@ -21,6 +23,7 @@ const ICONS = {
     'M15 2H9a1 1 0 0 0-1 1v2a1 1 0 0 0 1 1h6a1 1 0 0 0 1-1V3a1 1 0 0 0-1-1z',
   ],
   trash: ['M10 11v6', 'M14 11v6', 'M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6', 'M3 6h18', 'M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2'],
+  download: ['M12 3v12', 'm7 10 5 5 5-5', 'M5 17v4h14v-4'],
 } as const;
 
 function buildIcon(paths: readonly string[]): SVGSVGElement {
@@ -92,5 +95,8 @@ export function buildFormulaToolbar(
       view.focus();
     }),
   );
+  if (formulaBlockAt(view.state, blockFrom)?.engine === 'latex') {
+    bar.appendChild(makeBtn('导出公式 PDF', ICONS.download, () => { void exportEquationPdfAt(view, blockFrom); }));
+  }
   wrap.appendChild(bar);
 }

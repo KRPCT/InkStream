@@ -1,4 +1,6 @@
 import { useWorkbenchStore } from '../../stores/useWorkbenchStore';
+import { useSettingsStore } from '../../stores/useSettingsStore';
+import { effectiveCentralView } from '../../stores/effectiveCentralView';
 import AcademicToolbar from './AcademicToolbar';
 import EditorArea from './EditorArea';
 import SceneSummaryCard from './SceneSummaryCard';
@@ -9,8 +11,11 @@ import SceneSummaryCard from './SceneSummaryCard';
  * GitGraphView 由 WorkbenchLayout 作全宽覆盖层渲染（盖住三栏），故此处不含它。
  */
 export default function CentralArea() {
-  const view = useWorkbenchStore((s) => s.centralView);
+  const requestedView = useWorkbenchStore((s) => s.centralView);
   const mode = useWorkbenchStore((s) => s.mode);
+  const simpleMode = useSettingsStore((s) => s.simpleMode);
+  const bookshelfEnabled = useSettingsStore((s) => s.bookshelfEnabled);
+  const view = effectiveCentralView(requestedView, { simpleMode, bookshelfEnabled });
   return (
     <div className="flex h-full flex-col" style={{ display: view === 'editor' ? undefined : 'none' }}>
       {mode === 'academic' ? <AcademicToolbar /> : null}

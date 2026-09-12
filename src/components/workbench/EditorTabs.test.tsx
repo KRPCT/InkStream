@@ -9,7 +9,7 @@ import EditorTabs from './EditorTabs';
 const closeOrder: string[] = [];
 let releaseFlush: (() => void) | null = null;
 
-const flushAutosave = vi.fn().mockResolvedValue(undefined);
+const flushAutosave = vi.fn().mockResolvedValue({ kind: 'saved' });
 const switchTab = vi.fn();
 const disposeStateSpy = vi.fn((path: string) => {
   closeOrder.push(`dispose:${path}`);
@@ -26,6 +26,11 @@ vi.mock('../../editor/editorState', () => ({
     useEditorStore.getState().setActive(path);
   },
   disposeState: (path: string) => disposeStateSpy(path),
+  releaseDocumentState: (path: string) => {
+    disposeStateSpy(path);
+    useEditorStore.getState().closeTab(path);
+    return true;
+  },
 }));
 
 const confirmDestructive = vi.fn<(opts: unknown) => Promise<boolean>>();
@@ -42,7 +47,7 @@ describe('EditorTabs', () => {
     vi.clearAllMocks();
     closeOrder.length = 0;
     releaseFlush = null;
-    flushAutosave.mockResolvedValue(undefined);
+    flushAutosave.mockResolvedValue({ kind: 'saved' });
     reset();
     useWorkbenchStore.setState(useWorkbenchStore.getInitialState(), true);
     useEditorStore.getState().openTab({ path: 'a.md', name: 'a.md' });
@@ -96,10 +101,10 @@ describe('EditorTabs', () => {
     // 让 flush 解析受控：record 「flush-start」立即、「flush-end」在 release 时。
     flushAutosave.mockImplementation((path: string) => {
       closeOrder.push(`flush-start:${path}`);
-      return new Promise<void>((resolve) => {
+      return new Promise<{ kind: 'saved' }>((resolve) => {
         releaseFlush = () => {
           closeOrder.push('flush-end');
-          resolve();
+          resolve({ kind: 'saved' });
         };
       });
     });

@@ -4,6 +4,8 @@ import { confirmDestructive } from '../stores/useConfirmStore';
 import { useEditorStore } from '../stores/useEditorStore';
 import { useGitStore } from '../stores/useGitStore';
 import { useSettingsStore } from '../stores/useSettingsStore';
+import { useProjectStore } from '../stores/useProjectStore';
+import { prepareProjectExit } from '../projects/session';
 
 /**
  * 退出守卫（簇① / 用户需求）：关窗时按优先级提醒——
@@ -20,6 +22,7 @@ import { useSettingsStore } from '../stores/useSettingsStore';
  */
 let unlisten: (() => void) | null = null;
 let generation = 0;
+let closing = false;
 
 /** 当前未保存（dirty）文档数：autosave 关 / 草稿 / 防抖未落盘——退出即丢。 */
 function unsavedCount(): number {
@@ -38,6 +41,14 @@ export function initExitGuard(): void {
   const myGen = generation;
   void windowControls
     .onCloseRequested(async (event) => {
+      if (useProjectStore.getState().ready) {
+        event.preventDefault();
+        if (closing) return;
+        closing = true;
+        try { if (await prepareProjectExit()) await windowControls.destroy(); }
+        finally { closing = false; }
+        return;
+      }
       const unsaved = unsavedCount();
       const uncommitted = uncommittedCount();
       if (unsaved === 0 && uncommitted === 0) return; // 无未保存、无（启用时的）未提交 → 放行关闭

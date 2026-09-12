@@ -1,92 +1,84 @@
-/**
- * 解析 git 合并冲突标记（Phase 12 DIFF-03）。git merge 冲突时已把可自动合并的部分并入工作文件，
- * 仅真冲突处留 `<<<<<<< ours` / `=======`（/ diff3 的 `||||||| base`）/ `>>>>>>> theirs` 标记。
- * 本模块把内容切成「干净段（git 已合好，原样保留）」与「冲突块（ours/theirs 两版本）」。纯函数可单测。
- */
-
+/** Strict Git marker parsing. Every retained span includes its original line ending. */
 export type ConflictChoice = 'ours' | 'theirs' | 'both';
-
-export interface CleanPart {
-  kind: 'clean';
-  text: string;
-}
-export interface ConflictPart {
-  kind: 'conflict';
-  ours: string;
-  theirs: string;
-}
+export interface CleanPart { kind: 'clean'; text: string }
+export interface ConflictPart { kind: 'conflict'; ours: string; theirs: string; base: string | null }
 export type MergePart = CleanPart | ConflictPart;
+export type ParsedConflicts = { kind: 'valid'; parts: MergePart[] } | { kind: 'invalid'; error: string; line: number };
 
-/** 解析含合并标记的文本为有序片段序列；无标记 → 单个 clean 段。 */
-export function parseConflicts(content: string): MergePart[] {
-  const lines = content.split('\n');
+interface Marker { kind: '<' | '|' | '=' | '>'; width: number }
+function marker(line: string): Marker | null {
+  const match = /^(<{7,}|\|{7,}|={7,}|>{7,})(.*)$/.exec(line);
+  if (!match || (match[2] && !/^[ \t]/.test(match[2]))) return null;
+  const kind = match[1][0] as Marker['kind'];
+  if (kind === '=' && match[2]) return null;
+  return { kind, width: match[1].length };
+}
+
+export function parseConflicts(content: string): ParsedConflicts {
   const parts: MergePart[] = [];
-  let clean: string[] = [];
-  const flush = (): void => {
-    if (clean.length > 0) {
-      parts.push({ kind: 'clean', text: clean.join('\n') });
-      clean = [];
-    }
-  };
-  let i = 0;
-  while (i < lines.length) {
-    if (lines[i].startsWith('<<<<<<<')) {
-      flush();
-      i++;
-      const ours: string[] = [];
-      while (
-        i < lines.length &&
-        !lines[i].startsWith('=======') &&
-        !lines[i].startsWith('|||||||')
-      ) {
-        ours.push(lines[i]);
-        i++;
+  let cleanFrom = 0;
+  let active: { width: number; stage: 'ours' | 'base' | 'theirs'; oursFrom: number; ours: string; baseFrom: number; base: string | null; theirsFrom: number } | null = null;
+  let lineNumber = 0;
+  // A standalone Markdown setext underline is ordinary text. Once a start/end/base
+  // marker occurs, orphan separators are ambiguous damaged input and must be rejected.
+  const hasBoundary = /^(?:<{7,}|>{7,}|\|{7,})(?:[ \t]|\r?$)/m.test(content);
+  for (const match of content.matchAll(/[^\r\n]*(?:\r\n|\n|\r|$)/g)) {
+    const raw = match[0];
+    if (!raw) continue;
+    lineNumber++;
+    const line = raw.replace(/(?:\r\n|\n|\r)$/, '');
+    const token = marker(line);
+    if (!token) continue;
+    const start = match.index;
+    const after = start + raw.length;
+    const invalid = (reason: string): ParsedConflicts => ({ kind: 'invalid', line: lineNumber, error: `第 ${lineNumber} 行冲突标记无效：${reason}。原文已保留，未允许标记解决。` });
+    if (!active) {
+      if (token.kind !== '<') {
+        if (token.kind === '=' && !hasBoundary) continue;
+        return invalid('缺少对应的开始标记');
       }
-      // diff3 风格的 base 块（||||||| … =======）丢弃：解决以 ours/theirs 为准。
-      if (i < lines.length && lines[i].startsWith('|||||||')) {
-        i++;
-        while (i < lines.length && !lines[i].startsWith('=======')) i++;
-      }
-      if (i < lines.length && lines[i].startsWith('=======')) i++;
-      const theirs: string[] = [];
-      while (i < lines.length && !lines[i].startsWith('>>>>>>>')) {
-        theirs.push(lines[i]);
-        i++;
-      }
-      if (i < lines.length && lines[i].startsWith('>>>>>>>')) i++;
-      parts.push({ kind: 'conflict', ours: ours.join('\n'), theirs: theirs.join('\n') });
-    } else {
-      clean.push(lines[i]);
-      i++;
-    }
-  }
-  flush();
-  return parts;
-}
-
-/** 冲突块数量。 */
-export function conflictCount(parts: MergePart[]): number {
-  return parts.filter((p) => p.kind === 'conflict').length;
-}
-
-/** 按每个冲突块的选择组装最终文本（choices 顺序对应冲突块顺序；缺省按 ours）。 */
-export function assembleResolution(parts: MergePart[], choices: ConflictChoice[]): string {
-  let ci = 0;
-  const out: string[] = [];
-  for (const p of parts) {
-    if (p.kind === 'clean') {
-      out.push(p.text);
+      if (start > cleanFrom) parts.push({ kind: 'clean', text: content.slice(cleanFrom, start) });
+      active = { width: token.width, stage: 'ours', oursFrom: after, ours: '', baseFrom: 0, base: null, theirsFrom: 0 };
       continue;
     }
-    const c = choices[ci++] ?? 'ours';
-    const text =
-      c === 'theirs'
-        ? p.theirs
-        : c === 'both'
-          ? [p.ours, p.theirs].filter((s) => s.length > 0).join('\n')
-          : p.ours;
-    // 采纳一侧为空（纯删除冲突）→ 该块不贡献任何行，避免组装出原文不存在的空行。
-    if (text.length > 0) out.push(text);
+    if (token.width !== active.width) return invalid('标记长度不一致');
+    if (token.kind === '<') return invalid('存在嵌套或重复开始标记');
+    if (token.kind === '|') {
+      if (active.stage !== 'ours') return invalid('基线标记顺序错误');
+      active.ours = content.slice(active.oursFrom, start);
+      active.baseFrom = after;
+      active.stage = 'base';
+    } else if (token.kind === '=') {
+      if (active.stage === 'theirs') return invalid('存在重复分隔标记');
+      if (active.stage === 'ours') active.ours = content.slice(active.oursFrom, start);
+      else active.base = content.slice(active.baseFrom, start);
+      active.theirsFrom = after;
+      active.stage = 'theirs';
+    } else {
+      if (active.stage !== 'theirs') return invalid('缺少分隔标记');
+      parts.push({ kind: 'conflict', ours: active.ours, base: active.base, theirs: content.slice(active.theirsFrom, start) });
+      active = null;
+      cleanFrom = after;
+    }
   }
-  return out.join('\n');
+  if (active) return { kind: 'invalid', line: lineNumber, error: '冲突标记未完整结束。原文已保留，未允许标记解决。' };
+  if (cleanFrom < content.length || !parts.length) parts.push({ kind: 'clean', text: content.slice(cleanFrom) });
+  return { kind: 'valid', parts };
+}
+
+export function conflictCount(parsed: ParsedConflicts): number {
+  return parsed.kind === 'valid' ? parsed.parts.filter((part) => part.kind === 'conflict').length : 0;
+}
+
+export function assembleResolution(parsed: ParsedConflicts, choices: readonly (ConflictChoice | null)[]): string {
+  if (parsed.kind === 'invalid') throw new Error(parsed.error);
+  let index = 0;
+  const text = parsed.parts.map((part) => {
+    if (part.kind === 'clean') return part.text;
+    const choice = choices[index++];
+    if (!choice) throw new Error('请先为每处冲突选择解决方式。');
+    return choice === 'ours' ? part.ours : choice === 'theirs' ? part.theirs : part.ours + part.theirs;
+  }).join('');
+  if (index !== choices.length) throw new Error('冲突选择与当前文档不一致，请重新读取。');
+  return text;
 }

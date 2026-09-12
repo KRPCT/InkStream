@@ -1,5 +1,7 @@
 import { create } from 'zustand';
 import { queryContent, type ContentHit } from '../ipc/indexService';
+import { captureIndexScope, isCurrentIndexScope } from '../ipc/indexScope';
+import { useVaultStore } from './useVaultStore';
 
 /**
  * 全文搜索结果镜像（命令面板 `#` 模式，v1.2 #2a）。
@@ -13,6 +15,7 @@ interface ContentSearchState {
   term: string;
   hits: ContentHit[];
   loading: boolean;
+  error: string | null;
   run: (term: string) => Promise<void>;
   clear: () => void;
 }
@@ -23,15 +26,26 @@ export const useContentSearchStore = create<ContentSearchState>((set) => ({
   term: '',
   hits: [],
   loading: false,
+  error: null,
   run: async (term) => {
     const mine = ++seq;
-    set({ term, loading: true });
-    const hits = await queryContent(term);
-    if (mine !== seq) return; // 已被更晚的查询（或 clear）取代，丢弃本次结果。
-    set({ hits, loading: false });
+    const owner = useVaultStore.getState().vault;
+    const scope = captureIndexScope();
+    const current = () => useVaultStore.getState().vault === owner &&
+      (scope ? isCurrentIndexScope(scope) : captureIndexScope() === null);
+    set({ term, hits: [], loading: true, error: null });
+    try {
+      const hits = await queryContent(term);
+      if (mine !== seq) return;
+      if (!current()) { set({ hits: [], loading: false, error: null }); return; }
+      set({ hits, loading: false, error: null });
+    } catch (error) {
+      if (mine !== seq) return;
+      set({ hits: [], loading: false, error: current() ? (error instanceof Error ? error.message : String(error)) : null });
+    }
   },
   clear: () => {
     seq++; // 作废在途查询，避免其结果回填已清空的面板。
-    set({ term: '', hits: [], loading: false });
+    set({ term: '', hits: [], loading: false, error: null });
   },
 }));

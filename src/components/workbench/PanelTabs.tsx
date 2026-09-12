@@ -15,7 +15,7 @@ export default function PanelTabs({ tabs, activeTab, onSelect }: PanelTabsProps)
   return (
     <div
       role="tablist"
-      className="flex h-9 shrink-0 items-stretch border-b border-[var(--background-modifier-border)]"
+      className="workbench-tool-tabs flex h-9 shrink-0 items-stretch border-b border-[var(--background-modifier-border)]"
     >
       {tabs.map((tab) => {
         const active = tab.id === activeTab;

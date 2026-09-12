@@ -1,6 +1,9 @@
 import type { EditorView } from '@codemirror/view';
 import { useSceneSummaryStore } from '../stores/useSceneSummaryStore';
 import { readFields } from './frontmatter';
+import { isBasicEditing } from './documentBudget';
+import { useEditorStore } from '../stores/useEditorStore';
+import type { SceneStatus } from '../types/creative';
 
 /**
  * 场景概要镜像（CREA-05）：活动文档 frontmatter `summary:`（单行）→ store。无则空串。
@@ -12,8 +15,13 @@ export function extractSceneSummary(doc: string): string {
 }
 
 export function syncSceneSummary(view: EditorView): void {
-  const summary = extractSceneSummary(view.state.doc.toString());
-  if (useSceneSummaryStore.getState().summary !== summary) {
-    useSceneSummaryStore.getState().setSummary(summary);
-  }
+  const paused = isBasicEditing(view.state);
+  const text = paused ? '' : view.state.doc.toString();
+  const summary = paused ? '' : extractSceneSummary(text);
+  const raw = readFields(text, ['status']).status ?? 'draft';
+  const status = paused || !['draft', 'revised', 'final'].includes(raw) ? null : raw as SceneStatus;
+  const sourcePath = useEditorStore.getState().activePath;
+  const before = useSceneSummaryStore.getState();
+  if (before.summary !== summary || before.status !== status || before.sourcePath !== sourcePath)
+    useSceneSummaryStore.setState({ summary, status, sourcePath });
 }

@@ -10,6 +10,10 @@ export function normalizeSlash(path: string): string {
   return path.replace(/\\/g, '/');
 }
 
+/** The editable Markdown family keeps its actual path; only matching ignores extension case. */
+export function isMarkdownPath(path: string): boolean { return /\.(?:md|markdown)$/i.test(path); }
+export function withoutMarkdownExtension(path: string): string { return path.replace(/\.(?:md|markdown)$/i, ''); }
+
 /** 是否绝对路径（Windows 盘符 `X:/`、POSIX `/`、UNC `\\`）。库外 tab 的 path 恒为绝对路径。 */
 export function isAbsolutePath(path: string): boolean {
   return /^[a-zA-Z]:[/\\]/.test(path) || path.startsWith('/') || path.startsWith('\\\\');

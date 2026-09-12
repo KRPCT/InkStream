@@ -1,5 +1,6 @@
-import type { EditorView } from '@codemirror/view';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { EditorState } from '@codemirror/state';
+import { EditorView } from '@codemirror/view';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 /** LatexWidget 回归门（Phase 5 W2）。mathjaxLoader 经 mock 控制就绪态，避免真 MathJax import。 */
 
@@ -18,11 +19,20 @@ vi.mock('../mathjaxLoader', () => ({
 }));
 
 const { LatexWidget } = await import('./LatexWidget');
-const fakeView = {} as EditorView;
+let fakeView: EditorView;
+let editorHost: HTMLDivElement;
 
 beforeEach(() => {
+  editorHost = document.createElement('div');
+  document.body.appendChild(editorHost);
+  fakeView = new EditorView({ state: EditorState.create({ doc: ' '.repeat(64) }), parent: editorHost });
   ready = false;
   ensureMathjax.mockClear();
+});
+
+afterEach(() => {
+  fakeView.destroy();
+  editorHost.remove();
 });
 
 describe('LatexWidget', () => {

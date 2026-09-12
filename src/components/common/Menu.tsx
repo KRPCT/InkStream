@@ -1,4 +1,4 @@
-import { ChevronRight } from 'lucide-react';
+import { Check, ChevronRight } from 'lucide-react';
 import {
   useEffect,
   useLayoutEffect,
@@ -19,6 +19,8 @@ export interface MenuEntry {
   /** 行尾装饰（如 check 图标、Kbd 快捷键芯片）。 */
   trailing?: ReactNode;
   disabled?: boolean;
+  /** Presence makes this a toggle item; the owning store supplies the current value. */
+  checked?: boolean;
   submenu?: MenuEntry[];
   onSelect?: () => void;
   /** 非交互分隔线（菜单分组用，VSCode/Typora 惯例）。键盘导航跳过。 */
@@ -167,7 +169,8 @@ export default function Menu({
         <div key={item.id} className="relative">
           <button
             type="button"
-            role="menuitem"
+            role={item.checked === undefined ? 'menuitem' : 'menuitemcheckbox'}
+            aria-checked={item.checked}
             disabled={item.disabled}
             aria-haspopup={item.submenu ? 'menu' : undefined}
             aria-expanded={item.submenu ? subOpen === item.id : undefined}
@@ -180,6 +183,11 @@ export default function Menu({
               index === active && !item.disabled ? 'bg-[var(--background-modifier-hover)]' : ''
             }`}
           >
+            {item.checked !== undefined ? (
+              <span className="inline-flex w-4 shrink-0 justify-center" aria-hidden="true">
+                {item.checked ? <Check size={16} strokeWidth={2} /> : null}
+              </span>
+            ) : null}
             {item.leading}
             <span className="flex-1">{item.label}</span>
             {item.trailing}

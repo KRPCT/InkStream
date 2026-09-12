@@ -6,6 +6,10 @@ import type {
   FileDiff,
   GitOpResult,
   GitRef,
+  GitRemoteOptions,
+  GitRebaseAction,
+  GitRebaseResult,
+  GitRebaseStatus,
   GitStatus,
   Issue,
   MergeMethod,
@@ -14,12 +18,16 @@ import type {
   PullRequest,
   ResetMode,
   Review,
+  ReviewComment,
   ReviewEvent,
   StashEntry,
 } from './git';
 import type { DirTreeEntry } from './bookshelf';
+import type { FileReadTarget } from './fileTransfer';
+import type { GithubDeviceConfiguration, GithubDevicePoll, GithubDeviceStart } from './githubAuth';
 import type { FileEntry, TreeEntry, VaultInfo } from './vault';
 import type { CslItem, ZoteroCredStatus, ZoteroItem, ZoteroSyncResult } from './zotero';
+import type { ProjectCatalog, ProjectRecord, ProjectSnapshot, ProjectSnapshotTicket, StoredProjectSession } from './projects';
 
 /** 单条 IPC command 的形状：参数与返回值。 */
 export interface IpcCommandEntry {
@@ -33,14 +41,36 @@ export interface IpcCommandEntry {
  * 键名与 Rust `#[tauri::command]` 函数名（snake_case）一致。
  */
 export interface IpcCommands {
+  project_catalog_get: { args: undefined; result: ProjectCatalog };
+  project_register: { args: { id: string; root: string; name: string }; result: ProjectRecord };
+  project_update: { args: { id: string; name?: string; favorite?: boolean }; result: ProjectRecord };
+  project_relocate: { args: { id: string; root: string }; result: ProjectRecord };
+  project_remove: { args: { id: string }; result: ProjectCatalog };
+  project_activate: { args: { id: string | null }; result: ProjectCatalog };
+  project_import_cover: { args: { id: string; path: string }; result: ProjectRecord };
+  project_session_read: { args: { id: string | null }; result: StoredProjectSession };
+  project_session_begin: { args: { id: string | null; token: string; expectedRevision: number; keys: string[] }; result: ProjectSnapshotTicket };
+  project_session_commit: { args: { id: string | null; token: string; snapshot: ProjectSnapshot }; result: StoredProjectSession };
+  project_session_abort: { args: { id: string | null; token: string }; result: null };
+  project_restore_backup: { args: { id: string | null; kind: 'catalog' | 'session' }; result: null };
   open_vault: { args: { path: string }; result: VaultInfo };
   list_dir: { args: { root: string; rel: string }; result: TreeEntry[] };
   // 快速打开（Ctrl+P）vault 文件清单递归枚举（FILE-03）。
   list_files: { args: { root: string }; result: FileEntry[] };
   find_repo_root: { args: { path: string }; result: string | null };
   read_file: { args: { root: string; path: string }; result: string };
+  // 文件读取：Raw帧经Channel，JSON只承载小控制消息；ack/cancel共享本次requestId。
+  read_file_stream: { args: { requestId: string; target: FileReadTarget }; result: null };
+  ack_file_read: { args: { requestId: string; receivedBytes: number }; result: null };
+  cancel_file_read: { args: { requestId: string }; result: null };
   // 写侧 command（02-03）。均经 path_guard 校验落在 vault 根内；同名拒绝绝不覆盖（D-12）。
   write_file_atomic: { args: { root: string; path: string; content: string }; result: null };
+  /** 顶层 Uint8Array 走 SDK Raw inbound；metadata 与正文以有界帧头区分。 */
+  write_file_raw: { args: Uint8Array; result: null };
+  begin_file_write: { args: { metadata: import('./fileTransfer').FileWriteMetadata }; result: null };
+  append_file_write: { args: Uint8Array; result: null };
+  commit_file_write: { args: { requestId: string }; result: null };
+  abort_file_write: { args: { requestId: string }; result: null };
   // 草稿另存为：原生保存对话框给出的绝对路径（用户显式授权边界，不经 path_guard）。
   write_file_to_path: { args: { path: string; content: string }; result: null };
   // 文件导出二进制写（DOCX 等）：绝对路径 + 字节数组（Uint8Array→Vec<u8>），同 write_file_to_path 授权边界。
@@ -64,6 +94,7 @@ export interface IpcCommands {
     result: null;
   };
   create_file: { args: { root: string; path: string }; result: null };
+  create_text_file: { args: { root: string; path: string; content: string }; result: null };
   create_dir: { args: { root: string; path: string }; result: null };
   rename_path: { args: { root: string; from: string; to: string }; result: null };
   move_path: { args: { root: string; from: string; to: string }; result: null };
@@ -72,10 +103,11 @@ export interface IpcCommands {
   start_watch: { args: { root: string }; result: null };
   stop_watch: { args: undefined; result: null };
   // Phase 4 W1 FTS5 索引写侧（投递到 Rust 单写入队列；前端只读查询走 plugin-sql Database API，不登记于此）。
-  index_upsert_doc: { args: { path: string; content: string }; result: null };
-  index_remove_doc: { args: { path: string }; result: null };
-  index_rebuild: { args: { root: string }; result: null };
-  index_switch_vault: { args: { root: string }; result: null };
+  index_upsert_doc: { args: { root: string; sessionId: string; projectId?: string; path: string; content: string }; result: null };
+  index_refresh_file: { args: { root: string; sessionId: string; projectId?: string; path: string }; result: null };
+  index_remove_doc: { args: { root: string; sessionId: string; projectId?: string; path: string }; result: null };
+  index_rebuild: { args: { root: string; sessionId: string; projectId?: string }; result: import('./index').IndexLocation };
+  index_switch_vault: { args: { root: string; sessionId: string; projectId?: string; enabled: boolean }; result: import('./index').IndexLocation | null };
   // Phase 6 GIT-01：git 读命令（Rust spawn_blocking；仓库根 = VaultInfo.repoRoot）。
   git_status: { args: { repoRoot: string }; result: GitStatus };
   git_branch_list: { args: { repoRoot: string }; result: BranchInfo[] };
@@ -84,12 +116,13 @@ export interface IpcCommands {
     result: CommitInfo[];
   };
   git_diff: { args: { repoRoot: string; target: DiffTarget }; result: FileDiff[] };
+  git_compare_files: { args: { repoRoot: string; fromOid: string; toOid: string; skip: number; limit: number; focusPath: string | null }; result: import('./gitCompare').GitComparePage };
   git_refs: { args: { repoRoot: string }; result: GitRef[] };
   // Phase 6 W3 写命令。产生提交类（commit/merge/cherry-pick/revert）走 git CLI -S 签名；引用操作走 git2。
-  git_commit: { args: { repoRoot: string; message: string; paths: string[] }; result: GitOpResult };
-  git_merge: { args: { repoRoot: string; branch: string }; result: GitOpResult };
-  git_cherry_pick: { args: { repoRoot: string; oid: string }; result: GitOpResult };
-  git_revert: { args: { repoRoot: string; oid: string }; result: GitOpResult };
+  git_commit: { args: { repoRoot: string; message: string; paths: string[]; requestId?: string }; result: GitOpResult };
+  git_merge: { args: { repoRoot: string; branch: string; requestId?: string }; result: GitOpResult };
+  git_cherry_pick: { args: { repoRoot: string; oid: string; requestId?: string }; result: GitOpResult };
+  git_revert: { args: { repoRoot: string; oid: string; requestId?: string }; result: GitOpResult };
   git_checkout: { args: { repoRoot: string; target: string; force: boolean }; result: null };
   git_create_branch: {
     args: { repoRoot: string; name: string; targetOid: string | null; checkout: boolean };
@@ -106,32 +139,52 @@ export interface IpcCommands {
   };
   git_tag_delete: { args: { repoRoot: string; name: string }; result: null };
   git_stash_save: { args: { repoRoot: string; message: string }; result: null };
-  git_stash_pop: { args: { repoRoot: string; index: number }; result: null };
-  git_stash_drop: { args: { repoRoot: string; index: number }; result: null };
+  git_stash_pop: { args: { repoRoot: string; index: number; expectedOid?: string }; result: null };
+  git_stash_drop: { args: { repoRoot: string; index: number; expectedOid?: string }; result: null };
   git_stash_list: { args: { repoRoot: string }; result: StashEntry[] };
-  git_abort_op: { args: { repoRoot: string }; result: null };
+  git_abort_op: { args: { repoRoot: string; requestId?: string }; result: null };
+  git_cancel_operation: { args: { repoRoot: string; requestId: string }; result: boolean };
+  git_conflict_snapshot: { args: { repoRoot: string; path: string }; result: import('./gitConflict').ConflictSnapshot };
+  git_commit_files: { args: { repoRoot: string; commitOid: string; skip: number; limit: number; focusPath: string | null }; result: import('./gitCompare').GitComparePage };
+  git_rebase_status: { args: { repoRoot: string }; result: GitRebaseStatus };
+  git_rebase: { args: { repoRoot: string; requestId: string; action: GitRebaseAction }; result: GitRebaseResult };
+  git_cancel_rebase: { args: { repoRoot: string; requestId: string }; result: boolean };
   // Phase 6 W4 远程（SSH）。进度走 Channel（invokeStreamed 追加 channel 参数，args 不含 channel）。
-  git_fetch: { args: { repoRoot: string; remote: string }; result: null };
-  git_push: { args: { repoRoot: string; remote: string; branch: string }; result: null };
-  git_pull: { args: { repoRoot: string; remote: string; branch: string }; result: PullOutcome };
-  git_clone: { args: { url: string; dest: string }; result: string };
+  git_fetch: { args: { repoRoot: string; remote: string; options: GitRemoteOptions }; result: null };
+  git_push: { args: { repoRoot: string; remote: string; branch: string; options: GitRemoteOptions }; result: null };
+  git_pull: { args: { repoRoot: string; remote: string; branch: string; options: GitRemoteOptions }; result: PullOutcome };
+  git_clone: { args: { url: string; dest: string; options: GitRemoteOptions }; result: string };
+  git_clone_owned: { args: { url: string; dest: string; requestId: string; options: GitRemoteOptions }; result: string };
+  git_cancel_clone: { args: { requestId: string }; result: boolean };
   // 簇④ GitHub 登录（PAT 存 keyring）。
   git_login_github: { args: { token: string }; result: null };
   git_logout_github: { args: undefined; result: null };
   git_github_status: { args: undefined; result: boolean };
+  git_github_device_configuration: { args: undefined; result: GithubDeviceConfiguration };
+  git_github_device_start: { args: { requestId: string; clientId: string | null }; result: GithubDeviceStart };
+  git_github_device_poll: { args: { requestId: string }; result: GithubDevicePoll };
+  git_github_device_cancel: { args: { requestId: string }; result: boolean };
   // Phase 6 GIT-07 GitHub PR（REST API 走 Rust reqwest，token 留 keyring）。owner/repo 由 origin 远程解析。
   gh_pr_list: { args: { repoRoot: string }; result: PullRequest[] };
+  gh_issue_page: { args: { repoRoot: string; state: string; pageNumber: number }; result: import('./githubPage').GithubPage<Issue> };
+  gh_pr_page: { args: { repoRoot: string; pageNumber: number }; result: import('./githubPage').GithubPage<PullRequest> };
+  gh_comment_page: { args: { repoRoot: string; number: number; pageNumber: number }; result: import('./githubPage').GithubPage<Comment> };
+  gh_review_page: { args: { repoRoot: string; number: number; pageNumber: number }; result: import('./githubPage').GithubPage<Review> };
+  gh_pr_diff_page: { args: { repoRoot: string; number: number; pageNumber: number; expectedHead: string | null; expectedBase: string | null }; result: import('./githubPage').GithubPrDiffPage };
+  gh_pr_local_base: { args: { repoRoot: string; baseOid: string; headOid: string }; result: string };
   gh_pr_create: {
     args: { repoRoot: string; title: string; body: string; base: string; head: string };
     result: PullRequest;
   };
   gh_pr_merge: {
-    args: { repoRoot: string; number: number; method: MergeMethod };
+    args: { repoRoot: string; number: number; method: MergeMethod; expectedHead: string | null };
     result: MergeResult;
   };
   // Phase 11 GH-02/03：Issue / 评论 / PR diff / PR review（全走 Rust reqwest，token 留 keyring）。
   gh_pr_diff: { args: { repoRoot: string; number: number }; result: FileDiff[] };
   gh_pr_reviews: { args: { repoRoot: string; number: number }; result: Review[] };
+  gh_pr_review_comments: { args: { repoRoot: string; number: number }; result: ReviewComment[] };
+  gh_pr_reply: { args: { repoRoot: string; number: number; commentId: number; body: string }; result: ReviewComment };
   gh_pr_review_create: {
     args: { repoRoot: string; number: number; event: ReviewEvent; body: string };
     result: Review;
@@ -145,7 +198,7 @@ export interface IpcCommands {
   git_login_github_gh: { args: undefined; result: null };
   // Phase 12 DIFF-03：prose 三向合并冲突读取/解决。
   git_read_conflict: { args: { repoRoot: string; path: string }; result: string };
-  git_resolve_conflict: { args: { repoRoot: string; path: string; content: string }; result: null };
+  git_resolve_conflict: { args: { repoRoot: string; path: string; content: string; expectedContent?: string }; result: null };
   // Phase 8 ZOT-01：Zotero Better BibTeX CAYW（Rust reqwest 代理 localhost:23119）。
   zotero_cayw: { args: undefined; result: string };
   // Phase 8 ZOT-03：Zotero 库全部 citekey（Citation Panel 未解析判定）。

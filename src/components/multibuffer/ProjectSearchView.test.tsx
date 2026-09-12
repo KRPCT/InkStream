@@ -73,7 +73,7 @@ beforeEach(() => {
   act(() => useVaultStore.setState({ vault: { root: 'D:/v', repoRoot: null, name: 'v' }, files: [] }));
   act(() => useWorkbenchStore.setState({ centralView: 'multibuffer' }));
   act(() =>
-    useProjectSearchStore.setState({ query: '', results: [], totalMatches: 0, truncated: false, status: 'idle', run }),
+    useProjectSearchStore.setState({ query: '', results: [], totalMatches: 0, truncated: false, status: 'idle', scope: useVaultStore.getState().vault, error: null, run }),
   );
 });
 
@@ -124,10 +124,10 @@ describe('ProjectSearchView', () => {
     expect(screen.getByText(/先打开一个文件夹/)).toBeInTheDocument();
   });
 
-  it('短词：提示至少 3 字', () => {
-    setStore({ query: 'ab', status: 'done', results: [] });
+  it('双字中文可查询，空结果按实际结果显示', () => {
+    setStore({ query: '研究', status: 'done', results: [] });
     render(<ProjectSearchView />);
-    expect(screen.getByText(/至少输入 3 个字符/)).toBeInTheDocument();
+    expect(screen.getByText('未找到「研究」。')).toBeInTheDocument();
   });
 
   it('无结果：提示未找到', () => {
@@ -198,7 +198,7 @@ describe('ProjectSearchView', () => {
     fireEvent.click(screen.getAllByLabelText('行内编辑此处')[0]);
     fireEvent.click(screen.getByText('mock-保存'));
     await waitFor(() =>
-      expect(commitExcerptEdit).toHaveBeenCalledWith('notes/a.md', 0, '前foo后', '前foo后!'),
+      expect(commitExcerptEdit).toHaveBeenCalledWith('notes/a.md', 0, '前foo后', '前foo后!', useVaultStore.getState().vault),
     );
     await waitFor(() => expect(run).toHaveBeenCalledWith('foo'));
     expect(screen.queryByTestId('excerpt-editor')).not.toBeInTheDocument(); // 成功后关闭

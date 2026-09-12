@@ -40,6 +40,8 @@ function snapshot(): PersistedSettings {
     exportBrandingText,
     bookshelfEnabled,
     terminalEnabled,
+    reducedMotion,
+    reducedTransparency,
   } = useSettingsStore.getState();
   const { mode, layouts } = useWorkbenchStore.getState();
   return validateSettings({
@@ -60,6 +62,8 @@ function snapshot(): PersistedSettings {
     exportBrandingText,
     bookshelfEnabled,
     terminalEnabled,
+    reducedMotion,
+    reducedTransparency,
   });
 }
 
@@ -87,6 +91,8 @@ function apply(s: PersistedSettings): void {
     exportBrandingText: s.exportBrandingText,
     bookshelfEnabled: s.bookshelfEnabled,
     terminalEnabled: s.terminalEnabled,
+    reducedMotion: s.reducedMotion,
+    reducedTransparency: s.reducedTransparency,
   });
   useSettingsStore.getState().setEditorFontSize(s.editorFontSize);
   // 界面缩放经 setter 重放到 webview（缩放是会话态，不跨重载，须启动时重放；同字体落 CSS 变量的纪律）。

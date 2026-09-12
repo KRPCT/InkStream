@@ -29,8 +29,10 @@ function htmlToText(html: string): string {
 export async function loadReadingHtml(
   format: Exclude<ReadingFormat, 'pdf'>,
   path: string,
+  options?: { signal?: AbortSignal },
 ): Promise<{ html: string; text: string }> {
-  const bytes = await readFileBytes(path);
+  const bytes = await readFileBytes(path, options);
+  options?.signal?.throwIfAborted();
   if (format === 'txt') {
     const text = new TextDecoder('utf-8').decode(bytes);
     return { html: txtToHtml(text), text };

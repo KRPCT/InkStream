@@ -31,6 +31,9 @@ body { margin: 0; background: #ffffff; color: #1f2328;
 .ink-export img { max-width: 100%; }
 .ink-export hr { border: none; border-top: 1px solid #d0d7de; margin: 2em 0; }
 .ink-export .wikilink { color: #8250df; }
+.ink-export .equation { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 1rem; margin: 1em 0; }
+.ink-export .equation-number { white-space: nowrap; color: #57606a; font-variant-numeric: tabular-nums; }
+.ink-export .equation-reference-error { color: #b42318; }
 .ink-export-footer { max-width: 46rem; margin: 2rem auto 3rem; padding-top: 1rem;
   border-top: 1px solid #d0d7de; color: #8c959f; font-size: 0.85em; text-align: center; }
 @media print { .ink-export { padding: 0; max-width: none; } @page { margin: 2cm; } }

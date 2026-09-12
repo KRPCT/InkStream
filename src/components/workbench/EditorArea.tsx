@@ -67,7 +67,7 @@ export default function EditorArea() {
   };
 
   return (
-    <div className="flex h-full flex-col bg-[var(--background-primary)]">
+    <div className="writer-surface flex h-full flex-col bg-[var(--background-primary)]">
       {/* 垂直结构：[Tab 栏 36px] → [外部变更提示条] → [richtext 工具条] → [CM 内容区]。
           Tab 栏只看 hasTabs：草稿（draft://）无 vault 也要有 tab 栏。 */}
       {hasTabs ? <EditorTabs /> : null}

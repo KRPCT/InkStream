@@ -31,11 +31,14 @@ export default function ProjectSearchView() {
   const hasVault = useVaultStore((s) => s.vault !== null);
   const run = useProjectSearchStore((s) => s.run);
   const clear = useProjectSearchStore((s) => s.clear);
+  const cancel = useProjectSearchStore((s) => s.cancel);
   const query = useProjectSearchStore((s) => s.query);
   const results = useProjectSearchStore((s) => s.results);
   const totalMatches = useProjectSearchStore((s) => s.totalMatches);
   const truncated = useProjectSearchStore((s) => s.truncated);
   const status = useProjectSearchStore((s) => s.status);
+  const error = useProjectSearchStore((s) => s.error);
+  const scope = useProjectSearchStore((s) => s.scope);
   const [input, setInput] = useState(query);
   const [replaceInput, setReplaceInput] = useState('');
   const [replacing, setReplacing] = useState(false);
@@ -46,6 +49,7 @@ export default function ProjectSearchView() {
   useEffect(() => {
     inputRef.current?.focus();
   }, []);
+  useEffect(() => () => cancel(), [cancel]);
 
   // 结果集变化（重新搜索 / replace-all 刷新）即收起任何开着的行内编辑器：摘录对象会重建、偏移会变，
   // 旧 editing{path,from} 可能错绑到同偏移的另一摘录或随 key 变化静默卸载——一律收起，杜绝错绑/错写。
@@ -56,7 +60,7 @@ export default function ProjectSearchView() {
   // 摘录行内编辑保存：经乐观重锚回写源文件（commitExcerptEdit）；成功后刷新结果，冲突/已变化/失败时
   // 保留编辑器并提示（不丢用户未保存文本）。
   const onSaveExcerpt = async (path: string, ex: ExcerptModel, newText: string): Promise<void> => {
-    const result = await commitExcerptEdit(path, ex.sourceFrom, ex.text, newText);
+    const result = await commitExcerptEdit(path, ex.sourceFrom, ex.text, newText, scope);
     if (result === 'applied' || result === 'unchanged') {
       setEditing(null);
       if (result === 'applied') await run(query); // 刷新结果（编辑后命中/摘录已变）。
@@ -83,7 +87,9 @@ export default function ProjectSearchView() {
         confirmLabel: '全部替换',
       });
       if (!ok) return;
+      if (scope !== useVaultStore.getState().vault) { showToast('warning', '工作区已变化，请重新搜索后再替换。'); return; }
       const report = await replaceAllInProject(query, replaceInput);
+      if (report.error) { showToast('warning', report.error); return; }
       await run(query); // 刷新结果（替换后命中应消失，空结果即成功反馈）。
       // toast 仅 error/warning 两种：干净成功不打扰（结果刷新即反馈）；有跳过/失败才告警。
       if (report.skipped.length > 0 || report.failed.length > 0) {
@@ -158,7 +164,7 @@ export default function ProjectSearchView() {
           <button
             type="button"
             onClick={() => void onReplaceAll()}
-            disabled={results.length === 0 || replacing || editing !== null}
+            disabled={status !== 'done' || results.length === 0 || replacing || editing !== null}
             title={editing !== null ? '请先完成或取消行内编辑' : undefined}
             className="flex-none rounded-[4px] border border-[var(--background-modifier-border)] px-2 py-0.5 text-[12px] text-[var(--text-muted)] hover:bg-[var(--background-modifier-hover)] hover:text-[var(--text-normal)] disabled:cursor-not-allowed disabled:opacity-50"
           >
@@ -166,6 +172,7 @@ export default function ProjectSearchView() {
           </button>
         </div>
       </header>
+      {error && <div role="alert" className="px-3 py-2 text-[var(--color-error)]">{error}<button type="button" className="ml-3 underline" onClick={() => void run(input)}>重试</button></div>}
       <div className="min-h-0 flex-1 overflow-auto py-1 text-[13px]">
         <Body
           hasVault={hasVault}
@@ -191,7 +198,7 @@ export default function ProjectSearchView() {
 interface BodyProps {
   hasVault: boolean;
   query: string;
-  status: 'idle' | 'searching' | 'done';
+  status: 'idle' | 'searching' | 'done' | 'error';
   results: ReturnType<typeof useProjectSearchStore.getState>['results'];
   truncated: boolean;
   editing: EditTarget | null;
@@ -204,9 +211,10 @@ interface BodyProps {
 
 /** 结果体：空态分级（无 vault / 短词 / 搜索中 / 无结果）或文件分组列表。 */
 function Body({ hasVault, query, status, results, editing, onOpen, onEdit, onSaveEdit, onCancelEdit }: BodyProps) {
+  if (status === 'error') return null;
   if (!hasVault) return <Hint text="请先打开一个文件夹作为工作区，再全库搜索。" />;
-  if (query.length < 3) {
-    return <Hint text={query === '' ? '输入关键字，在工作区 .md 文件中搜索。' : '全库搜索请至少输入 3 个字符。'} />;
+  if (!query) {
+    return <Hint text="输入关键字，在工作区 Markdown 文件中搜索。" />;
   }
   if (status === 'searching' && results.length === 0) return <Hint text="搜索中…" />;
   if (results.length === 0) return <Hint text={`未找到「${query}」。`} />;
@@ -249,7 +257,7 @@ function Body({ hasVault, query, status, results, editing, onOpen, onEdit, onSav
                   <div className="group flex min-w-0 flex-1 items-start gap-1">
                     <button
                       type="button"
-                      onClick={() => onOpen(fm.path, ex.matches[0]?.from ?? ex.sourceFrom)}
+                      onClick={() => onOpen(fm.path, ex.matches[0]?.editorFrom ?? ex.matches[0]?.from ?? ex.sourceFrom)}
                       className="min-w-0 flex-1 rounded-[4px] px-1 py-0.5 text-left hover:bg-[var(--background-modifier-hover)]"
                     >
                       <code className="whitespace-pre-wrap break-words font-mono text-[12px] text-[var(--text-muted)]">

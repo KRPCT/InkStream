@@ -2,7 +2,9 @@ import { useEffect, useState } from 'react';
 import { rankCommands } from '../../commands/match';
 import * as mru from '../../commands/mru';
 import { execute, getAll, subscribe } from '../../commands/registry';
+import { indexRebuild } from '../../ipc/indexService';
 import { useContentSearchStore } from '../../stores/useContentSearchStore';
+import { useIndexStore } from '../../stores/useIndexStore';
 import { useOutlineStore } from '../../stores/useOutlineStore';
 import { usePaletteStore } from '../../stores/usePaletteStore';
 import { usePandocStore } from '../../stores/usePandocStore';
@@ -58,10 +60,12 @@ function routeProvider(query: string): PaletteProvider | undefined {
 }
 
 /** `#` 全文搜索空态文案：依次判简易模式 / 无 vault / 短词（trigram <3）/ 搜索中 / 无结果。 */
-function contentPlaceholder(rawTerm: string, loading: boolean, count: number): string | null {
+function contentPlaceholder(rawTerm: string, loading: boolean, count: number, error: string | null): string | null {
   if (useSettingsStore.getState().simpleMode) return '简易模式未启用全文索引';
   if (!useVaultStore.getState().vault) return '请先打开一个文件夹作为工作区';
-  if (rawTerm.trim().length < 3) return '全文搜索请至少输入 3 个字符';
+  if (!rawTerm.trim()) return '输入关键字进行全文搜索';
+  if (useIndexStore.getState().status === 'preparing') return '正在准备全文索引…';
+  if (error) return error;
   if (loading && count === 0) return '搜索中…';
   if (count === 0) return '没有匹配的内容';
   return null;
@@ -89,6 +93,10 @@ function PalettePanel() {
   const closePalette = usePaletteStore((s) => s.closePalette);
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [, setVersion] = useState(0);
+  const indexRevision = useIndexStore((s) => s.revision);
+  const indexScope = useIndexStore((s) => s.scope);
+  const indexStatus = useIndexStore((s) => s.status);
+  const indexSession = indexScope?.sessionId;
 
   // 注册表变更时刷新列表（菜单/命令在面板开启期间增删的边界情形）
   useEffect(() => subscribe(() => setVersion((v) => v + 1)), []);
@@ -105,9 +113,10 @@ function PalettePanel() {
       useContentSearchStore.getState().clear();
       return;
     }
+    useContentSearchStore.getState().clear();
     const handle = setTimeout(() => void useContentSearchStore.getState().run(contentTerm), 160);
     return () => clearTimeout(handle);
-  }, [contentTerm]);
+  }, [contentTerm, indexRevision, indexSession]);
 
   const provider = routeProvider(query);
   const items = provider ? provider.getItems(query.slice(provider.prefix.length)) : [];
@@ -116,7 +125,7 @@ function PalettePanel() {
     provider === undefined
       ? HINT_NO_PREFIX
       : provider === contentProvider
-        ? contentPlaceholder(query.slice(1), useContentSearchStore.getState().loading, items.length)
+        ? contentPlaceholder(query.slice(1), useContentSearchStore.getState().loading, items.length, useContentSearchStore.getState().error)
         : items.length === 0
           ? resultPlaceholder(provider)
           : null;
@@ -166,6 +175,16 @@ function PalettePanel() {
           placeholder={placeholder}
           onSelect={runItem}
         />
+        {provider === contentProvider && useContentSearchStore.getState().error && indexScope ? (
+          <button
+            type="button"
+            disabled={indexStatus === 'preparing'}
+            className="mx-3 mb-3 text-[13px] text-[var(--text-muted)] underline disabled:opacity-50"
+            onClick={() => void indexRebuild(indexScope.root).catch(() => {})}
+          >
+            重建索引并重试
+          </button>
+        ) : null}
       </div>
     </div>
   );

@@ -1,6 +1,8 @@
 import type { CSSProperties } from 'react';
 import { useHelpStore } from '../../stores/useHelpStore';
 import { ONBOARDING_STEP_COUNT, useOnboardingStore } from '../../stores/useOnboardingStore';
+import { useProjectStore } from '../../stores/useProjectStore';
+import { useWhatsNewStore } from '../../stores/useWhatsNewStore';
 
 /**
  * 交互式首次引导（簇③）：spotlight 高亮各入口 + 卡片说明，分步走查。文案非拟人化。
@@ -47,7 +49,11 @@ export default function OnboardingOverlay() {
   const next = useOnboardingStore((s) => s.next);
   const prev = useOnboardingStore((s) => s.prev);
   const finish = useOnboardingStore((s) => s.finish);
-  if (!active) return null;
+  const announcementVisible = useWhatsNewStore((s) => s.open && s.entry !== null);
+  const projectBlocked = useProjectStore((s) => s.archiveOpen || s.phase !== 'idle' || !s.ready);
+  // Startup and recovery own focus until the workspace is ready. Keep the
+  // pending step so both first-run and manually opened guides can resume.
+  if (!active || announcementVisible || projectBlocked) return null;
 
   const cur = STEPS[step] ?? STEPS[0];
   const rect = targetRect(cur.selector);

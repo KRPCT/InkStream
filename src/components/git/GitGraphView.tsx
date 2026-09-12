@@ -21,15 +21,19 @@ import {
 import { useGitGraphStore } from '../../stores/useGitGraphStore';
 import { useGitStore } from '../../stores/useGitStore';
 import { useWorkbenchStore } from '../../stores/useWorkbenchStore';
+import { useVaultStore } from '../../stores/useVaultStore';
 import BranchFilter from './BranchFilter';
 import BranchManager from './BranchManager';
 import IssuePanel from './IssuePanel';
 import PrDetailPanel from './PrDetailPanel';
 import PullRequestPanel from './PullRequestPanel';
 import RepoSettings from './RepoSettings';
+import RebaseControls from './RebaseControls';
+import StashPanel from './StashPanel';
 import CommitGraphList from './graph/CommitGraphList';
 import CommitDetailPanel from './CommitDetailPanel';
 import FileDiffPanel from './FileDiffPanel';
+import BranchCompareView from './BranchCompareView';
 import '../../styles/git-graph.css';
 
 /**
@@ -39,6 +43,8 @@ import '../../styles/git-graph.css';
  */
 export default function GitGraphView() {
   const repoRoot = useGitStore((s) => s.repoRoot);
+  const vault = useVaultStore((s) => s.vault);
+  const comparisonStart = useGitGraphStore((s) => s.comparisonStart);
   const loading = useGitGraphStore((s) => s.loading);
   const commitCount = useGitGraphStore((s) => s.commits.length);
   const remoteBusy = useGitGraphStore((s) => s.remoteBusy);
@@ -55,17 +61,18 @@ export default function GitGraphView() {
   // 进入 Git Graph 视图即全量刷新（状态栏 + 图谱），同时捕获 app 外（终端等）改动。
   useEffect(() => {
     if (repoRoot) void refreshGitAll(repoRoot);
-  }, [repoRoot]);
+  }, [repoRoot, vault]);
 
   return (
     <div className="flex h-full flex-col bg-[var(--background-primary)]">
+      <RebaseControls />
       <div className="flex h-8 shrink-0 items-center justify-between border-b border-[var(--background-modifier-border)] px-2">
         <div className="flex items-center gap-3">
           <span className="text-[13px] font-medium text-[var(--text-normal)]">
             Git Graph · {remoteBusy ?? (loading ? '加载中…' : `${commitCount} 提交`)}
           </span>
           <div className="flex overflow-hidden rounded-[4px] border border-[var(--background-modifier-border)]">
-            {(['graph', 'branches', 'pr', 'issues'] as const).map((m) => (
+            {(['graph', 'branches', 'compare', 'stashes', 'pr', 'issues'] as const).map((m) => (
               <button
                 key={m}
                 type="button"
@@ -76,7 +83,7 @@ export default function GitGraphView() {
                     : 'text-[var(--text-muted)] hover:bg-[var(--background-modifier-hover)]'
                 }`}
               >
-                {m === 'graph' ? '图谱' : m === 'branches' ? '分支' : m === 'pr' ? 'PR' : 'Issues'}
+                {m === 'graph' ? '图谱' : m === 'branches' ? '分支' : m === 'compare' ? '分支比较' : m === 'stashes' ? '暂存记录' : m === 'pr' ? 'PR' : 'Issues'}
               </button>
             ))}
           </div>
@@ -162,10 +169,12 @@ export default function GitGraphView() {
           </button>
         </div>
       </div>
-      <Group orientation="horizontal" className="min-h-0 flex-1">
+      {leftMode === 'compare' ? <BranchCompareView key={`${repoRoot}:${comparisonStart?.comparison.from.oid ?? ''}:${comparisonStart?.comparison.to.oid ?? ''}:${comparisonStart?.path ?? ''}`} initial={comparisonStart} /> : <Group orientation="horizontal" className="min-h-0 flex-1">
         <Panel id="graph-list" minSize={300} defaultSize={560} className="h-full">
           {leftMode === 'branches' ? (
             <BranchManager />
+          ) : leftMode === 'stashes' ? (
+            <StashPanel />
           ) : leftMode === 'pr' ? (
             <PullRequestPanel />
           ) : leftMode === 'issues' ? (
@@ -182,7 +191,7 @@ export default function GitGraphView() {
         <Panel id="graph-diff" minSize={300} className="h-full">
           <FileDiffPanel />
         </Panel>
-      </Group>
+      </Group>}
     </div>
   );
 }

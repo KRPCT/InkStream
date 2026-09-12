@@ -1,5 +1,8 @@
 import type { DirTreeEntry } from '../types/bookshelf';
+import type { FileReadOptions } from '../types/fileTransfer';
 import { invoke } from './invoke';
+import { readBytesStream, readTextStream } from './fileStream';
+import { writeBytesRaw, writeTextRaw } from './fileWrite';
 
 /**
  * 文件读写 command 前端通道。全项目唯一接触 files 相关 Rust command 的文件之一
@@ -9,11 +12,10 @@ import { invoke } from './invoke';
 /**
  * 读取 vault 内某文件为 UTF-8 文本（root 为 vault 根绝对路径，path 相对 root）。
  *
- * 红线：负载 > 1MB（1,048,576 字节）应改走 invokeStreamed（Channel 流式，见 invoke.ts）。
- * 本阶段以普通 invoke 实现，Channel 流式留待 02-03 出现真实大文件时落地。
+ * 使用有界Raw分块，UTF-8/长度/顺序全部验证完成才返回；取消不会返回部分正文。
  */
-export function readFile(root: string, path: string): Promise<string> {
-  return invoke('read_file', { root, path });
+export function readFile(root: string, path: string, options?: FileReadOptions): Promise<string> {
+  return readTextStream({ kind: 'text', root, path }, options);
 }
 
 /**
@@ -21,7 +23,7 @@ export function readFile(root: string, path: string): Promise<string> {
  * 自动保存防抖落盘与 Ctrl+S 立即落盘均经此。
  */
 export function writeFileAtomic(root: string, path: string, content: string): Promise<null> {
-  return invoke('write_file_atomic', { root, path, content });
+  return writeTextRaw({ kind: 'vault', root, path }, content);
 }
 
 /**
@@ -29,31 +31,31 @@ export function writeFileAtomic(root: string, path: string, content: string): Pr
  * path 来自原生保存对话框，属用户显式授权边界，Rust 侧不经 vault path_guard（无 root 语义）。
  */
 export function writeFileToPath(path: string, content: string): Promise<null> {
-  return invoke('write_file_to_path', { path, content });
+  return writeTextRaw({ kind: 'absolute', path }, content);
 }
 
 /**
  * 导出二进制文件到绝对路径（DOCX 等）：path 来自原生保存对话框（用户显式授权边界）。
- * content 为字节，序列化为 number[] 过 IPC（Tauri → Rust Vec<u8>）。文本导出（HTML）仍走 writeFileToPath。
+ * content 保留视图范围并作为 Raw 正文传输。文本导出（HTML）仍走 writeFileToPath。
  */
 export function writeBytesToPath(path: string, content: Uint8Array): Promise<null> {
-  return invoke('write_file_bytes', { path, content: Array.from(content) });
+  return writeBytesRaw({ kind: 'absolute', path }, content);
 }
 
 /**
  * 阅读模式：读绝对路径文件为字节（DOCX/EPUB/PDF 二进制）。readFile 仅 UTF-8 文本，二进制经其会损坏。
- * 大文件（>1MB）一次性过 IPC 有主线程成本（红线见本文件头）；阅读期一次读入可接受，超大文档后续可下沉 Channel。
+ * 原始字节按块传输并组装；原生端仍限制阅读格式与100MiB上限。
  */
-export async function readFileBytes(path: string): Promise<Uint8Array> {
-  return new Uint8Array(await invoke('read_file_bytes', { path }));
+export function readFileBytes(path: string, options?: FileReadOptions): Promise<Uint8Array> {
+  return readBytesStream({ kind: 'reading', path }, options);
 }
 
 /**
  * 导出内嵌：读绝对路径图片为字节（→ data URI 内嵌进 HTML/PDF/DOCX 导出产物）。
  * 调用前须经 resolveVaultImage 判定路径在 vault 内（承 ImageWidget 安全边界）；Rust 侧再以图片扩展名白名单兜底。
  */
-export async function readImageBytes(path: string): Promise<Uint8Array> {
-  return new Uint8Array(await invoke('read_image_bytes', { path }));
+export function readImageBytes(path: string, options?: FileReadOptions): Promise<Uint8Array> {
+  return readBytesStream({ kind: 'image', path }, options);
 }
 
 /** 新建空文件：同名已存在则 Rust 侧返回错误，绝不覆盖（D-12）。 */

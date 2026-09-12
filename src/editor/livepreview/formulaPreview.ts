@@ -1,6 +1,9 @@
 import type { EditorView } from '@codemirror/view';
 import { ensureKatex, getKatex, katexReady } from './mathLoader';
 import { ensureMathjax, getMathjaxConvert, mathjaxReady } from './mathjaxLoader';
+import type { FormulaEngine } from './formulaBlocks';
+import { isTypstDocumentManaged } from './typst/typstDocumentPresence';
+import { typstSvgElement } from './typst/typstSvg';
 import {
   ERROR_SENTINEL,
   ensureTypst,
@@ -15,7 +18,7 @@ import {
  * 重建→复用分支→再调本函数→缓存命中出图）。未就绪一律占位 + 触发懒加载。XSS：KaTeX render / MathJax convert 产
  * 真 DOM 直接 append；typst SVG 走 DOMParser+importNode，绝不裸 innerHTML。
  */
-export type FormulaEngine = 'math' | 'latex' | 'typst';
+export type { FormulaEngine } from './formulaBlocks';
 
 /** mount 内放纯文本占位（清旧 + 单 span，永不硬编色经 class）。 */
 function setText(mount: HTMLElement, cls: string, text: string): void {
@@ -75,15 +78,13 @@ export function renderPreview(
   }
 
   // typst（异步）
-  if (!typstReady()) {
-    setText(mount, 'cm-ink-formula-ph', '加载中…');
-    ensureTypst(view);
-    return;
-  }
   const svg = getCachedSvg(source);
   if (svg === null) {
-    setText(mount, 'cm-ink-formula-ph', '编译中…');
-    requestCompile(view, `preview-${blockFrom}`, source);
+    setText(mount, 'cm-ink-formula-ph', typstReady() ? '编译中…' : '加载中…');
+    if (!isTypstDocumentManaged(view)) {
+      if (!typstReady()) ensureTypst(view);
+      else void requestCompile(view, `preview-${blockFrom}`, source);
+    }
     return;
   }
   if (svg.startsWith(ERROR_SENTINEL)) {
@@ -91,11 +92,11 @@ export function renderPreview(
     return;
   }
   mount.replaceChildren();
-  const el = new DOMParser().parseFromString(svg, 'text/html').querySelector('svg');
+  const el = typstSvgElement(svg);
   if (el) {
     const holder = document.createElement('div');
     holder.className = 'cm-ink-formula-typst-paper'; // typst 黑字白纸兜底
-    holder.appendChild(document.importNode(el, true));
+    holder.appendChild(el);
     mount.appendChild(holder);
   } else {
     setText(mount, 'cm-ink-formula-err', 'typst 预览解析失败');

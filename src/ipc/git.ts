@@ -1,4 +1,5 @@
 import { invoke, invokeStreamed } from './invoke';
+import { gitRemoteOptions } from './gitRemoteOptions';
 import type {
   BranchInfo,
   Comment,
@@ -8,6 +9,9 @@ import type {
   GitOpResult,
   GitProgress,
   GitRef,
+  GitRebaseAction,
+  GitRebaseResult,
+  GitRebaseStatus,
   GitStatus,
   Issue,
   MergeMethod,
@@ -16,6 +20,7 @@ import type {
   PullRequest,
   ResetMode,
   Review,
+  ReviewComment,
   ReviewEvent,
   StashEntry,
 } from '../types/git';
@@ -53,23 +58,23 @@ export function gitRefs(repoRoot: string): Promise<GitRef[]> {
 // ── 写命令（W3）。产生提交类走 git CLI -S 签名（保 Verified）；引用操作走 git2 ──────────
 
 /** 暂存 + 签名提交（paths 空 = 全部改动）。 */
-export function gitCommit(repoRoot: string, message: string, paths: string[] = []): Promise<GitOpResult> {
-  return invoke('git_commit', { repoRoot, message, paths });
+export function gitCommit(repoRoot: string, message: string, paths: string[] = [], requestId?: string): Promise<GitOpResult> {
+  return invoke('git_commit', { repoRoot, message, paths, ...(requestId ? { requestId } : {}) });
 }
 
 /** 合并分支到当前分支（--no-ff -S）。 */
-export function gitMerge(repoRoot: string, branch: string): Promise<GitOpResult> {
-  return invoke('git_merge', { repoRoot, branch });
+export function gitMerge(repoRoot: string, branch: string, requestId?: string): Promise<GitOpResult> {
+  return invoke('git_merge', { repoRoot, branch, ...(requestId ? { requestId } : {}) });
 }
 
 /** cherry-pick 一个提交（-S）。 */
-export function gitCherryPick(repoRoot: string, oid: string): Promise<GitOpResult> {
-  return invoke('git_cherry_pick', { repoRoot, oid });
+export function gitCherryPick(repoRoot: string, oid: string, requestId?: string): Promise<GitOpResult> {
+  return invoke('git_cherry_pick', { repoRoot, oid, ...(requestId ? { requestId } : {}) });
 }
 
 /** revert 一个提交（-S）。 */
-export function gitRevert(repoRoot: string, oid: string): Promise<GitOpResult> {
-  return invoke('git_revert', { repoRoot, oid });
+export function gitRevert(repoRoot: string, oid: string, requestId?: string): Promise<GitOpResult> {
+  return invoke('git_revert', { repoRoot, oid, ...(requestId ? { requestId } : {}) });
 }
 
 /** checkout 分支/提交（force=丢弃冲突改动，须二次确认）。 */
@@ -123,13 +128,13 @@ export function gitStashSave(repoRoot: string, message: string): Promise<null> {
 }
 
 /** 恢复并删除指定 stash。 */
-export function gitStashPop(repoRoot: string, index: number): Promise<null> {
-  return invoke('git_stash_pop', { repoRoot, index });
+export function gitStashPop(repoRoot: string, index: number, expectedOid?: string): Promise<null> {
+  return invoke('git_stash_pop', { repoRoot, index, expectedOid });
 }
 
 /** 删除指定 stash（不恢复）。 */
-export function gitStashDrop(repoRoot: string, index: number): Promise<null> {
-  return invoke('git_stash_drop', { repoRoot, index });
+export function gitStashDrop(repoRoot: string, index: number, expectedOid?: string): Promise<null> {
+  return invoke('git_stash_drop', { repoRoot, index, expectedOid });
 }
 
 /** 列出全部 stash。 */
@@ -138,48 +143,69 @@ export function gitStashList(repoRoot: string): Promise<StashEntry[]> {
 }
 
 /** 中止进行中的 merge/cherry-pick/revert，还原到操作前（冲突卡死时的安全出口）。 */
-export function gitAbortOp(repoRoot: string): Promise<null> {
-  return invoke('git_abort_op', { repoRoot });
+export function gitAbortOp(repoRoot: string, requestId?: string): Promise<null> {
+  return invoke('git_abort_op', { repoRoot, ...(requestId ? { requestId } : {}) });
+}
+
+export function gitCancelOperation(repoRoot: string, requestId: string): Promise<boolean> {
+  return invoke('git_cancel_operation', { repoRoot, requestId });
+}
+
+export function gitRebaseStatus(repoRoot: string): Promise<GitRebaseStatus> {
+  return invoke('git_rebase_status', { repoRoot });
+}
+
+export function gitRebase(repoRoot: string, requestId: string, action: GitRebaseAction): Promise<GitRebaseResult> {
+  return invoke('git_rebase', { repoRoot, requestId, action });
+}
+
+export function gitCancelRebase(repoRoot: string, requestId: string): Promise<boolean> {
+  return invoke('git_cancel_rebase', { repoRoot, requestId });
 }
 
 // ── 远程操作（W4，SSH）。进度走 Channel（invokeStreamed 自动塞 channel 参数）──────────────
 
-/** fetch 远程（默认 refspec 更新 refs/remotes/<remote>/*）。 */
-export function gitFetch(
+/** 命名远程按原 refspec 获取；自定义地址按 Git 显式 URL 语义获取到 FETCH_HEAD。 */
+export async function gitFetch(
   repoRoot: string,
   remote: string,
   onProgress: (p: GitProgress) => void,
 ): Promise<null> {
-  return invokeStreamed('git_fetch', { repoRoot, remote }, onProgress);
+  return invokeStreamed('git_fetch', { repoRoot, remote, options: gitRemoteOptions() }, onProgress);
 }
 
 /** push 本地分支到远程同名分支。 */
-export function gitPush(
+export async function gitPush(
   repoRoot: string,
   remote: string,
   branch: string,
   onProgress: (p: GitProgress) => void,
 ): Promise<null> {
-  return invokeStreamed('git_push', { repoRoot, remote, branch }, onProgress);
+  return invokeStreamed('git_push', { repoRoot, remote, branch, options: gitRemoteOptions() }, onProgress);
 }
 
-/** pull = fetch + merge_analysis（up-to-date/fast-forward 自动；分叉返回 diverged）。 */
-export function gitPull(
+/** pull = fetch 选定目标 + ff-only merge（已最新/快进自动；分叉返回 diverged）。 */
+export async function gitPull(
   repoRoot: string,
   remote: string,
   branch: string,
   onProgress: (p: GitProgress) => void,
 ): Promise<PullOutcome> {
-  return invokeStreamed('git_pull', { repoRoot, remote, branch }, onProgress);
+  return invokeStreamed('git_pull', { repoRoot, remote, branch, options: gitRemoteOptions() }, onProgress);
 }
 
 /** clone 到 dest 目录，返回工作区路径。 */
-export function gitClone(
+export async function gitClone(
   url: string,
   dest: string,
   onProgress: (p: GitProgress) => void,
+  requestId = crypto.randomUUID(),
 ): Promise<string> {
-  return invokeStreamed('git_clone', { url, dest }, onProgress);
+  return invokeStreamed('git_clone_owned', { url, dest, requestId, options: gitRemoteOptions() }, onProgress);
+}
+
+export function gitCancelClone(requestId: string): Promise<boolean> {
+  return invoke('git_cancel_clone', { requestId });
 }
 
 // ── GitHub 登录（簇④，Personal Access Token 存 OS 凭据库）──────────────────────
@@ -222,8 +248,9 @@ export function ghPrMerge(
   repoRoot: string,
   prNumber: number,
   method: MergeMethod,
+  expectedHead: string | null = null,
 ): Promise<MergeResult> {
-  return invoke('gh_pr_merge', { repoRoot, number: prNumber, method });
+  return invoke('gh_pr_merge', { repoRoot, number: prNumber, method, expectedHead });
 }
 
 // ── GitHub Issue / 评论 / PR diff / review（Phase 11 GH-02/03，REST 走 Rust）────────────
@@ -236,6 +263,14 @@ export function ghPrDiff(repoRoot: string, prNumber: number): Promise<FileDiff[]
 /** 列出 PR 的 review。 */
 export function ghPrReviews(repoRoot: string, prNumber: number): Promise<Review[]> {
   return invoke('gh_pr_reviews', { repoRoot, number: prNumber });
+}
+
+export function ghPrReviewComments(repoRoot: string, number: number): Promise<ReviewComment[]> {
+  return invoke('gh_pr_review_comments', { repoRoot, number });
+}
+
+export function ghPrReply(repoRoot: string, number: number, commentId: number, body: string): Promise<ReviewComment> {
+  return invoke('gh_pr_reply', { repoRoot, number, commentId, body });
 }
 
 /** 提交 PR review（approve / request-changes / comment）。 */
@@ -288,6 +323,6 @@ export function gitReadConflict(repoRoot: string, path: string): Promise<string>
 }
 
 /** 写回解决后内容并 git add 标记 resolved。 */
-export function gitResolveConflict(repoRoot: string, path: string, content: string): Promise<null> {
-  return invoke('git_resolve_conflict', { repoRoot, path, content });
+export function gitResolveConflict(repoRoot: string, path: string, content: string, expectedContent?: string): Promise<null> {
+  return invoke('git_resolve_conflict', { repoRoot, path, content, expectedContent });
 }
