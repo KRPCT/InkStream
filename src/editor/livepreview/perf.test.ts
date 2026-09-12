@@ -54,7 +54,7 @@ describe('10 万字装饰重算性能基准（< 16ms 一帧预算）', () => {
 
     view = makeTestView(doc, [extensionsForLanguage('markdown')]);
     // 强制全量解析，排除 syntaxTree 惰性构建成本，使测量只计装饰构建本身。
-    ensureSyntaxTree(view.state, view.state.doc.length, 5000);
+    expect(ensureSyntaxTree(view.state, view.state.doc.length, 5000)).not.toBeNull();
 
     // 性能纪律核心断言：buildInlineDecorations 严格只迭代 view.visibleRanges——
     // 10 万字文档下装饰数仍与视口（而非全文）成比例，证明视口外零迭代（O(visible) 而非 O(doc)）。
@@ -67,8 +67,9 @@ describe('10 万字装饰重算性能基准（< 16ms 一帧预算）', () => {
 
     // 在文档头插入一字，触发一次 dispatch，随后测量真实装饰构建耗时。
     view.dispatch({ changes: { from: 0, insert: 'x' } });
-    ensureSyntaxTree(view.state, view.state.doc.length, 5000);
+    expect(ensureSyntaxTree(view.state, view.state.doc.length, 5000)).not.toBeNull();
 
+    globalThis.gc?.();
     const start = performance.now();
     buildInlineDecorations(view);
     const elapsed = performance.now() - start;
