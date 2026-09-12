@@ -1,11 +1,11 @@
 use super::ProcessSpec;
-#[cfg(unix)]
+#[cfg(all(unix, not(target_os = "macos")))]
 use super::run_process;
 use std::fs;
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
-#[cfg(unix)]
+#[cfg(all(unix, not(target_os = "macos")))]
 use std::sync::atomic::AtomicBool;
 use std::time::{Duration, Instant};
 
@@ -89,9 +89,15 @@ impl Watch {
         code == 259
     }
 }
-#[cfg(unix)]
+#[cfg(target_os = "macos")]
+#[path = "rebase_process_watch_darwin.rs"]
+mod darwin_watch;
+#[cfg(target_os = "macos")]
+pub(super) use darwin_watch::Watch;
+
+#[cfg(all(unix, not(target_os = "macos")))]
 pub(super) struct Watch(u32);
-#[cfg(unix)]
+#[cfg(all(unix, not(target_os = "macos")))]
 impl Watch {
     pub fn new(pid: u32) -> Self { Self(pid) }
     pub fn alive(&self) -> bool {

@@ -59,11 +59,14 @@ fn cancellation_and_timeout_stop_owned_descendants_but_not_a_sentinel() {
         wait_pid(&directory.0, "sentinel");
         let running = Running::start(&directory.0, "root", Duration::from_secs(if timeout { 5 } else { 10 }));
         let watched: Vec<_> = ["root", "child", "grandchild"].map(|name| Watch::new(running.wait_pid(&directory.0, name))).into_iter().collect();
+        assert!(watched.iter().all(|process| process.alive()), "exit observers must report live fixtures before cancellation");
         if !timeout { running.cancel.store(true, Ordering::Release); }
         let output = running.finish();
         assert_eq!(output.interruption, Some(if timeout { StopReason::TimedOut } else { StopReason::Cancelled }));
         assert!(output.cleanup_error.is_none(), "{:?}", output.cleanup_error);
         assert!(watched.iter().all(|process| !process.alive()));
+        #[cfg(target_os = "macos")]
+        assert!(watched.iter().all(|process| !process.alive()), "consuming a one-shot exit event must not report the process alive again");
         assert!(sentinel.alive());
     }
 }
@@ -74,6 +77,7 @@ fn parent_exit_with_pipe_holding_child_does_not_wait_for_eof_or_grow_capture() {
     let start = Instant::now();
     let running = Running::start(&directory.0, "pipe-parent", Duration::from_secs(8));
     let child = Watch::new(running.wait_pid(&directory.0, "pipe-child"));
+    assert!(child.alive(), "pipe holder must be alive before the parent is released");
     std::fs::write(directory.0.join("observed-pipe-child"), "ready").unwrap();
     let output = running.finish();
     assert_eq!(output.exit_code, Some(0));

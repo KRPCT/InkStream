@@ -1,4 +1,4 @@
-# 三平台 CI：install → typecheck → lint → test → build → cargo check → 独立 Unix 负控 + 生产 cargo test
+# 三平台 CI：install → typecheck → lint → test → build → 独立 Unix 负控 + 全目标生产 cargo test
 # 供应链约定：仅 actions/* 官方 action，且按完整 commit SHA 锁定；
 # pnpm 经 corepack（与本地 packageManager 字段一致）、Rust 经 runner 自带 rustup，零第三方 action。
 name: CI
@@ -58,19 +58,17 @@ jobs:
       - name: Build
         run: pnpm build
 
-      - name: Cargo check
-        timeout-minutes: 20
-        run: cargo check --manifest-path src-tauri/Cargo.toml
-
       - name: Unix permission negative control (isolated legacy strategy)
         if: ${{ !cancelled() && runner.os != 'Windows' }}
         timeout-minutes: 3
         run: node scripts/acceptance/run-unix-negative.mjs
 
-      - name: Cargo tests (production library, serial)
+      - name: Cargo tests (all production targets, serial)
         if: ${{ !cancelled() }}
         timeout-minutes: 25
-        # Executes cargo test --lib -- --test-threads=1; the wrapper adds a hard timeout and evidence.
+        # --all-targets typechecks and builds the application binary as well as the tested library.
+        # A separate cargo check would rebuild dependency metadata before this code-generation build.
+        # The wrapper preserves the hard timeout, process cleanup and Unix production assertion.
         # Runs even if the separate negative fixture fails; no production assertion is skipped.
         run: node scripts/acceptance/run-rust.mjs
 
