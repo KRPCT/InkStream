@@ -9,6 +9,8 @@ import type { ExportFormat, ExportMeta, PandocFormat } from '../../types/export'
 import { readFields } from '../frontmatter';
 import { loadKatex } from '../livepreview/mathLoader';
 import { getCommandView } from '../commandView';
+import { documentLanguageHint } from '../documentBudget';
+import { renderCitationsForExport } from './citationExport';
 import { imageContextForPath } from '../editorState';
 import { stripVerbatim } from '../pathUtil';
 import { htmlToDocxBlob } from './exportDocx';
@@ -52,6 +54,7 @@ export async function exportDocument(format: ExportFormat): Promise<void> {
   }
   const activePath = useEditorStore.getState().activePath;
   const markdown = view.state.doc.toString();
+  const language = view.state.facet(documentLanguageHint);
   const name = baseName(activePath);
   const imageContext = imageContextForPath(activePath ?? '');
   const meta: ExportMeta = {
@@ -63,10 +66,10 @@ export async function exportDocument(format: ExportFormat): Promise<void> {
   const renderMath = await buildMathRenderer();
   // 图片内嵌：把文档引用的 vault 内本地图预解析为 data URI，HTML/PDF 内联、DOCX 经 canvas 嵌 ImageRun，
   // 使导出产物脱离 vault 仍显示图片（远程图保活链接、已是 data: 的跳过——见 resolveExportImages）。
-  const images = await resolveExportImages(markdown, imageContext);
-  const bodyHtml = markdownToHtml(markdown, { renderMath, images });
-
   try {
+    const renderedMarkdown = await renderCitationsForExport(markdown, language);
+    const images = await resolveExportImages(renderedMarkdown, imageContext);
+    const bodyHtml = markdownToHtml(renderedMarkdown, { renderMath, images });
     if (format === 'pdf') {
       printHtml(buildHtmlDocument(bodyHtml, meta));
       return;
@@ -81,8 +84,8 @@ export async function exportDocument(format: ExportFormat): Promise<void> {
     if (!path) return;
     const blob = await htmlToDocxBlob(bodyHtml, meta);
     await writeBytesToPath(path, new Uint8Array(await blob.arrayBuffer()));
-  } catch {
-    showToast('error', `导出 ${LABELS[format]} 失败，请重试。`);
+  } catch (error) {
+    showToast('error', `导出 ${LABELS[format]} 失败：${error instanceof Error ? error.message : String(error)}`);
   }
 }
 
@@ -125,12 +128,13 @@ export async function exportViaPandoc(format: PandocFormat): Promise<void> {
   const activePath = useEditorStore.getState().activePath;
   const name = baseName(activePath);
   const markdown = withWatermark(view.state.doc.toString());
+  const language = view.state.facet(documentLanguageHint);
   const resourcePath = docResourcePath(activePath);
   const path = await pickExportPath(`${name}.${spec.ext}`, format);
   if (!path) return;
   try {
     await pandocConvert(
-      markdown,
+      await renderCitationsForExport(markdown, language),
       path,
       format,
       resourcePath,

@@ -8,6 +8,7 @@ import { useEditorStore } from '../stores/useEditorStore';
 import { useSettingsStore } from '../stores/useSettingsStore';
 import { useVaultStore } from '../stores/useVaultStore';
 import { useWorkbenchStore } from '../stores/useWorkbenchStore';
+import { useProjectStore } from '../stores/useProjectStore';
 import { dispatchComposition, mockComposing } from '../test/composition';
 import { insertCitation, insertCitekey, insertFootnote } from './academicActions';
 import { insertOrExpandBibliography } from './bibliography';
@@ -27,6 +28,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   beginDocumentNavigation();
   useWorkbenchStore.setState({ centralView: 'editor' });
+  useProjectStore.setState({ archiveOpen: false, phase: 'idle' });
   useSettingsStore.setState({ simpleMode: false, bookshelfEnabled: false });
   useVaultStore.setState({ vault: null });
   useEditorStore.setState({ ...useEditorStore.getInitialState(), activePath: 'a.md', tabs: [{ path: 'a.md', name: 'a.md' }], activeRenderMode: 'source' }, true);
@@ -37,11 +39,32 @@ beforeEach(() => {
   vi.mocked(zoteroCayw).mockResolvedValue('[@paper]');
 });
 afterEach(() => {
+  useProjectStore.setState({ archiveOpen: false, phase: 'idle' });
   setView(null);
   view.destroy();
   view.dom.remove();
   useWorkbenchStore.setState({ centralView: 'editor' });
   useSettingsStore.setState({ simpleMode: false, bookshelfEnabled: false });
+});
+
+it('archive and project handover retire pending clipboard commands and preserve hidden undo', async () => {
+  view.dispatch({ changes: { from: view.state.doc.length, insert: '!' } });
+  const saved = view.state;
+  let finish!: (text: string) => void;
+  vi.mocked(readText).mockReturnValueOnce(new Promise((resolve) => { finish = resolve; }));
+  const pending = doPaste();
+  useProjectStore.setState({ archiveOpen: true });
+  doUndo();
+  expect(view.state).toBe(saved);
+  useProjectStore.setState({ archiveOpen: false, phase: 'restoring' });
+  doUndo();
+  expect(view.state).toBe(saved);
+  useProjectStore.setState({ phase: 'idle' });
+  finish('stale paste');
+  await pending;
+  expect(view.state).toBe(saved);
+  doUndo();
+  expect(view.state.doc.toString()).toBe('Original text');
 });
 
 describe('commands follow the same visible fallback as CentralArea', () => {

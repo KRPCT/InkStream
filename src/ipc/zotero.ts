@@ -8,6 +8,7 @@ import { invoke } from './invoke';
 
 let libraryRevision = 0;
 const libraryListeners = new Set<() => void>();
+export function currentZoteroLibraryRevision(): number { return libraryRevision; }
 
 /** 凭据或完整缓存提交后，使界面重新获取当前文献库。 */
 export function onZoteroLibraryChanged(listener: () => void): () => void {

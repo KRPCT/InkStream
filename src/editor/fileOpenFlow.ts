@@ -57,18 +57,26 @@ export async function openFileByPath(path: string, request = beginDocumentNaviga
 }
 
 /** Locate against the accepted document after its scroll restoration, without racing newer navigation. */
-export async function openFileAndLocate(path: string, locate: (state: EditorState) => { from: number; to: number } | null): Promise<boolean> {
+export async function openFileAndLocate(path: string, locate: (state: EditorState, signal: AbortSignal) => { from: number; to: number } | null | Promise<{ from: number; to: number } | null>): Promise<boolean> {
   const request = beginDocumentNavigation();
   const vault = useVaultStore.getState().vault;
   if (useEditorStore.getState().activePath !== path) await openFileByPath(path, request);
   const view = getView();
   if (!view || !isCurrentDocumentNavigation(request) || useEditorStore.getState().activePath !== path) return false;
-  return new Promise((resolve) => requestAnimationFrame(() => {
-    if (getView() !== view || vault !== useVaultStore.getState().vault || !isCurrentDocumentNavigation(request) || useEditorStore.getState().activePath !== path) return resolve(false);
-    const range = locate(view.state);
-    if (!range) return resolve(false);
-    revealRange(view, range.from, range.to);
-    resolve(true);
+  return new Promise((resolve, reject) => requestAnimationFrame(() => {
+    const current = () => getView() === view && vault === useVaultStore.getState().vault && isCurrentDocumentNavigation(request) && useEditorStore.getState().activePath === path;
+    if (!current()) return resolve(false);
+    const snapshot = view.state;
+    const apply = (range: { from: number; to: number } | null) => {
+      if (!range || !current() || view.state.doc !== snapshot.doc || !view.state.selection.eq(snapshot.selection)) return resolve(false);
+      revealRange(view, range.from, range.to);
+      resolve(true);
+    };
+    try {
+      const range = locate(snapshot, documentNavigationSignal(request));
+      if (range instanceof Promise) void range.then(apply, (error: unknown) => { if (current()) reject(error); else resolve(false); });
+      else apply(range);
+    } catch (error) { reject(error); }
   }));
 }
 

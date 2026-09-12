@@ -6,6 +6,7 @@ import { refreshTree } from '../../editor/fileTreeData';
 import { useSettingsStore } from '../../stores/useSettingsStore';
 import { useVaultStore } from '../../stores/useVaultStore';
 import { useWorkbenchStore } from '../../stores/useWorkbenchStore';
+import { useProjectStore } from '../../stores/useProjectStore';
 import FileTree from './FileTree';
 import GitGuidanceBar from './GitGuidanceBar';
 import RecentVaults from './RecentVaults';
@@ -52,11 +53,14 @@ export default function Sidebar() {
   const mode = useWorkbenchStore((s) => s.mode);
   const simpleMode = useSettingsStore((s) => s.simpleMode);
   const [query, setQuery] = useState('');
+  const [section, setSection] = useState<'files' | 'library' | 'chapters' | 'git'>('files');
+  const projectName = useProjectStore((state) => state.catalog.projects.find((project) => project.id === state.activeId && !project.removed)?.name);
+  const shownSection = simpleMode || (section === 'library' && mode !== 'academic') || (section === 'chapters' && mode !== 'creative') ? 'files' : section;
   const searching = query.trim().length > 0;
 
   if (!vault) {
     return (
-      <div className="h-full overflow-auto bg-[var(--background-secondary)]">
+      <div className="project-sidebar h-full overflow-auto bg-[var(--background-secondary)]">
         <EmptyState
           icon={FolderOpen}
           heading="未打开工作区"
@@ -73,27 +77,31 @@ export default function Sidebar() {
   }
 
   return (
-    <div className="flex h-full flex-col bg-[var(--background-secondary)]">
-      <div className="flex h-8 items-center gap-1 border-b border-[var(--background-modifier-border)] pr-1 pl-2">
-        <span className="min-w-0 flex-1 truncate text-[13px] text-[var(--text-normal)]">{vault.name}</span>
+    <div className="project-sidebar flex h-full flex-col bg-[var(--background-secondary)]">
+      <div className="project-navigation-heading"><span className="material-eyebrow">MANUSCRIPT</span><span title={vault.root}>{projectName ?? vault.name}</span></div>
+      {!simpleMode ? <div className="project-navigation-tabs" aria-label="项目导航分类">
+        <button type="button" aria-pressed={shownSection === 'files'} onClick={() => setSection('files')}>文稿</button>
+        {mode === 'academic' ? <button type="button" aria-pressed={shownSection === 'library'} onClick={() => setSection('library')}>文献</button> : null}
+        {mode === 'creative' ? <button type="button" aria-pressed={shownSection === 'chapters'} onClick={() => setSection('chapters')}>章节</button> : null}
+        <button type="button" aria-pressed={shownSection === 'git'} onClick={() => setSection('git')}>版本</button>
+      </div> : null}
+      <div className="project-file-actions flex h-8 items-center gap-1 pr-1 pl-2">
+        <span className="min-w-0 flex-1 truncate text-[11px] text-[var(--text-muted)]">文件与文件夹</span>
         <HeaderAction icon={FilePlus} label="新建文件" onClick={newFileInTree} />
         <HeaderAction icon={FolderPlus} label="新建文件夹" onClick={newFolderInTree} />
         <HeaderAction icon={ListCollapse} label="折叠全部" onClick={collapseAllInTree} />
         <HeaderAction icon={RefreshCw} label="刷新" onClick={() => void refreshTree()} />
       </div>
       {/* 简易模式隐藏搜索/git/学术/创作高级面板，仅留文件树 */}
-      {!simpleMode ? <SidebarSearch query={query} onQueryChange={setQuery} /> : null}
-      {!simpleMode ? <GitGuidanceBar /> : null}
-      {/* ACAD-01：Academic 模式 Sidebar 上半 Zotero 文献库（其余模式不显），下半为文件树 */}
-      {!simpleMode && mode === 'academic' ? <ZoteroLibraryPanel /> : null}
-      {/* CREA-01：Creative 模式章节-场景树叠在文件树上方（其余模式不显） */}
-      {!simpleMode && mode === 'creative' ? <ChapterSceneTree /> : null}
+      {!simpleMode && shownSection === 'files' ? <SidebarSearch query={query} onQueryChange={setQuery} /> : null}
       {/* 有查询 → 扁平递归结果列表（R4 §4.2）；清空 → 恢复受控折叠树 */}
-      <div className="min-h-0 flex-1 overflow-auto">
+      <div className="min-h-0 flex-1 overflow-auto" style={{ display: shownSection === 'files' ? undefined : 'none' }}>
         {!simpleMode && searching ? <SearchResults query={query} /> : <FileTree />}
       </div>
       {/* 簇①：侧栏简易源代码管理面板（git 仓库才显示，置底，可折叠） */}
-      {!simpleMode ? <SidebarGitPanel /> : null}
+      {shownSection === 'library' ? <div className="navigation-tool-body"><ZoteroLibraryPanel /></div> : null}
+      {shownSection === 'chapters' ? <div className="navigation-tool-body"><ChapterSceneTree /></div> : null}
+      {shownSection === 'git' ? <div className="navigation-tool-body"><GitGuidanceBar /><SidebarGitPanel /></div> : null}
     </div>
   );
 }

@@ -23,6 +23,8 @@ interface SettingsState {
   exportBrandingText: string;
   bookshelfEnabled: boolean;
   terminalEnabled: boolean;
+  reducedMotion: boolean;
+  reducedTransparency: boolean;
   setAutosaveEnabled: (enabled: boolean) => void;
   setAutosaveDelayMs: (ms: number) => void;
   setEditorFontSize: (px: number) => void;
@@ -35,6 +37,8 @@ interface SettingsState {
   setExportBrandingText: (text: string) => void;
   setBookshelfEnabled: (on: boolean) => void;
   setTerminalEnabled: (on: boolean) => void;
+  setReducedMotion: (on: boolean) => void;
+  setReducedTransparency: (on: boolean) => void;
 }
 
 /** 字体大小落到 CSS 变量（编辑器 .cm-editor 经 var(--editor-font-size) 消费，见 app.css）。 */
@@ -109,6 +113,10 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
   exportBrandingText: 'Made with InkStream',
   bookshelfEnabled: false,
   terminalEnabled: false,
+  reducedMotion: false,
+  reducedTransparency: false,
+  setReducedMotion: (reducedMotion) => set({ reducedMotion }),
+  setReducedTransparency: (reducedTransparency) => set({ reducedTransparency }),
   setAutosaveEnabled: (autosaveEnabled) => set({ autosaveEnabled }),
   setAutosaveDelayMs: (autosaveDelayMs) => set({ autosaveDelayMs }),
   setEditorFontSize: (editorFontSize) => {

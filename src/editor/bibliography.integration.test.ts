@@ -1,7 +1,7 @@
 import { EditorState } from '@codemirror/state';
 import { EditorView } from '@codemirror/view';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { zoteroCslResilient } from '../ipc/zotero';
+import { zoteroCslResilient, zoteroSetCredentials } from '../ipc/zotero';
 import { useEditorStore } from '../stores/useEditorStore';
 import { useSettingsStore } from '../stores/useSettingsStore';
 import { useVaultStore } from '../stores/useVaultStore';
@@ -40,6 +40,28 @@ beforeEach(() => {
 afterEach(() => { view.destroy(); setView(null); parent.remove(); __clearCacheForTest(); });
 
 describe('bibliography document transaction', () => {
+  it('a library change retires a pending bibliography generation even if the document stays active', async () => {
+    const content = `[@first]\n\n${block}`;
+    await activate('a.md', content);
+    let complete!: (items: CslItem[]) => void;
+    vi.mocked(zoteroCslResilient).mockImplementationOnce(() => new Promise((resolve) => { complete = resolve; }));
+    const rendering = expandBibliographyAs('apa');
+    await zoteroSetCredentials('test-key', 'another-account');
+    complete([entry('first', 'Old account paper')]);
+    await rendering;
+    expect(view.state.doc.toString()).toBe(content);
+  });
+
+  it('bibliography examples remain unchanged while the actual reference block is generated', async () => {
+    const example = '```md\n<!-- biblio:apa -->\n[@example]\n<!-- /biblio -->\n```';
+    await activate('a.md', `${example}\n\n[@first]\n\n${block}`);
+    vi.mocked(zoteroCslResilient).mockResolvedValue([entry('first', 'Actual paper')]);
+    await expandBibliographyAs('gbt7714');
+    expect(view.state.doc.toString()).toContain(example);
+    expect(view.state.doc.toString()).toContain('Actual paper');
+    expect(view.state.doc.toString()).not.toContain('Original bibliography');
+  });
+
   it.each(['comparison-back', 'selection'] as const)('a reference response after %s cannot replace the original bibliography', async (change) => {
     const content = `[@first]\n\n${block}`;
     await activate('a.md', content);

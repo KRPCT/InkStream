@@ -30,7 +30,7 @@ export default function RightPanel() {
   }, [simpleMode, activeTab, setActiveTab]);
 
   return (
-    <div className="flex h-full flex-col bg-[var(--background-secondary)]">
+    <div className="workbench-tools flex h-full flex-col bg-[var(--background-secondary)]">
       <PanelTabs
         tabs={tabs.map((id) => ({ id, label: TAB_LABELS[id] }))}
         activeTab={activeTab}

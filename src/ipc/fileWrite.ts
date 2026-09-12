@@ -51,7 +51,7 @@ function requireWellFormed(text: string): void {
   }
 }
 
-async function encodeText(text: string, deadline: number): Promise<{ chunks: Uint8Array[]; byteLength: number }> {
+async function encodeText(text: string, deadline: number, signal?: AbortSignal): Promise<{ chunks: Uint8Array[]; byteLength: number }> {
   const encoder = new TextEncoder();
   const chunks: Uint8Array[] = [];
   let byteLength = 0;
@@ -60,6 +60,7 @@ async function encodeText(text: string, deadline: number): Promise<{ chunks: Uin
   let sliceStarted = performance.now();
   while (offset < text.length) {
     requireTime(deadline);
+    requireActive(signal);
     let end = Math.min(text.length, offset + ENCODE_UNITS);
     if (end < text.length && highSurrogate(text.charCodeAt(end - 1))) end -= 1;
     const part = text.slice(offset, end);
@@ -90,16 +91,24 @@ function waitForAck<T>(response: Promise<T>, timeout: number): Promise<T> {
   });
 }
 
-async function sendSession(target: FileWriteTarget, encoding: FileWriteMetadata['encoding'], chunks: readonly Uint8Array[], byteLength: number, deadline: number): Promise<null> {
+function requireActive(signal?: AbortSignal): void {
+  if (signal?.aborted) throw new DOMException('文件写入已取消。', 'AbortError');
+}
+
+async function sendSession(target: FileWriteTarget, encoding: FileWriteMetadata['encoding'], chunks: readonly Uint8Array[], byteLength: number, deadline: number, signal?: AbortSignal): Promise<null> {
   const requestId = crypto.randomUUID();
   const metadata: FileWriteMetadata = { version: 1, requestId, target, encoding, byteLength, timeoutMs: requireTime(deadline) };
   const header = new TextEncoder().encode(JSON.stringify(metadata));
   if (header.byteLength > MAX_METADATA_BYTES) throw new Error('文件写入 metadata 超过大小上限。');
+  const cancel = () => { void waitForAck(invoke('abort_file_write', { requestId }), 1_000).catch(() => undefined); };
+  signal?.addEventListener('abort', cancel, { once: true });
   try {
+    requireActive(signal);
     await waitForAck(invoke('begin_file_write', { metadata }), Math.min(IDLE_TIMEOUT_MS, requireTime(deadline)));
     let offset = 0;
     for (const chunk of chunks) {
       for (let start = 0; start < chunk.byteLength; start += MAX_CHUNK_BYTES) {
+        requireActive(signal);
         const timeout = Math.min(IDLE_TIMEOUT_MS, requireTime(deadline));
         const body = chunk.subarray(start, Math.min(chunk.byteLength, start + MAX_CHUNK_BYTES));
         await waitForAck(invoke('append_file_write', body, { headers: {
@@ -110,18 +119,22 @@ async function sendSession(target: FileWriteTarget, encoding: FileWriteMetadata[
       }
     }
     requireTime(deadline);
+    requireActive(signal);
     // 发布点与取消由原生统一裁决；commit 必须等真实 rename 回执。
     return await invoke('commit_file_write', { requestId });
   } catch (error) {
     await waitForAck(invoke('abort_file_write', { requestId }), 1_000).catch(() => undefined);
     throw error;
+  } finally {
+    signal?.removeEventListener('abort', cancel);
   }
 }
 
-export function writeTextRaw(target: FileWriteTarget, content: string): Promise<null> {
+export function writeTextRaw(target: FileWriteTarget, content: string, options: { signal?: AbortSignal } = {}): Promise<null> {
   return enqueue(async (deadline) => {
-    const encoded = await encodeText(content, deadline);
-    return sendSession(target, 'utf8', encoded.chunks, encoded.byteLength, deadline);
+    requireActive(options.signal);
+    const encoded = await encodeText(content, deadline, options.signal);
+    return sendSession(target, 'utf8', encoded.chunks, encoded.byteLength, deadline, options.signal);
   });
 }
 

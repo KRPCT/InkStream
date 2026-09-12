@@ -56,6 +56,8 @@ describe('persistSettings', () => {
     mockLoad.mockResolvedValue(FILE_SETTINGS);
     await initPersistence();
     expect(useSettingsStore.getState().theme).toBe('dark');
+    expect(useSettingsStore.getState().reducedMotion).toBe(false);
+    expect(useSettingsStore.getState().reducedTransparency).toBe(false);
     expect(useWorkbenchStore.getState().mode).toBe('academic');
     expect(useWorkbenchStore.getState().layouts.standard.sidebarWidth).toBe(300);
     expect(useWorkbenchStore.getState().layouts.academic.rightPanelWidth).toBe(400);
@@ -99,7 +101,25 @@ describe('persistSettings', () => {
       exportBrandingText: 'Made with InkStream',
       bookshelfEnabled: false,
       terminalEnabled: false,
+      reducedMotion: false,
+      reducedTransparency: false,
     });
+  });
+
+  it('material preferences use the existing settings file and survive a save/reload round trip', async () => {
+    mockLoad.mockResolvedValue({ ...FILE_SETTINGS, reducedMotion: true, reducedTransparency: false });
+    await initPersistence();
+    expect(useSettingsStore.getState().reducedMotion).toBe(true);
+    useSettingsStore.getState().setReducedTransparency(true);
+    await vi.advanceTimersByTimeAsync(500);
+    const written = mockSave.mock.lastCall?.[0];
+    expect(written).toEqual(expect.objectContaining({ theme: 'dark', reducedMotion: true, reducedTransparency: true }));
+    resetPersistence();
+    useSettingsStore.setState({ reducedMotion: false, reducedTransparency: false });
+    mockLoad.mockResolvedValue(written);
+    await initPersistence();
+    expect(useSettingsStore.getState().reducedMotion).toBe(true);
+    expect(useSettingsStore.getState().reducedTransparency).toBe(true);
   });
 
   it('load 失败：应用 DEFAULT_SETTINGS 并弹错误 toast（UI-SPEC 字面）', async () => {

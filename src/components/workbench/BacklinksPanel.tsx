@@ -1,7 +1,7 @@
 import { FileText } from 'lucide-react';
 import { useCallback } from 'react';
 import { openFileAndLocate, openFileByPath } from '../../editor/fileOpenFlow';
-import { findReferenceRange } from '../../editor/wikiReferences';
+import { readReferenceRange } from '../../editor/wikiReferenceClient';
 import { queryBacklinkReferences, queryUnlinkedMentions, type BacklinkReference } from '../../ipc/indexService';
 import { useEditorStore } from '../../stores/useEditorStore';
 import { showToast } from '../../stores/useToastStore';
@@ -27,8 +27,8 @@ function LinkRow({ path, reference }: { path: string; reference?: BacklinkRefere
   const open = (): void => {
     if (!reference) { void openFileByPath(path); return; }
     let missing = false;
-    void openFileAndLocate(path, (state) => {
-      const range = findReferenceRange(state.doc.toString(), reference);
+    void openFileAndLocate(path, async (state, signal) => {
+      const range = await readReferenceRange(state.doc.toString(), reference, signal);
       missing = range === null;
       return range;
     }).then((located) => {
@@ -70,16 +70,17 @@ function Section({ title, paths = [], references }: { title: string; paths?: str
 
 export default function BacklinksPanel() {
   const activePath = useEditorStore((s) => s.activePath);
-  const load = useCallback(async () => {
-    if (!activePath) return { backlinks: [], mentions: [] };
-    const [backlinks, mentions] = await Promise.all([queryBacklinkReferences(activePath), queryUnlinkedMentions(activePath)]);
-    return { backlinks, mentions };
+  const load = useCallback(async (signal: AbortSignal) => {
+    if (!activePath) return { backlinks: [], mentions: [], mentionError: '' };
+    const backlinks = await queryBacklinkReferences(activePath, { signal });
+    try { return { backlinks, mentions: await queryUnlinkedMentions(activePath, { signal }), mentionError: '' }; }
+    catch (error) { return { backlinks, mentions: [], mentionError: error instanceof Error ? error.message : String(error) }; }
   }, [activePath]);
   const query = useIndexQuery(load, activePath !== null);
   if (activePath && (query.loading || query.error || query.disabled)) return <IndexQueryMessage {...query} />;
-  const { backlinks, mentions } = query.data ?? { backlinks: [], mentions: [] };
+  const { backlinks, mentions, mentionError } = query.data ?? { backlinks: [], mentions: [], mentionError: '' };
 
-  if (backlinks.length === 0 && mentions.length === 0) {
+  if (backlinks.length === 0 && mentions.length === 0 && !mentionError) {
     return (
       <EmptyState
         icon={FileText}
@@ -93,6 +94,7 @@ export default function BacklinksPanel() {
     <div className="h-full overflow-auto py-1">
       <Section title="反向链接" references={backlinks} />
       <Section title="未链接提及" paths={mentions} />
+      {mentionError ? <p role="status" className="px-3 py-2 text-[12px] text-[var(--text-muted)]">{mentionError}</p> : null}
     </div>
   );
 }

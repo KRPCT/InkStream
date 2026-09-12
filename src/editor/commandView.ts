@@ -7,6 +7,7 @@ import { effectiveCentralView } from '../stores/effectiveCentralView';
 import { queueAfterComposition } from './composition';
 import { currentDocumentNavigation, documentNavigationSignal, isCurrentDocumentNavigation } from './editorState.navigation';
 import { getView } from './viewHandle';
+import { projectBlocksEditing, useProjectStore } from '../stores/useProjectStore';
 
 // The document view stays mounted for persistence. Commands have a narrower lifetime:
 // leaving the editor retires an intent even when the same document is later shown again.
@@ -22,9 +23,13 @@ const unsubscribeWorkbench = useWorkbenchStore.subscribe((state, previous) => {
 const unsubscribeSettings = useSettingsStore.subscribe((state, previous) => {
   if (state.simpleMode !== previous.simpleMode || state.bookshelfEnabled !== previous.bookshelfEnabled) retirePresentation();
 });
-if (import.meta.hot) import.meta.hot.dispose(() => { unsubscribeWorkbench(); unsubscribeSettings(); });
+const unsubscribeProjects = useProjectStore.subscribe((state, previous) => {
+  if (state.archiveOpen !== previous.archiveOpen || state.phase !== previous.phase || state.activeId !== previous.activeId) retirePresentation();
+});
+if (import.meta.hot) import.meta.hot.dispose(() => { unsubscribeWorkbench(); unsubscribeSettings(); unsubscribeProjects(); });
 
 export function getCommandView(): EditorView | null {
+  if (projectBlocksEditing()) return null;
   const { centralView } = useWorkbenchStore.getState();
   const { simpleMode, bookshelfEnabled } = useSettingsStore.getState();
   return effectiveCentralView(centralView, { simpleMode, bookshelfEnabled }) === 'editor' ? getView() : null;

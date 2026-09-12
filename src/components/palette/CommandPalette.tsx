@@ -63,7 +63,7 @@ function routeProvider(query: string): PaletteProvider | undefined {
 function contentPlaceholder(rawTerm: string, loading: boolean, count: number, error: string | null): string | null {
   if (useSettingsStore.getState().simpleMode) return '简易模式未启用全文索引';
   if (!useVaultStore.getState().vault) return '请先打开一个文件夹作为工作区';
-  if (rawTerm.trim().length < 3) return '全文搜索请至少输入 3 个字符';
+  if (!rawTerm.trim()) return '输入关键字进行全文搜索';
   if (useIndexStore.getState().status === 'preparing') return '正在准备全文索引…';
   if (error) return error;
   if (loading && count === 0) return '搜索中…';

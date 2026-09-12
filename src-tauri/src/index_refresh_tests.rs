@@ -14,8 +14,9 @@ impl Vault {
             "inkstream-index-refresh-{}-{nonce}",
             std::process::id()
         ));
-        std::fs::create_dir_all(&path).unwrap();
-        Self(path.canonicalize().unwrap())
+        let root = path.join("content");
+        std::fs::create_dir_all(&root).unwrap();
+        Self(root.canonicalize().unwrap())
     }
     fn scope(&self, id: &str) -> Scope {
         Scope::new(self.0.to_string_lossy().into_owned(), id.into()).unwrap()
@@ -25,7 +26,7 @@ impl Vault {
             .max_connections(1)
             .connect_with(
                 SqliteConnectOptions::new()
-                    .filename(self.0.join(".inkstream/index.db"))
+                    .filename(self.0.parent().unwrap().join("app-data/indexes/fixture-project/index.db"))
                     .busy_timeout(std::time::Duration::from_secs(2)),
             )
             .await
@@ -34,7 +35,7 @@ impl Vault {
 }
 impl Drop for Vault {
     fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.0);
+        let _ = std::fs::remove_dir_all(self.0.parent().unwrap());
     }
 }
 async fn body(pool: &SqlitePool, path: &str) -> Option<String> {
@@ -90,6 +91,29 @@ fn refresh_reads_the_saved_file_and_only_confirms_after_sql_commit() {
             "receipt preceded the complete target row"
         );
         assert_eq!(unrelated.as_deref(), Some("previous unrelated snapshot"));
+    });
+}
+
+#[test]
+fn rebuild_and_incremental_refresh_cover_the_same_markdown_extensions() {
+    tauri::async_runtime::block_on(async {
+        let vault = Vault::new();
+        let actor = IndexState::start();
+        let scope = vault.scope("markdown-family");
+        for path in ["lower.md", "UPPER.MD", "long.Markdown"] {
+            std::fs::write(vault.0.join(path), "第一版 [[研究]]").unwrap();
+        }
+        std::fs::write(vault.0.join("plain.txt"), "不进Markdown索引").unwrap();
+        actor.submit(scope.clone(), Operation::Prepare { rebuild: true }).await.unwrap();
+        let pool = vault.pool().await;
+        let names: Vec<String> = sqlx::query_scalar("SELECT path FROM files ORDER BY path").fetch_all(&pool).await.unwrap();
+        assert_eq!(names, vec!["UPPER.MD", "long.Markdown", "lower.md"]);
+        std::fs::write(vault.0.join("long.Markdown"), "保存更新后的正文").unwrap();
+        actor.submit(scope.clone(), Operation::Refresh { path: "long.Markdown".into() }).await.unwrap();
+        assert_eq!(body(&pool, "long.Markdown").await.as_deref(), Some("保存更新后的正文"));
+        actor.submit(scope.clone(), Operation::Remove { path: "UPPER.MD".into() }).await.unwrap();
+        assert_eq!(body(&pool, "UPPER.MD").await, None);
+        stop(&actor, scope, pool).await;
     });
 }
 

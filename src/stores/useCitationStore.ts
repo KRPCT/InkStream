@@ -4,8 +4,8 @@ import { create } from 'zustand';
  * 活动文档引用镜像（Phase 8 ZOT-03，RightPanel 引用 tab）。
  *
  * 单向纪律（仿 useOutlineStore）：CM doc → store（editor/citations.ts 的 syncCitations 在换装 + docChanged 写入），
- * store 永不回写 CM。citations = 文档内 `[@key]` 去重 + 计数（按首现顺序）；validKeys = Zotero 库已知 citekey
- * （CitationPanel 经 zotero_citekeys 解析填充），未在其中的 `[@key]` 即「未解析」标红。
+ * store 永不回写 CM。citations 由三种文档语言的共享模型去重计数；validKeys 属于当前文献库。
+ * CitationPanel 使用在线条目或当前账户离线缓存，读取失败/账户变化时先清除已解析判定。
  */
 
 export interface CitationEntry {
@@ -21,6 +21,7 @@ interface CitationState {
   resolved: boolean;
   setCitations: (citations: CitationEntry[]) => void;
   setValidKeys: (validKeys: string[]) => void;
+  resetResolution: () => void;
 }
 
 export const useCitationStore = create<CitationState>((set) => ({
@@ -29,4 +30,5 @@ export const useCitationStore = create<CitationState>((set) => ({
   resolved: false,
   setCitations: (citations) => set({ citations }),
   setValidKeys: (validKeys) => set({ validKeys, resolved: true }),
+  resetResolution: () => set({ validKeys: [], resolved: false }),
 }));

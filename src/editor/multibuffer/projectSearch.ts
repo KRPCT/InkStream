@@ -10,6 +10,8 @@ export interface MatchRange {
   /** 命中在源文件真相源中的 UTF-16 起止偏移。 */
   from: number;
   to: number;
+  /** Optional CM navigation offset when the source is a Raw CRLF file. Writes still use from/to. */
+  editorFrom?: number;
 }
 
 export interface ExcerptModel {
@@ -33,6 +35,8 @@ export interface FileMatches {
 export interface SearchOpts {
   /** 摘录上下文行数（命中行上下各取几行；相邻/重叠摘录合并）。默认 1。 */
   contextLines?: number;
+  maximumMatches?: number;
+  maximumExcerptUnits?: number;
 }
 
 /**
@@ -44,27 +48,29 @@ export interface SearchOpts {
  * 偏移套回原串会错位（轻则替换错字符、重则区间越界 doc 长度致 CM ChangeSpec 抛错）。这是把 #2a 的
  * 显示级隐患在 #2c 升级为破坏性写盘前必须堵死的口子。
  */
-export function findMatches(content: string, query: string): MatchRange[] {
+export function findMatches(content: string, query: string, maximum = Number.POSITIVE_INFINITY): MatchRange[] {
   if (query === '') return [];
   const needle = query.toLowerCase();
   const hay = content.toLowerCase();
   if (hay.length === content.length) {
     const out: MatchRange[] = [];
     for (let i = hay.indexOf(needle); i !== -1; i = hay.indexOf(needle, i + needle.length)) {
+      if (out.length >= maximum) throw new Error('单个文件命中超过显示预算，请收窄关键词。未截断结果。');
       out.push({ from: i, to: i + needle.length });
     }
     return out;
   }
-  return scanMatchesOnOriginal(content, needle);
+  return scanMatchesOnOriginal(content, needle, maximum);
 }
 
 /** 慢路径：在原串上以 needle 长度定窗逐位比较小写形，命中区间恒在原串坐标内（含变长折叠字符时用）。 */
-function scanMatchesOnOriginal(content: string, needle: string): MatchRange[] {
+function scanMatchesOnOriginal(content: string, needle: string, maximum: number): MatchRange[] {
   const out: MatchRange[] = [];
   const n = needle.length;
   if (n === 0) return out;
   for (let i = 0; i + n <= content.length; ) {
     if (content.slice(i, i + n).toLowerCase() === needle) {
+      if (out.length >= maximum) throw new Error('单个文件命中超过显示预算，请收窄关键词。未截断结果。');
       out.push({ from: i, to: i + n });
       i += n;
     } else {
@@ -184,11 +190,22 @@ export function searchFile(
   query: string,
   opts: SearchOpts = {},
 ): FileMatches | null {
-  const matches = findMatches(content, query);
+  const matches = findMatches(content, query, opts.maximumMatches);
   if (matches.length === 0) return null;
+  if (content.includes('\r\n')) {
+    let scanned = 0; let removed = 0;
+    for (const match of matches) {
+      for (; scanned < match.from; scanned++) if (content[scanned] === '\r' && content[scanned + 1] === '\n') removed++;
+      match.editorFrom = match.from - removed;
+    }
+  }
+  const excerpts = buildExcerpts(content, matches, opts.contextLines ?? 1);
+  if (excerpts.reduce((units, excerpt) => units + excerpt.text.length, 0) > (opts.maximumExcerptUnits ?? Number.POSITIVE_INFINITY)) {
+    throw new Error('搜索摘录超过显示预算，请在目标文档内查找。未截断正文或匹配结果。');
+  }
   return {
     path,
     matchCount: matches.length,
-    excerpts: buildExcerpts(content, matches, opts.contextLines ?? 1),
+    excerpts,
   };
 }

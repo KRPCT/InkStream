@@ -36,11 +36,11 @@ function emptyReport(): ReplaceReport {
   return { files: 0, replaced: 0, skipped: [], failed: [] };
 }
 
-/** 对当前搜索结果集逐文件替换 term→replacement，返回结果报告。term<3 / 无 vault 一律空报告。 */
+/** 对当前搜索结果集逐文件替换 term→replacement，返回结果报告。空词 / 无 vault 一律空报告。 */
 export async function replaceAllInProject(term: string, replacement: string): Promise<ReplaceReport> {
   const report = emptyReport();
   const t = term.trim();
-  if (t.length < 3) return report;
+  if (!t) return report;
   const scope = useVaultStore.getState().vault;
   const root = scope?.root ?? null;
   if (root === null) return report;
@@ -64,7 +64,9 @@ export async function replaceAllInProject(term: string, replacement: string): Pr
       report.failed.push(path);
       continue;
     }
-    const matches = findMatches(truth, t);
+    let matches: MatchRange[];
+    try { matches = findMatches(truth, t, 20_000); }
+    catch (error) { report.failed.push(path); report.error = error instanceof Error ? error.message : String(error); continue; }
     if (matches.length === 0) continue; // 词已不在（搜索后被改）→ 静默跳过。
     const ok = await writeBack(path, truth, matches, replacement);
     if (ok) {

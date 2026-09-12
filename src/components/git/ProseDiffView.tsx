@@ -1,67 +1,35 @@
-import { useMemo } from 'react';
-import { proseDiff, type ProseDiffSegment } from '../../diff/proseDiff';
+import { useEffect, useMemo, useState } from 'react';
+import { comparisonDisplayText, plainComparison, type TextComparison } from '../../diff/compareText';
+import { compareBranchText } from '../../editor/branchComparisonClient';
 import type { FileDiff } from '../../types/git';
+import ReadOnlyGitText from './ReadOnlyGitText';
 
-/**
- * Prose Diff 视图（Phase 7 DIFF-02）：句级语义高亮，看「哪句话改了」而非「哪行变了」。
- *
- * 不传全文（DIFF 准则）：直接从已加载的结构化 hunks 重建变更区的 old/new 文本
- * （' '|'-' → old，' '|'+' → new），过 proseDiff 句级流水线。改写句成对呈现（删红删除线 + 增绿）。
- * 大文档 Worker 化 + 按章切片为后续增强（当前单文件主线程足够）。
- */
-
-/** 从 hunks 重建变更区 old/new 文本（保留行序；剥尾换行）。 */
-function reconstruct(fd: FileDiff): { oldText: string; newText: string } {
-  const oldLines: string[] = [];
-  const newLines: string[] = [];
-  for (const h of fd.hunks) {
-    for (const ln of h.lines) {
-      const c = ln.content.replace(/\n$/, '');
-      if (ln.origin !== '+') oldLines.push(c); // 上下文 + 删除
-      if (ln.origin !== '-') newLines.push(c); // 上下文 + 新增
-    }
-  }
-  return { oldText: oldLines.join('\n'), newText: newLines.join('\n') };
-}
-
-function segStyle(status: ProseDiffSegment['status']): React.CSSProperties {
-  if (status === 'insert') return { background: 'var(--graph-diff-add-bg)' };
-  if (status === 'delete')
-    return { background: 'var(--graph-diff-del-bg)', textDecoration: 'line-through' };
-  return {};
-}
-
+/** Existing patch views retain every supplied line; sentence calculation is bounded in a worker. */
 export default function ProseDiffView({ fileDiff }: { fileDiff: FileDiff }) {
-  const segs = useMemo(() => {
-    if (fileDiff.binary) return null;
-    const { oldText, newText } = reconstruct(fileDiff);
-    return proseDiff(oldText, newText);
+  const text = useMemo(() => {
+    const old: string[] = [], next: string[] = [];
+    for (const hunk of fileDiff.hunks) for (const line of hunk.lines) {
+      if (line.origin !== '+') old.push(line.content);
+      if (line.origin !== '-') next.push(line.content);
+    }
+    return { old: comparisonDisplayText(old.join('')), next: comparisonDisplayText(next.join('')) };
   }, [fileDiff]);
-
-  if (segs === null) {
-    return <div className="p-3 text-[13px] text-[var(--text-muted)]">二进制文件，不显示 diff</div>;
-  }
-  if (segs.length === 0) {
-    return <div className="p-3 text-[13px] text-[var(--text-muted)]">无文本变更</div>;
-  }
-
-  return (
-    <div className="h-full overflow-x-hidden overflow-y-auto p-3 text-[13px] leading-relaxed">
-      {segs.map((s, i) => {
-        // 段落变化时换行分段（render 按段分组）。
-        const br = i > 0 && s.para !== segs[i - 1].para;
-        return (
-          <span key={i}>
-            {br ? <span className="block h-2" /> : null}
-            <span
-              className="break-words rounded-[2px] px-0.5 text-[var(--text-normal)]"
-              style={segStyle(s.status)}
-            >
-              {s.text}
-            </span>
-          </span>
-        );
-      })}
+  const [loaded, setLoaded] = useState<{ text: typeof text; value: TextComparison } | null>(null);
+  useEffect(() => {
+    if (fileDiff.binary) return;
+    const controller = new AbortController();
+    void compareBranchText(text.old, text.next, controller.signal).then((value) => {
+      if (!controller.signal.aborted) setLoaded({ text, value });
+    }).catch(() => undefined);
+    return () => controller.abort();
+  }, [text, fileDiff.binary]);
+  if (fileDiff.binary) return <p className="p-3 text-[13px]">二进制文件，不显示文本差异。</p>;
+  const comparison = loaded?.text === text ? loaded.value : plainComparison('正在计算句级差异，正文可阅读。');
+  return <div className="flex h-full min-h-0 flex-col">
+    <p role="status" className="shrink-0 p-2 text-[12px]">{comparison.note}</p>
+    <div className="grid min-h-0 flex-1 grid-cols-2 gap-2">
+      <ReadOnlyGitText text={text.old} label="基线差异正文" ranges={comparison.oldRanges} />
+      <ReadOnlyGitText text={text.next} label="目标差异正文" side="new" ranges={comparison.newRanges} />
     </div>
-  );
+  </div>;
 }

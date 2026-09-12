@@ -1,4 +1,5 @@
 import type { FileEntry } from '../../types/vault';
+import { isMarkdownPath, withoutMarkdownExtension } from '../pathUtil';
 
 /**
  * wiki-link target 解析纯逻辑（Phase 4 W3 跳转 / 后续 W2' 抽链共用）。
@@ -54,7 +55,7 @@ function normalizedPath(raw: string): string | null {
 }
 
 function withoutMd(path: string): string {
-  return path.replace(/\.md$/i, '');
+  return withoutMarkdownExtension(path);
 }
 
 function addCandidate(table: Map<string, string[]>, key: string, path: string): void {
@@ -72,7 +73,7 @@ function candidateLookup(files: readonly FileEntry[]): (targetPath: string) => r
     const normalized = normalizedPath(path);
     if (!normalized) continue;
     addCandidate(exact, normalized, path);
-    if (/\.md$/i.test(path)) addCandidate(extended, withoutMd(normalized), path);
+    if (isMarkdownPath(path)) addCandidate(extended, withoutMd(normalized), path);
     addCandidate(basenames, withoutMd(normalized.split('/').pop() ?? normalized), path);
   }
   return (targetPath) => {
@@ -106,5 +107,5 @@ export function resolveWikiTarget(targetPath: string, files: readonly FileEntry[
 /** target 路径 → 建链相对路径（补 `.md`）。目标不存在时据此 createFile。 */
 export function wikiTargetToCreatePath(targetPath: string): string | null {
   const path = normalizedPath(targetPath);
-  return path === null ? null : /\.md$/i.test(path) ? path : `${path}.md`;
+  return path === null ? null : isMarkdownPath(path) ? path : `${path}.md`;
 }

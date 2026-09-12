@@ -39,6 +39,7 @@ export const MENUS: GroupConfig[] = [
       { commandId: 'file.new-file', label: '新建文件' },
       { commandId: 'file.new-folder', label: '新建文件夹' },
       { separator: true },
+      { commandId: 'project.archive', label: '项目档案…' },
       { commandId: 'file.open-file', label: '打开文件…' },
       { commandId: 'file.open-folder', label: '打开文件夹…' },
       { commandId: 'git.clone', label: '克隆仓库…' },

@@ -14,7 +14,7 @@ mod platform;
 
 #[cfg(test)]
 #[path = "rebase_process_fixture.rs"]
-mod test_support;
+pub(super) mod test_support;
 #[cfg(test)]
 #[path = "rebase_process_tests.rs"]
 mod tests;
@@ -31,10 +31,10 @@ pub(super) struct ProcessSpec {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(super) enum StopReason { Cancelled, TimedOut }
+pub(crate) enum StopReason { Cancelled, TimedOut }
 
 #[derive(Debug)]
-pub(super) struct ProcessOutput {
+pub(crate) struct ProcessOutput {
     pub exit_code: Option<i32>,
     pub stdout: String,
     pub stderr: String,

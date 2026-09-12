@@ -1,4 +1,4 @@
-use super::{db, file};
+use super::{db, file, storage::{IndexLocation, Resolver, Storage}};
 use sqlx::SqlitePool;
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
@@ -9,6 +9,7 @@ use tokio::sync::{mpsc, oneshot, Mutex};
 pub(super) struct Scope {
     pub root: PathBuf,
     pub session_id: String,
+    pub project_id: Option<String>,
 }
 
 impl Scope {
@@ -16,15 +17,16 @@ impl Scope {
         if session_id.is_empty() || session_id.len() > 200 { return Err("索引会话标识无效".into()); }
         let root = PathBuf::from(root);
         if !root.is_absolute() { return Err("索引工作区必须是绝对路径".into()); }
-        Ok(Self { root, session_id })
+        Ok(Self { root, session_id, project_id: None })
     }
 
     pub fn new(root: String, session_id: String) -> Result<Self, String> {
         if session_id.is_empty() || session_id.len() > 200 { return Err("索引会话标识无效".into()); }
         let root = Path::new(&root).canonicalize().map_err(|e| format!("索引工作区无效: {e}"))?;
         if !root.is_dir() { return Err("索引工作区不是目录".into()); }
-        Ok(Self { root, session_id })
+        Ok(Self { root, session_id, project_id: None })
     }
+    pub fn with_project(mut self, project_id: Option<String>) -> Self { self.project_id = project_id; self }
 }
 
 pub(super) enum Operation {
@@ -38,7 +40,7 @@ pub(super) enum Operation {
 struct Pending {
     scope: Scope,
     operation: Operation,
-    reply: oneshot::Sender<Result<(), String>>,
+    reply: oneshot::Sender<Result<Option<IndexLocation>, String>>,
 }
 
 #[derive(Default)]
@@ -53,14 +55,17 @@ pub(super) struct IndexState {
 }
 
 impl IndexState {
-    pub fn start() -> Self {
+    pub fn start_with_resolver(resolver: Resolver) -> Self {
         let (tx, rx) = mpsc::channel(1024);
         let admission = Arc::new(Mutex::new(Admission::default()));
-        tauri::async_runtime::spawn(worker(rx, admission.clone()));
+        tauri::async_runtime::spawn(worker(rx, admission.clone(), resolver));
         Self { tx, admission }
     }
 
-    pub async fn submit(&self, scope: Scope, operation: Operation) -> Result<(), String> {
+    #[cfg(test)]
+    pub fn start() -> Self { Self::start_with_resolver(Arc::new(super::storage::fixture)) }
+
+    pub async fn submit(&self, scope: Scope, operation: Operation) -> Result<Option<IndexLocation>, String> {
         let (reply, response) = oneshot::channel();
         let preparing = matches!(operation, Operation::Prepare { .. });
         let stopping = matches!(operation, Operation::Stop);
@@ -88,37 +93,48 @@ fn current(state: &Admission, scope: &Scope) -> Result<(), String> {
     else { Err("索引工作区会话已过期或已停用".into()) }
 }
 
-async fn worker(mut rx: mpsc::Receiver<Pending>, admission: Arc<Mutex<Admission>>) {
-    let mut opened: Option<(Scope, SqlitePool)> = None;
+struct Opened { scope: Scope, storage: Storage, pool: SqlitePool }
+
+async fn worker(mut rx: mpsc::Receiver<Pending>, admission: Arc<Mutex<Admission>>, resolver: Resolver) {
+    let mut opened: Option<Opened> = None;
     while let Some(job) = rx.recv().await {
-        let result = execute(&mut opened, &admission, &job.scope, job.operation).await;
+        let result = execute(&mut opened, &admission, &resolver, &job.scope, job.operation).await;
         let _ = job.reply.send(result); // Only SQL commit / completed close reaches the success reply.
     }
-    if let Some((_, pool)) = opened { pool.close().await; }
+    if let Some(opened) = opened { opened.pool.close().await; }
 }
 
 async fn execute(
-    opened: &mut Option<(Scope, SqlitePool)>, admission: &Mutex<Admission>, scope: &Scope, operation: Operation,
-) -> Result<(), String> {
+    opened: &mut Option<Opened>, admission: &Mutex<Admission>, resolver: &Resolver, scope: &Scope, operation: Operation,
+) -> Result<Option<IndexLocation>, String> {
     if matches!(operation, Operation::Stop) {
-        if opened.as_ref().is_some_and(|(owner, _)| owner == scope) {
-            if let Some((_, pool)) = opened.take() { pool.close().await; }
+        if opened.as_ref().is_some_and(|open| &open.scope == scope) {
+            if let Some(open) = opened.take() { open.pool.close().await; }
         }
-        return Ok(());
+        return Ok(None);
     }
     let guard = admission.lock().await;
     current(&guard, scope)?;
     if let Operation::Prepare { rebuild } = operation {
-        if rebuild || opened.as_ref().is_none_or(|(owner, _)| owner != scope) {
-            if let Some((_, pool)) = opened.take() { pool.close().await; }
-            *opened = Some((scope.clone(), db::open(&scope.root).await?));
+        let fresh_scope = opened.as_ref().is_none_or(|open| &open.scope != scope);
+        if rebuild || fresh_scope {
+            if let Some(open) = opened.take() { open.pool.close().await; }
+            let resolve = resolver.clone(); let target = scope.clone();
+            let storage = tauri::async_runtime::spawn_blocking(move || resolve(&target)).await
+                .map_err(|error| format!("项目索引位置解析失败: {error}"))??;
+            let pool = db::open(&storage.directory).await?;
+            *opened = Some(Opened { scope: scope.clone(), storage, pool });
         }
+        let open = opened.as_ref().unwrap();
+        let initialized: Option<String> = sqlx::query_scalar("SELECT v FROM index_meta WHERE k='content_root'")
+            .fetch_optional(&open.pool).await.map_err(|error| error.to_string())?;
+        let needs_rebuild = rebuild || fresh_scope || initialized.as_deref() != scope.root.to_str();
         drop(guard);
-        if rebuild { rebuild_scope(&opened.as_ref().unwrap().1, admission, scope).await?; }
-        return Ok(());
+        if needs_rebuild { rebuild_scope(&open.pool, admission, scope).await?; }
+        return Ok(Some(open.storage.location()?));
     }
-    let (_, pool) = opened.as_ref().filter(|(owner, _)| owner == scope).ok_or("索引尚未准备完成")?;
-    let mut tx = pool.begin().await.map_err(|e| e.to_string())?;
+    let open = opened.as_ref().filter(|open| &open.scope == scope).ok_or("索引尚未准备完成")?;
+    let mut tx = open.pool.begin().await.map_err(|e| e.to_string())?;
     match operation {
         Operation::Upsert { path, content } => db::upsert(&mut tx, &db::relative_path(&path)?, &content).await?,
         Operation::Refresh { path } => {
@@ -133,7 +149,7 @@ async fn execute(
     tx.commit().await.map_err(|e| e.to_string())?;
     // Keep admission locked through commit: a switch cannot accept a new owner before this write ends.
     drop(guard);
-    Ok(())
+    Ok(None)
 }
 
 async fn rebuild_scope(pool: &SqlitePool, admission: &Mutex<Admission>, scope: &Scope) -> Result<(), String> {
@@ -146,18 +162,24 @@ async fn rebuild_scope(pool: &SqlitePool, admission: &Mutex<Admission>, scope: &
         current(&guard, scope)?;
         let mut tx = pool.begin().await.map_err(|e| e.to_string())?;
         if number == 0 {
+            sqlx::query("DELETE FROM index_meta WHERE k='content_root'").execute(&mut *tx).await.map_err(|e| e.to_string())?;
             sqlx::query("DELETE FROM files").execute(&mut *tx).await.map_err(|e| e.to_string())?;
             sqlx::query("DELETE FROM links").execute(&mut *tx).await.map_err(|e| e.to_string())?;
         }
         for (path, abs) in batch {
-            match std::fs::read_to_string(abs) {
-                Ok(content) => db::upsert(&mut tx, path, &content).await?,
-                Err(e) if e.kind() == std::io::ErrorKind::NotFound => continue,
-                Err(e) => return Err(format!("索引无法读取 {path}: {e}")),
-            }
+            if !abs.exists() { continue; }
+            let root = scope.root.clone();
+            let relative = path.clone();
+            let (_, content) = tauri::async_runtime::spawn_blocking(move || file::read_saved(&root, &relative))
+                .await.map_err(|error| format!("索引读取任务失败: {error}"))??;
+            db::upsert(&mut tx, path, &content).await?;
         }
         tx.commit().await.map_err(|e| e.to_string())?;
         drop(guard); // Let stop / switch retire this scope between bounded batches.
     }
+    let guard = admission.lock().await;
+    current(&guard, scope)?;
+    sqlx::query("INSERT INTO index_meta(k,v) VALUES ('content_root',?) ON CONFLICT(k) DO UPDATE SET v=excluded.v")
+        .bind(scope.root.to_str().ok_or("项目目录不是有效 UTF-8。")?).execute(pool).await.map_err(|error| error.to_string())?;
     Ok(())
 }

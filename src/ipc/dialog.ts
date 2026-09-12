@@ -57,6 +57,10 @@ export function pickFile(): Promise<string | null> {
   return open({ directory: false, multiple: false, filters: [OPENABLE_FILTER] });
 }
 
+export function pickProjectCover(): Promise<string | null> {
+  return open({ directory: false, multiple: false, filters: [{ name: '项目封面', extensions: ['png', 'jpg', 'jpeg', 'webp'] }] });
+}
+
 /** 书架导入：多选书籍文件，返回绝对路径数组（取消返回 null）。`multiple: true` → `string[] | null`。 */
 export function pickBookFiles(): Promise<string[] | null> {
   return open({ directory: false, multiple: true, filters: [BOOK_FILTER] }) as Promise<string[] | null>;

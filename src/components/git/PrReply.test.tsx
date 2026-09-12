@@ -6,6 +6,7 @@ import type { PullRequest } from '../../types/git';
 import PrDetailPanel from './PrDetailPanel';
 
 const api = vi.hoisted(() => ({ list: vi.fn(), reply: vi.fn() }));
+vi.mock('../../ipc/githubPage', () => ({ githubCommentPage: async () => ({ items: [], nextPage: null }), githubReviewPage: async () => ({ items: [], nextPage: null }) }));
 vi.mock('../../ipc/git', async (original) => ({
   ...await original<typeof import('../../ipc/git')>(),
   ghPrReviews: vi.fn(async () => []), ghCommentList: vi.fn(async () => []),
@@ -16,7 +17,7 @@ const pr: PullRequest = { number: 7, title: '论文修改', body: '', state: 'op
 const root = { id: 10, inReplyToId: null, author: 'reviewer', body: '请补充证据', path: 'paper.md', line: 4, originalLine: 4, diffHunk: '@@ -1 +1 @@', url: 'https://github.com/o/r/pull/7#discussion_r10', createdAt: '2026-09-11T00:00:00Z' };
 beforeEach(() => {
   useGitStore.setState({ repoRoot: '/repo' });
-  useGitGraphStore.setState({ selectedPr: pr });
+  useGitGraphStore.setState({ selectedPr: pr, selectedPrRepoRoot: '/repo' });
   api.list.mockReset().mockResolvedValue([root, { ...root, id: 11, inReplyToId: 10, author: 'author', body: '正在修改' }]);
   api.reply.mockReset().mockResolvedValue({ ...root, id: 12, inReplyToId: 10, body: '已补充' });
 });

@@ -64,11 +64,12 @@ pub fn compare_files(repo: &Repository, from: &str, to: &str, skip: usize, limit
     }
     let from = exact_oid(from)?;
     let to = exact_oid(to)?;
-    let old = repo.find_commit(from)?.tree()?;
+    // Zero is the explicit empty baseline for a repository's root commit.
+    let old = if from.is_zero() { None } else { Some(repo.find_commit(from)?.tree()?) };
     let new = repo.find_commit(to)?.tree()?;
     let mut options = DiffOptions::new();
     options.skip_binary_check(true).context_lines(0).max_size(1024 * 1024);
-    let mut diff = repo.diff_tree_to_tree(Some(&old), Some(&new), Some(&mut options))?;
+    let mut diff = repo.diff_tree_to_tree(old.as_ref(), Some(&new), Some(&mut options))?;
     if diff.deltas().len() > MAX_FILES {
         return Err(GitError::Git("变更超过 50000 个文件，请在外部 Git 工具比较。未截断结果。".into()));
     }
@@ -85,7 +86,7 @@ pub fn compare_files(repo: &Repository, from: &str, to: &str, skip: usize, limit
                 let (byte_length, readable) = if entry.kind() == Some(ObjectType::Blob) { let (length, _) = repo.odb()?.read_header(entry.id())?; (length, length <= MAX_BLOB_BYTES) } else { (0, false) };
                 Ok(Some(CompareSide { commit_oid: commit.to_string(), blob_oid: entry.id().to_string(), path: path.into(), byte_length, readable }))
             };
-            let old_side = entry_side(&old, from)?;
+            let old_side = match &old { Some(old) => entry_side(old, from)?, None => None };
             let new_side = entry_side(&new, to)?;
             if old_side.is_none() && new_side.is_none() { None } else { Some(CompareFile { status: "unchanged".into(), old: old_side, new: new_side }) }
         };
@@ -135,6 +136,16 @@ pub(crate) fn read_blob(repo_root: &str, commit_oid: &str, path: &str, expected_
 #[tauri::command]
 pub async fn git_compare_files(repo_root: String, from_oid: String, to_oid: String, skip: usize, limit: usize, focus_path: Option<String>) -> Result<ComparePage, String> {
     super::blocking(move || compare_files(&super::open_repo(&repo_root)?, &from_oid, &to_oid, skip, limit, focus_path.as_deref())).await
+}
+
+#[tauri::command]
+pub async fn git_commit_files(repo_root: String, commit_oid: String, skip: usize, limit: usize, focus_path: Option<String>) -> Result<ComparePage, String> {
+    super::blocking(move || {
+        let repo = super::open_repo(&repo_root)?;
+        let commit = repo.find_commit(exact_oid(&commit_oid)?)?;
+        let parent = if commit.parent_count() == 0 { Oid::ZERO_SHA1 } else { commit.parent_id(0)? };
+        compare_files(&repo, &parent.to_string(), &commit.id().to_string(), skip, limit, focus_path.as_deref())
+    }).await
 }
 
 #[cfg(test)]

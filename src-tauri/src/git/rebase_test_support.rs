@@ -4,7 +4,7 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::AtomicBool;
 use std::time::Duration;
 
-pub(super) struct Fixture { pub root: PathBuf, pub signer: PathBuf }
+pub(crate) struct Fixture { pub root: PathBuf, pub signer: PathBuf }
 pub(super) fn git_path(path: &Path) -> String {
     let slash = path.to_string_lossy().replace('\\', "/");
     if let Some(unc) = slash.strip_prefix("//?/UNC/") { format!("//{unc}") }

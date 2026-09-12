@@ -11,21 +11,25 @@ import { getView } from './viewHandle';
 export { CODEX_TYPE_LABEL } from './codexMetadata';
 
 let generation = 0;
-async function scan(root: string): Promise<{ entries: CodexEntry[]; issues: string[] }> {
+let scanController: AbortController | null = null;
+async function scan(root: string, signal?: AbortSignal): Promise<{ entries: CodexEntry[]; issues: string[] }> {
   const parent = await listDir(root, '');
+  signal?.throwIfAborted();
   if (!parent.some((item) => item.isDir && item.name === 'Codex')) return { entries: [], issues: [] };
   const files = (await listDir(root, 'Codex')).filter((entry) => !entry.isDir && /\.(md|markdown|txt)$/i.test(entry.name) && !entry.name.startsWith('.'));
+  signal?.throwIfAborted();
   const entries: CodexEntry[] = [];
   const issues: string[] = [];
   let cursor = 0;
   await Promise.all(Array.from({ length: Math.min(4, files.length) }, async () => {
     while (cursor < files.length) {
+      signal?.throwIfAborted();
       const file = files[cursor++];
       const path = `Codex/${file.name}`;
       try {
         const text = useVaultStore.getState().vault?.root === root ? getDocForPath(path) : null;
-        entries.push(parseCodexEntry(path, text ?? await readFile(root, path)));
-      } catch (error) { issues.push(`${path}：${error instanceof Error ? error.message : String(error)}`); }
+        entries.push(parseCodexEntry(path, text ?? await readFile(root, path, { signal })));
+      } catch (error) { signal?.throwIfAborted(); issues.push(`${path}：${error instanceof Error ? error.message : String(error)}`); }
     }
   }));
   entries.sort((a, b) => a.path.localeCompare(b.path));
@@ -45,10 +49,13 @@ export async function refreshCodex(root: string): Promise<void> {
   const scope = useVaultStore.getState().vault;
   if (scope?.root !== root) return;
   const request = ++generation;
+  scanController?.abort();
+  const controller = new AbortController();
+  scanController = controller;
   const current = () => request === generation && useVaultStore.getState().vault === scope;
   useCodexStore.setState({ status: 'loading', issues: [] });
   try {
-    const result = await scan(root);
+    const result = await scan(root, controller.signal);
     if (!current()) return;
     useCodexStore.setState({ ...result, status: 'ready' });
     const view = getView();
@@ -65,6 +72,7 @@ export function initCodexLifecycle(): () => void {
   const stopVault = useVaultStore.subscribe((state, previous) => {
     if (state.vault !== previous.vault) {
       ++generation;
+      scanController?.abort();
       useCodexStore.setState({ entries: [], issues: [], status: 'idle' });
       if (state.vault) void refreshCodex(state.vault.root);
     } else if (state.files !== previous.files && state.vault) void refreshCodex(state.vault.root);
@@ -75,5 +83,5 @@ export function initCodexLifecycle(): () => void {
       if (root) void refreshCodex(root);
     }
   });
-  return () => { stopVault(); stopEditor(); ++generation; };
+  return () => { stopVault(); stopEditor(); ++generation; scanController?.abort(); scanController = null; };
 }

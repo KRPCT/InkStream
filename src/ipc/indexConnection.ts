@@ -4,6 +4,7 @@ import { indexDbUrl, isCurrentIndexScope } from './indexScope';
 
 interface Connection {
   scope: IndexScope;
+  url: string;
   promise: Promise<Database>;
 }
 
@@ -29,7 +30,7 @@ export function closeIndexReads(): Promise<void> {
         closing.delete(old); // 加载未成功，不存在需要关闭的池。
         continue;
       }
-      await db.close(indexDbUrl(old.scope.root));
+      await db.close(old.url);
       closing.delete(old); // 失败时保留句柄，下一次显式重试仍能回收。
     }
   });
@@ -40,7 +41,10 @@ export async function indexConnection(scope: IndexScope): Promise<Database> {
   if (connection && connection.scope.sessionId !== scope.sessionId) retireIndexRead(connection.scope);
   await closeIndexReads();
   if (!isCurrentIndexScope(scope)) throw new Error('索引工作区会话已过期');
-  if (!connection) connection = { scope, promise: Database.load(indexDbUrl(scope.root)) };
+  if (!connection) {
+    const url = indexDbUrl(scope);
+    connection = { scope, url, promise: Database.load(url) };
+  }
   const own = connection;
   try {
     const db = await own.promise;

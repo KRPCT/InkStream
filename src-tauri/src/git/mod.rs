@@ -20,6 +20,8 @@ pub(crate) mod branch;
 pub(crate) mod commit;
 pub(crate) mod clone;
 pub(crate) mod conflict;
+mod conflict_markers;
+pub(crate) mod conflict_snapshot;
 pub(crate) mod compare;
 pub(crate) mod diff;
 pub(crate) mod log;
@@ -39,7 +41,7 @@ mod types;
 #[cfg(test)]
 mod tests;
 #[cfg(test)]
-mod rebase_test_support;
+pub(crate) mod rebase_test_support;
 #[cfg(test)]
 mod rebase_tests;
 

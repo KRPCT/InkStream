@@ -24,6 +24,8 @@ const VALID = {
   exportBrandingText: '自定义水印',
   bookshelfEnabled: true,
   terminalEnabled: true,
+  reducedMotion: true,
+  reducedTransparency: true,
 };
 
 describe('validateSettings', () => {
@@ -125,7 +127,18 @@ describe('validateSettings', () => {
       exportBrandingText: 'Made with InkStream',
       bookshelfEnabled: false,
       terminalEnabled: false,
+      reducedMotion: false,
+      reducedTransparency: false,
     });
+  });
+
+  it('older files and invalid material preferences receive boolean defaults', () => {
+    const old = validateSettings({ ...VALID, reducedMotion: undefined, reducedTransparency: undefined });
+    expect(old.reducedMotion).toBe(false);
+    expect(old.reducedTransparency).toBe(false);
+    const invalid = validateSettings({ ...VALID, reducedMotion: 'false', reducedTransparency: 1 });
+    expect(invalid.reducedMotion).toBe(false);
+    expect(invalid.reducedTransparency).toBe(false);
   });
 
   it('回 DEFAULT_SETTINGS 时返回新副本（不可被调用方污染共享默认值）', () => {

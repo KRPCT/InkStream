@@ -12,6 +12,7 @@ pub enum FileReadTarget {
     Reading { path: String },
     Image { path: String },
     GitBlob { #[serde(rename = "repoRoot")] repo_root: String, #[serde(rename = "commitOid")] commit_oid: String, path: String, #[serde(rename = "blobOid")] blob_oid: String },
+    GitConflict { #[serde(rename = "repoRoot")] repo_root: String, path: String, baseline: crate::git::conflict_snapshot::Baseline, part: crate::git::conflict_snapshot::Part },
 }
 
 pub(super) enum ReadSource {
@@ -51,6 +52,10 @@ fn absolute(path: String) -> Result<PathBuf, String> {
 /// 保留三种已有读取范围；不把受限的阅读/图片读取扩大成任意绝对路径读取。
 pub(super) fn open(target: FileReadTarget) -> Result<OpenedFile, String> {
     let (path, maximum, text) = match target {
+        FileReadTarget::GitConflict { repo_root, path, baseline, part } => {
+            let bytes = crate::git::conflict_snapshot::read(&repo_root, &path, &baseline, part)?;
+            return Ok(OpenedFile { byte_length: bytes.len() as u64, file: ReadSource::Blob(Cursor::new(bytes)), maximum: READ_BYTES_MAX, text: true });
+        }
         FileReadTarget::GitBlob { repo_root, commit_oid, path, blob_oid } => {
             let bytes = crate::git::compare::read_blob(&repo_root, &commit_oid, &path, &blob_oid)?;
             return Ok(OpenedFile { byte_length: bytes.len() as u64, file: ReadSource::Blob(Cursor::new(bytes)), maximum: READ_BYTES_MAX, text: true });

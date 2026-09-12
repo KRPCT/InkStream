@@ -44,7 +44,7 @@ fn spawn(directory: &Path, mode: &str, quiet: bool) -> Child {
     command.spawn().unwrap()
 }
 
-pub(super) struct Sentinel { child: Child, directory: PathBuf }
+pub(crate) struct Sentinel { child: Child, directory: PathBuf }
 impl Sentinel {
     pub fn new(directory: &Path) -> Self { Self { child: spawn(directory, "sentinel", true), directory: directory.to_path_buf() } }
     pub fn alive(&mut self) -> bool { self.child.try_wait().unwrap().is_none() }
@@ -60,7 +60,7 @@ impl Drop for Sentinel {
     }
 }
 
-pub(super) fn wait_pid(directory: &Path, name: &str) -> u32 {
+pub(crate) fn wait_pid(directory: &Path, name: &str) -> u32 {
     let deadline = Instant::now() + Duration::from_secs(4);
     loop {
         if let Ok(value) = fs::read_to_string(directory.join(format!("{name}.pid"))) {
@@ -72,7 +72,7 @@ pub(super) fn wait_pid(directory: &Path, name: &str) -> u32 {
 }
 
 #[cfg(windows)]
-pub(super) struct Watch(std::os::windows::io::OwnedHandle);
+pub(crate) struct Watch(std::os::windows::io::OwnedHandle);
 #[cfg(windows)]
 impl Watch {
     pub fn new(pid: u32) -> Self {
@@ -93,10 +93,10 @@ impl Watch {
 #[path = "rebase_process_watch_darwin.rs"]
 mod darwin_watch;
 #[cfg(target_os = "macos")]
-pub(super) use darwin_watch::Watch;
+pub(crate) use darwin_watch::Watch;
 
 #[cfg(all(unix, not(target_os = "macos")))]
-pub(super) struct Watch(u32);
+pub(crate) struct Watch(u32);
 #[cfg(all(unix, not(target_os = "macos")))]
 impl Watch {
     pub fn new(pid: u32) -> Self { Self(pid) }

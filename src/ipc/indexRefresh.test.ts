@@ -1,10 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-const ipc = vi.hoisted(() => vi.fn<(command: string, args?: unknown) => Promise<null>>());
+const ipc = vi.hoisted(() => vi.fn<(command: string, args?: unknown) => Promise<unknown>>());
 vi.mock('./invoke', () => ({ invoke: ipc }));
 import { useIndexStore } from '../stores/useIndexStore';
 import { useSettingsStore } from '../stores/useSettingsStore';
 import { useVaultStore } from '../stores/useVaultStore';
 import { captureIndexScope, indexRefreshFile, indexSwitchVault } from './indexService';
+import { nativeIndexReply } from '../test/indexLocationFixture';
 
 let generation = 0;
 let root: string;
@@ -12,7 +13,7 @@ beforeEach(async () => {
   root = `/refresh-contract-${++generation}`;
   useSettingsStore.setState({ simpleMode: false });
   useVaultStore.setState({ vault: { root, name: root, repoRoot: null }, files: [] });
-  ipc.mockReset().mockResolvedValue(null);
+  ipc.mockReset().mockImplementation(async (name, args) => nativeIndexReply(name, args));
   await indexSwitchVault(root);
   ipc.mockClear();
 });
@@ -20,8 +21,8 @@ beforeEach(async () => {
 describe('indexRefreshFile 的scope与提交回执', () => {
   it('只发送scope/path并等待真实提交回执后才增加索引revision', async () => {
     let commit!: () => void;
-    ipc.mockImplementation((command) => command === 'index_refresh_file'
-      ? new Promise<null>((resolve) => { commit = () => resolve(null); }) : Promise.resolve(null));
+    ipc.mockImplementation((command, args) => command === 'index_refresh_file'
+      ? new Promise<null>((resolve) => { commit = () => resolve(null); }) : Promise.resolve(nativeIndexReply(command, args)));
     const revision = useIndexStore.getState().revision;
     let finished = false;
     const refresh = indexRefreshFile('目录\\文稿.md').then(() => { finished = true; });
@@ -47,8 +48,8 @@ describe('indexRefreshFile 的scope与提交回执', () => {
   it('A刷新回执晚到时拒绝旧结果，不增加B的revision或写入error', async () => {
     const old = captureIndexScope();
     let commit!: () => void;
-    ipc.mockImplementation((command) => command === 'index_refresh_file'
-      ? new Promise<null>((resolve) => { commit = () => resolve(null); }) : Promise.resolve(null));
+    ipc.mockImplementation((command, args) => command === 'index_refresh_file'
+      ? new Promise<null>((resolve) => { commit = () => resolve(null); }) : Promise.resolve(nativeIndexReply(command, args)));
     const refreshing = indexRefreshFile('note.md', old).catch((error: unknown) => error);
     await vi.waitFor(() => expect(commit).toBeTypeOf('function'));
     useVaultStore.setState({ vault: { root: `${root}-b`, name: 'B', repoRoot: null } });

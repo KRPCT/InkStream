@@ -7,6 +7,7 @@ import { formulaGesture } from './formulaGesture';
 import { linkGesture } from './linkGesture';
 import { tableGesture } from './tableGesture';
 import { wikiLinkCompletion } from './wikiLinkComplete';
+import { citationPreview } from './citationPreview';
 
 /**
  * Live Preview 组合根（Pattern Map「livePreview.ts」/ RESEARCH Pattern 3+5）。
@@ -45,6 +46,7 @@ import { wikiLinkCompletion } from './wikiLinkComplete';
 export function livePreviewExtensions(): Extension[] {
   return [
     inlinePlugin,
+    citationPreview,
     blockExtensions,
     codeBlockDeco, // 代码块底纹 + 语言角标（行级装饰，与公式块 widget 正交）
     codeBlockTheme,

@@ -12,6 +12,16 @@ const commands = new Map<string, Command>(
 const viewGroup = MENUS.find((g) => g.label === '视图')!;
 
 describe('menuConfig.toEntries 简易模式门控', () => {
+  it('the file menu exposes the same project archive command in both capability modes', () => {
+    const files = MENUS.find((group) => group.label === '文件')!;
+    for (const simple of [false, true]) {
+      const entry = toEntries(files, commands, [], simple).find((item) => item.id === 'project.archive');
+      expect(entry?.label).toBe('项目档案…');
+      expect(entry?.disabled).toBe(false);
+      expect(entry?.onSelect).toBeTypeOf('function');
+    }
+  });
+
   it('完整模式保留 Git Graph / 模式子菜单 / 切换文档语言', () => {
     const ids = toEntries(viewGroup, commands, []).map((e) => e.id);
     expect(ids).toContain('git.toggle-graph');

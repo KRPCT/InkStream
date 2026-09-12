@@ -2,6 +2,7 @@ import { useSettingsStore } from '../stores/useSettingsStore';
 import { useVaultStore } from '../stores/useVaultStore';
 import type { IndexScope } from '../types/index';
 import type { VaultInfo } from '../types/vault';
+export { indexDbUrl } from './indexLocation';
 
 let vaultOwner: VaultInfo | null = null;
 let captured: IndexScope | null = null;
@@ -35,27 +36,20 @@ export function captureIndexScope(): IndexScope | null {
     resetIndexScope();
     return null;
   }
-  if (vaultOwner !== vault || captured?.root !== vault.root) {
+  const projectId = 'projectId' in vault && typeof vault.projectId === 'string' ? vault.projectId : undefined;
+  if (vaultOwner !== vault || captured?.root !== vault.root || captured?.projectId !== projectId) {
     vaultOwner = vault;
-    captured = Object.freeze({ root: vault.root, sessionId: crypto.randomUUID() });
+    captured = Object.freeze({ root: vault.root, sessionId: crypto.randomUUID(), ...(projectId ? { projectId } : {}) });
   }
   return captured;
 }
 
 export function isCurrentIndexScope(scope: IndexScope): boolean {
   const now = captureIndexScope();
-  return now?.root === scope.root && now.sessionId === scope.sessionId;
+  return now?.root === scope.root && now.sessionId === scope.sessionId && now.projectId === scope.projectId;
 }
 
 export function resetIndexScope(): void {
   vaultOwner = null;
   captured = null;
-}
-
-/** 保留Windows/UNC兼容的SQL连接名，也用于精确关闭该池（不关闭其他库）。 */
-export function indexDbUrl(root: string): string {
-  let path = root;
-  if (path.startsWith('\\\\?\\UNC\\')) path = '\\\\' + path.slice(8);
-  else if (path.startsWith('\\\\?\\')) path = path.slice(4);
-  return `sqlite:${path.split('\\').join('/')}/.inkstream/index.db`;
 }

@@ -47,4 +47,6 @@ export interface PersistedSettings {
   bookshelfEnabled: boolean;
   /** 内置终端开关（默认关，opt-in，v1.2 #3）：首次开启弹安全确认；关闭即隐藏面板入口、不再可 Ctrl+` 唤起。 */
   terminalEnabled: boolean;
+  reducedMotion: boolean;
+  reducedTransparency: boolean;
 }

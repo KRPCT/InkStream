@@ -6,6 +6,7 @@ import type { IndexScope } from '../types/index';
 import { closeIndexReads, retireIndexRead } from './indexConnection';
 import { captureIndexScope, isCurrentIndexScope, isIndexScopePaused, resetIndexScope } from './indexScope';
 import { invoke } from './invoke';
+import { bindIndexLocation } from './indexLocation';
 
 let prepared: { scope: IndexScope; promise: Promise<null> } | null = null;
 let controls: Promise<void> = Promise.resolve();
@@ -50,9 +51,10 @@ function prepare(scope: IndexScope, rebuild: boolean, force: boolean): Promise<n
     if (!isCurrentIndexScope(scope)) throw new Error('索引工作区会话已过期');
     await closeIndexReads();
     if (!isCurrentIndexScope(scope)) throw new Error('索引工作区会话已过期');
-    if (rebuild) await invoke('index_rebuild', scope);
-    else await invoke('index_switch_vault', { ...scope, enabled: true });
+    const location = rebuild ? await invoke('index_rebuild', scope)
+      : await invoke('index_switch_vault', { ...scope, enabled: true });
     if (isCurrentIndexScope(scope) && prepared?.promise === promise) {
+      bindIndexLocation(scope, location);
       useIndexStore.setState({ scope, status: 'ready', error: null });
       committed(scope);
     }

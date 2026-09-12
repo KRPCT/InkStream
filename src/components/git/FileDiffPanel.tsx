@@ -3,6 +3,9 @@ import { useGitGraphStore } from '../../stores/useGitGraphStore';
 import DiffHunkView from './DiffHunkView';
 import ProseDiffView from './ProseDiffView';
 import type { FileDiff } from '../../types/git';
+import { useGitStore } from '../../stores/useGitStore';
+import PrFileDiffPanel from './PrFileDiffPanel';
+import CommitFileComparison from './CommitFileComparison';
 
 /**
  * 右栏 diff 容器（Phase 6 GIT-05 + Phase 7 DIFF-02）：顶部「行 / 句」切换。
@@ -18,6 +21,12 @@ export default function FileDiffPanel() {
   const files = useGitGraphStore((s) => s.commitFiles);
   const selectedFile = useGitGraphStore((s) => s.selectedFile);
   const [mode, setMode] = useState<'line' | 'prose'>('line');
+  const repoRoot = useGitStore((s) => s.repoRoot);
+  const pr = useGitGraphStore((s) => s.selectedPr);
+  const owner = useGitGraphStore((s) => s.selectedPrRepoRoot);
+  const oid = useGitGraphStore((s) => s.selectedOid);
+  if (pr && owner === repoRoot) return <PrFileDiffPanel />;
+  if (oid) return <CommitFileComparison key={`${repoRoot}:${oid}`} />;
   const fd = selectedFile ? files.find((f) => pathOf(f) === selectedFile) : null;
   if (!fd) {
     return <div className="p-3 text-[13px] text-[var(--text-muted)]">选择一个文件查看 diff</div>;

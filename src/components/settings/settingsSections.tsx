@@ -201,6 +201,10 @@ export function AppearanceSection() {
   const setFontSize = useSettingsStore((s) => s.setEditorFontSize);
   const uiZoom = useSettingsStore((s) => s.uiZoom);
   const setUiZoom = useSettingsStore((s) => s.setUiZoom);
+  const reducedMotion = useSettingsStore((s) => s.reducedMotion);
+  const setReducedMotion = useSettingsStore((s) => s.setReducedMotion);
+  const reducedTransparency = useSettingsStore((s) => s.reducedTransparency);
+  const setReducedTransparency = useSettingsStore((s) => s.setReducedTransparency);
   return (
     <div>
       <SettingRow label="主题" description="界面亮暗，或跟随系统。">
@@ -218,6 +222,12 @@ export function AppearanceSection() {
         <NumberInput value={fontSize} min={10} max={28} suffix="px" onChange={setFontSize} />
       </SettingRow>
       <ImportedThemeSection />
+      <SettingRow label="减少动效" description="关闭项目档案的纵深过渡，保留即时状态反馈。系统减少动效偏好也会生效。">
+        <Toggle checked={reducedMotion} onChange={setReducedMotion} />
+      </SettingRow>
+      <SettingRow label="减少透明度" description="把亚克力和磨砂工具层换成实色表面，保留文字与边界的清晰度。">
+        <Toggle checked={reducedTransparency} onChange={setReducedTransparency} />
+      </SettingRow>
       <SettingRow
         label="界面缩放"
         description="整体界面缩放比例（含侧栏 / 编辑器 / 面板 / 终端）。也可用 Ctrl+=、Ctrl+-、Ctrl+0 调整。"

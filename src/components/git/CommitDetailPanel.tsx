@@ -27,6 +27,10 @@ export default function CommitDetailPanel() {
   const filesLoading = useGitGraphStore((s) => s.filesLoading);
   const selectedFile = useGitGraphStore((s) => s.selectedFile);
   const selectFile = useGitGraphStore((s) => s.selectFile);
+  const page = useGitGraphStore((s) => s.commitPage);
+  const skip = useGitGraphStore((s) => s.commitSkip);
+  const loadPage = useGitGraphStore((s) => s.loadCommitPage);
+  const error = useGitGraphStore((s) => s.filesError);
 
   const commit = selectedOid ? commits.find((c) => c.oid === selectedOid) : null;
   if (!commit) {
@@ -63,9 +67,14 @@ export default function CommitDetailPanel() {
       </dl>
 
       <div className="mb-1 mt-3 text-[12px] text-[var(--text-faint)]">
-        变更文件 {files.length > 0 ? `(${files.length})` : ''}
+        变更文件 {page?.toOid === selectedOid ? `(${page.total}) · 本页 ${files.length}` : ''}
       </div>
       {filesLoading ? <div className="text-[12px] text-[var(--text-muted)]">加载中…</div> : null}
+      {error ? <p role="alert">{error}</p> : null}
+      {page?.toOid === selectedOid ? <div className="my-2 flex gap-2 text-[12px]">
+        <button disabled={skip === 0 || filesLoading} onClick={() => loadPage(Math.max(0, skip - 100))}>上一页</button>
+        <button disabled={page.next === null || filesLoading} onClick={() => page.next !== null && loadPage(page.next)}>下一页</button>
+      </div> : null}
       <ul className="min-h-0 flex-1">
         {files.map((f) => {
           const path = pathOf(f);

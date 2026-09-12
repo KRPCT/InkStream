@@ -18,7 +18,7 @@ function toSlash(p: string): string {
 }
 
 function stripMd(p: string): string {
-  return p.endsWith('.md') ? p.slice(0, -3) : p;
+  return p.replace(/\.(?:md|markdown)$/i, '');
 }
 
 function basename(p: string): string {

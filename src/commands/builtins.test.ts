@@ -2,6 +2,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { windowControls } from '../ipc/window';
 import { useAboutStore } from '../stores/useAboutStore';
 import { usePaletteStore } from '../stores/usePaletteStore';
+import { useProjectStore } from '../stores/useProjectStore';
+import { registerLayoutRestore } from '../components/workbench/layoutRestore';
 import { useSettingsStore } from '../stores/useSettingsStore';
 import { useWorkbenchStore } from '../stores/useWorkbenchStore';
 import { DEFAULT_LAYOUT } from '../types/workbench';
@@ -52,6 +54,7 @@ const TITLES: Record<string, string> = {
   'view.toggle-terminal': '视图：内置终端',
   'view.command-palette': '视图：命令面板',
   'view.settings': '视图：设置',
+  'project.archive': '项目：项目档案',
   'file.open-file': '文件：打开文件',
   'file.open-folder': '文件：打开文件夹',
   'file.open-recent': '文件：打开最近',
@@ -157,6 +160,7 @@ describe('builtins', () => {
     useSettingsStore.setState(useSettingsStore.getInitialState(), true);
     useWorkbenchStore.setState(useWorkbenchStore.getInitialState(), true);
     usePaletteStore.setState(usePaletteStore.getInitialState(), true);
+    useProjectStore.setState({ phase: 'idle', archiveOpen: false });
     delete document.documentElement.dataset.theme;
     delete document.documentElement.dataset.mode;
     requestOpenFolder.mockClear();
@@ -191,6 +195,7 @@ describe('builtins', () => {
     expect(byId.get('view.toggle-right-panel')?.shortcut).toBe('Ctrl+Alt+B');
     expect(byId.get('view.command-palette')?.shortcut).toBe('Ctrl+Shift+P');
     expect(byId.get('go.quick-open')?.shortcut).toBe('Ctrl+P');
+    expect(byId.get('project.archive')?.shortcut).toBe('Ctrl+Alt+P');
     // Ctrl+O 给打开文件；打开文件夹让位 Ctrl+Shift+O
     expect(byId.get('file.open-file')?.shortcut).toBe('Ctrl+O');
     expect(byId.get('file.open-folder')?.shortcut).toBe('Ctrl+Shift+O');
@@ -234,6 +239,39 @@ describe('builtins', () => {
     window.dispatchEvent(key({ key: 'p', ctrlKey: true }));
     expect(usePaletteStore.getState().open).toBe(true);
     expect(usePaletteStore.getState().query).toBe('');
+  });
+
+  it('project archive shares its command and shortcut in simple mode, and cannot toggle during handover', async () => {
+    initKeymap();
+    useSettingsStore.setState({ simpleMode: true });
+    window.dispatchEvent(key({ key: 'p', ctrlKey: true, altKey: true }));
+    expect(useProjectStore.getState().archiveOpen).toBe(true);
+    await execute('project.archive');
+    expect(useProjectStore.getState().archiveOpen).toBe(false);
+    useProjectStore.setState({ phase: 'saving' });
+    await execute('project.archive');
+    expect(useProjectStore.getState().archiveOpen).toBe(false);
+    useProjectStore.setState({ archiveOpen: true });
+    window.dispatchEvent(key({ key: 'p', ctrlKey: true, altKey: true }));
+    expect(useProjectStore.getState().archiveOpen).toBe(true);
+  });
+
+  it('explicit layout reset restores the mounted panels once without subscribing to measurement write-back', async () => {
+    const restore = vi.fn();
+    const unregister = registerLayoutRestore(restore);
+    try {
+      useWorkbenchStore.getState().setLayout({ sidebarWidth: 410 });
+      await execute('view.reset-layout');
+      expect(restore).toHaveBeenCalledTimes(1);
+      expect(useWorkbenchStore.getState().layouts.standard.sidebarWidth).toBe(DEFAULT_LAYOUT.sidebarWidth);
+    } finally { unregister(); }
+  });
+
+  it('the actual app.exit command remains available while a project operation blocks editor commands', async () => {
+    const close = vi.spyOn(windowControls, 'close').mockResolvedValue(undefined);
+    useProjectStore.setState({ phase: 'restoring', archiveOpen: true });
+    try { await execute('app.exit'); expect(close).toHaveBeenCalledTimes(1); }
+    finally { close.mockRestore(); }
   });
 
   it('execute mode.switch-academic 切换模式且不占用全局快捷键（D-08）', async () => {

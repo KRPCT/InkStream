@@ -7,21 +7,22 @@ impl Vault {
     fn new() -> Self {
         let nonce = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos();
         let path = std::env::temp_dir().join(format!("inkstream-index-{}-{nonce}", std::process::id()));
-        std::fs::create_dir(&path).unwrap();
-        Self(path.canonicalize().unwrap())
+        let root = path.join("content");
+        std::fs::create_dir_all(&root).unwrap();
+        Self(root.canonicalize().unwrap())
     }
     fn scope(&self, id: &str) -> Scope {
         Scope::new(self.0.to_string_lossy().into_owned(), id.into()).unwrap()
     }
     async fn pool(&self) -> sqlx::SqlitePool {
         SqlitePoolOptions::new().max_connections(1).connect_with(
-            SqliteConnectOptions::new().filename(self.0.join(".inkstream/index.db"))
+            SqliteConnectOptions::new().filename(self.0.parent().unwrap().join("app-data/indexes/fixture-project/index.db"))
                 .busy_timeout(std::time::Duration::from_secs(2)),
         ).await.unwrap()
     }
 }
 impl Drop for Vault {
-    fn drop(&mut self) { let _ = std::fs::remove_dir_all(&self.0); }
+    fn drop(&mut self) { let _ = std::fs::remove_dir_all(self.0.parent().unwrap()); }
 }
 
 #[test]

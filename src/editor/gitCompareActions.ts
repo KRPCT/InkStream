@@ -9,6 +9,7 @@ import { stripVerbatim } from './pathUtil';
 
 export function openBranchComparison(): void {
   if (!useGitStore.getState().repoRoot) { showToast('warning', '当前工作区不是 Git 仓库。'); return; }
+  useGitGraphStore.setState({ comparisonStart: null });
   useGitGraphStore.getState().setLeftMode('compare');
   useWorkbenchStore.getState().setCentralView('gitGraph');
 }

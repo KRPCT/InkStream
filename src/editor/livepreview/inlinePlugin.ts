@@ -1,4 +1,5 @@
 import { syntaxTree } from '@codemirror/language';
+import { markdownLanguage } from '@codemirror/lang-markdown';
 import { equationCatalog } from '../equations/catalog';
 import { equationReferenceLabel } from '../equations/markers';
 import { EquationReferenceWidget } from '../equations/presentation';
@@ -189,6 +190,13 @@ export function buildInlineDecorations(view: EditorView): DecorationSet {
           return undefined;
         }
 
+        // CommonMark Escape spans the backslash and its literal punctuation.
+        // Hide only the prefix; code spans/blocks never produce these nodes.
+        if (node.name === 'Escape' && markdownLanguage.isActiveAt(state, node.from)) {
+          ranges.push(HIDDEN_MARK.range(node.from, node.from + 1));
+          return false;
+        }
+
         // wiki-link `[[target#h^b|alias]]`（Phase 4 W2）：整节点在此处理并 return false（不下钻子节点）。
         // 隐 WikiLinkMark（`[[`/`]]`/`|`）；有 alias 则隐 target 显 alias，否则显 target——皆加链接样式。
         // 活动行已在上方 active 分支跳过 → 显 `[[...]]` 源码（Typora 范式，相等闸门不破）。
@@ -311,6 +319,12 @@ export function buildInlineDecorations(view: EditorView): DecorationSet {
         }
 
         // 标记字符节点：隐藏其字符（装饰，不改 doc）。活动行已在上方 active 分支跳过，此处恒隐藏。
+        if (node.name === 'LinkMark') {
+          const parent = node.node.parent;
+          // A bare [literal] or [@key] is represented as Link too, even without
+          // a destination. Its brackets must remain visible as source text.
+          if (parent?.name === 'Link' && !parent.getChild(URL_NODE) && !parent.getChild('LinkLabel') && parent.getChildren('LinkMark').length === 2) return undefined;
+        }
         if (HIDE_MARK.has(node.name) && node.to > node.from) {
           ranges.push(HIDDEN_MARK.range(node.from, node.to));
         }

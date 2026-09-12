@@ -46,6 +46,6 @@ describe('段落反链', () => {
     const locate = mocks.locate.mock.calls[0][1];
     const current = `新插入前文😀\n\n${original}`;
     const from = current.indexOf('[[目标文档]]', current.indexOf(second));
-    expect(locate(EditorState.create({ doc: current }))).toEqual({ from, to: from + '[[目标文档]]'.length });
+    expect(await locate(EditorState.create({ doc: current }), new AbortController().signal)).toEqual({ from, to: from + '[[目标文档]]'.length });
   });
 });

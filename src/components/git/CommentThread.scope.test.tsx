@@ -4,6 +4,7 @@ import CommentThread from './CommentThread';
 
 const api = vi.hoisted(() => ({ list: vi.fn(), create: vi.fn() }));
 vi.mock('../../ipc/git', () => ({ ghCommentList: (...args: unknown[]) => api.list(...args), ghCommentCreate: (...args: unknown[]) => api.create(...args) }));
+vi.mock('../../ipc/githubPage', () => ({ githubCommentPage: async (...args: unknown[]) => ({ items: await api.list(...args), nextPage: null }) }));
 beforeEach(() => { api.list.mockReset().mockResolvedValue([]); api.create.mockReset(); });
 
 it('a late post in PR A cannot clear the new PR B comment draft', async () => {

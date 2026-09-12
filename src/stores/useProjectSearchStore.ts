@@ -28,12 +28,14 @@ interface ProjectSearchState {
   error: string | null;
   scope: VaultInfo | null;
   run: (query: string) => Promise<void>;
+  cancel: () => void;
   clear: () => void;
 }
 
 let seq = 0;
+let running: AbortController | null = null;
 
-export const useProjectSearchStore = create<ProjectSearchState>((set) => ({
+export const useProjectSearchStore = create<ProjectSearchState>((set, get) => ({
   query: '',
   results: [],
   totalMatches: 0,
@@ -42,44 +44,68 @@ export const useProjectSearchStore = create<ProjectSearchState>((set) => ({
   error: null,
   scope: null,
   run: async (query) => {
+    running?.abort();
+    const controller = new AbortController();
+    running = controller;
     const mine = ++seq;
     const term = query.trim();
     const scope = useVaultStore.getState().vault;
-    set({ query: term, status: 'searching', error: null, scope });
+    set({ query: term, results: [], totalMatches: 0, truncated: false, status: 'searching', error: null, scope });
     const root = scope?.root ?? null;
     const stale = () => {
       if (mine !== seq) return true;
-      if (useVaultStore.getState().vault === scope) return false;
+      if (!controller.signal.aborted && useVaultStore.getState().vault === scope) return false;
       set({ query: '', results: [], totalMatches: 0, truncated: false, status: 'idle', scope: null });
       return true;
     };
-    if (term.length < 3 || root === null) {
-      // 短词（trigram 下限）/ 无 vault：不召回，直接收敛空结果（UI 据 status+query 提示）。
+    if (!term || root === null) {
+      // 空词 / 无 vault：不召回，直接收敛空结果。
       if (mine === seq) set({ results: [], totalMatches: 0, truncated: false, status: 'done' });
+      if (running === controller) running = null;
       return;
     }
+    const unsubscribe = useVaultStore.subscribe((state) => { if (state.vault !== scope) controller.abort(); });
     try {
-    const paths = await queryContentPaths(term, CANDIDATE_CAP);
+    const paths = await queryContentPaths(term, CANDIDATE_CAP + 1, { signal: controller.signal });
     if (stale()) return;
-    const truncated = paths.length >= CANDIDATE_CAP;
-    const settled = await Promise.all(
-      paths.map(async (path) => {
-        // 优先取主编辑器真相源（活动 view / 缓存态）；未开文件才读盘，读失败（已删）→ 跳过。
-        const content = getDocForPath(path) ?? (await readFile(root, path).catch(() => null));
-        return content === null ? null : searchFile(path, content, term, { contextLines: CONTEXT_LINES });
-      }),
-    );
+    const truncated = paths.length > CANDIDATE_CAP;
+    const results: FileMatches[] = [];
+    let foundMatches = 0; let excerptUnits = 0;
+    // Sequential admission leaves native slots for navigation and avoids 500 queued deadlines.
+    for (const path of paths.slice(0, CANDIDATE_CAP)) {
+      if (stale()) return;
+      const content = getDocForPath(path) ?? await readFile(root, path, { signal: controller.signal }).catch((error: unknown) => {
+        throw new Error(`无法读取搜索候选「${path}」：${error instanceof Error ? error.message : String(error)}。结果尚未完整，请重试。`);
+      });
+      if (stale()) return;
+      const matches = searchFile(path, content, term, { contextLines: CONTEXT_LINES, maximumMatches: 20_000, maximumExcerptUnits: 1_000_000 });
+      if (matches) {
+        foundMatches += matches.matchCount;
+        excerptUnits += matches.excerpts.reduce((units, excerpt) => units + excerpt.text.length, 0);
+        if (foundMatches > 50_000 || excerptUnits > 2_000_000) throw new Error('搜索结果超过显示预算，请收窄关键词。未返回部分结果。');
+        results.push(matches);
+      }
+    }
     if (stale()) return;
-    const results = settled.filter((r): r is FileMatches => r !== null);
     results.sort((a, b) => a.path.localeCompare(b.path));
     const totalMatches = results.reduce((n, r) => n + r.matchCount, 0);
     set({ results, totalMatches, truncated, status: 'done' });
     } catch (error) {
       if (!stale()) set({ results: [], totalMatches: 0, status: 'error', error: error instanceof Error ? error.message : '搜索失败，请重试' });
+    } finally {
+      unsubscribe();
+      if (running === controller) running = null;
+      controller.abort();
     }
+  },
+  cancel: () => {
+    seq++;
+    running?.abort(); running = null;
+    if (get().status === 'searching') set({ status: 'idle', error: null });
   },
   clear: () => {
     seq++; // 作废在途查询。
+    running?.abort(); running = null;
     set({ query: '', results: [], totalMatches: 0, truncated: false, status: 'idle', scope: null, error: null });
   },
 }));

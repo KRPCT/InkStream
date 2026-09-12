@@ -4,6 +4,8 @@
 
 /** 打开 vault 的返回信息（Rust open_vault → camelCase 序列化）。 */
 export interface VaultInfo {
+  /** Stable application-local project identity; independent from the Git root. */
+  projectId?: string;
   /** 规范化后的 vault 根绝对路径。 */
   root: string;
   /** 仓库根（向上找到的 .git 所在目录）；非 git 工作区为 null（D-05）。 */

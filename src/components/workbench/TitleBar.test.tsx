@@ -102,5 +102,11 @@ describe('TitleBar', () => {
       render(<TitleBar />);
       expect(screen.getByText('chapter-01.md - my-vault')).toBeInTheDocument();
     });
+
+    it('独立草稿显示当前文稿名称', () => {
+      useEditorStore.setState({ tabs: [{ path: 'draft://note', name: '研究备忘' }], activePath: 'draft://note' });
+      render(<TitleBar />);
+      expect(screen.getByText('研究备忘 - 独立草稿')).toBeInTheDocument();
+    });
   });
 });

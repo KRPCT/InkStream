@@ -40,7 +40,7 @@ describe('RightPanel 按模式渲染（消费 MODE_PRESETS）', () => {
     expect(screen.getByRole('tab', { name: 'Typst 预览' })).toBeInTheDocument();
     expect(screen.getByRole('tab', { name: '大纲' })).toBeInTheDocument();
     expect(screen.getByText('暂无引用')).toBeInTheDocument();
-    expect(screen.getByText('在文档中插入 [@citekey] 后，引用条目会列在这里。')).toBeInTheDocument();
+    expect(screen.getByText('Markdown、Typst 或 LaTeX 文档中的引用会列在这里。')).toBeInTheDocument();
   });
 
   it('切模式后 activeTab 落到该模式 tabs[0]', () => {

@@ -1,6 +1,7 @@
 -- Phase 4 W1 FTS5 索引 schema（index.rs 经 include_str! 内嵌，首次开库以 sqlx::raw_sql 执行多语句）。
 -- 全部 CREATE IF NOT EXISTS / INSERT OR IGNORE，幂等可重复执行。schema 演进经 index_meta.schema_version 判定。
--- 该库位于 <vault>/.inkstream/index.db，连同 -wal/-shm 由 .inkstream/.gitignore('*') 整目录忽略，不入用户 git。
+-- Native ProjectRepository resolves app_data_dir/indexes/<projectId>/index.db.
+-- Legacy user-folder .inkstream directories are neither opened nor modified by this schema.
 
 -- 文件元数据 + 原文。content 既是 external-content FTS 的真相源（省一半磁盘：FTS 不另存正文副本），
 -- 也供后续反链解析 / 断链 lint / 高亮回显复用。rowid 显式整数主键，供 files_fts 的 content_rowid 关联。

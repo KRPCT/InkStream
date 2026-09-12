@@ -52,7 +52,7 @@ fn github_origins_build_requests_only_for_github_with_synthetic_credentials() {
         let fixture = Fixture::new(origin);
         let (api, owner, repo) = repo_target(fixture.root()).unwrap();
         let request = with_headers(
-            client().get(format!("{api}/repos/{owner}/{repo}/pulls")),
+            client().unwrap().get(format!("{api}/repos/{owner}/{repo}/pulls")),
             "fixture-only-not-a-real-token",
         ).build().unwrap();
         assert_eq!(request.url().as_str(), "https://api.github.com/repos/team/book/pulls");

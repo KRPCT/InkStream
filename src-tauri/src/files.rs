@@ -3,8 +3,11 @@ use std::io::ErrorKind;
 use std::path::{Path, PathBuf};
 
 pub(crate) mod create;
+pub(crate) mod exclusive_move;
 mod read_target;
 mod staged_write;
+#[cfg(windows)]
+mod publish_path;
 pub(crate) mod stream;
 mod stream_control;
 pub(crate) mod write;
@@ -21,6 +24,14 @@ mod write_tests;
 #[cfg(test)]
 #[path = "files/write_session_tests.rs"]
 mod write_session_tests;
+
+#[cfg(test)]
+#[path = "files/conflict_write_tests.rs"]
+mod conflict_write_tests;
+
+#[cfg(test)]
+#[path = "files/publish_path_tests.rs"]
+mod publish_path_tests;
 
 /// 单次 invoke 负载红线阈值（字节）。
 ///

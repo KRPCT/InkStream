@@ -18,7 +18,7 @@ const ITEMS: { id: string; label: string; icon: LucideIcon }[] = [
 
 export default function AcademicToolbar() {
   return (
-    <div className="flex h-8 shrink-0 items-center gap-1 border-b border-[var(--background-modifier-border)] bg-[var(--background-secondary)] px-2">
+    <div className="academic-tool-shelf flex shrink-0 items-center gap-1 px-2" role="toolbar" aria-label="学术写作工具">
       {ITEMS.map(({ id, label, icon: Icon }) => (
         <button
           key={id}

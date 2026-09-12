@@ -67,13 +67,13 @@ function BodyView({ body }: { body: Body }) {
   </div>;
 }
 
-export default function BranchCompareView() {
+export default function BranchCompareView({ initial }: { initial?: { comparison: GitComparison; path: string | null } | null }) {
   const repoRoot = useGitStore((s) => s.repoRoot);
   const branches = useGitStore((s) => s.branches);
   const vault = useVaultStore((s) => s.vault);
   const [fromChoice, setFromChoice] = useState('');
   const [toChoice, setToChoice] = useState('');
-  const [request, setRequest] = useState<Request | null>(null);
+  const [request, setRequest] = useState<Request | null>(() => initial ? { comparison: initial.comparison, skip: 0, focusPath: initial.path, snippet: '' } : null);
   const [page, setPage] = useState<{ request: Request; value: GitComparePage } | null>(null);
   const [selected, setSelected] = useState<GitCompareFile | null>(null);
   const [body, setBody] = useState<Body | null>(null);

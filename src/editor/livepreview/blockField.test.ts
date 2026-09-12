@@ -1,5 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
+import { stdout, threadCpuUsage } from 'node:process';
 import { ensureSyntaxTree } from '@codemirror/language';
 import { EditorSelection } from '@codemirror/state';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -222,15 +223,23 @@ describe('blockField 选区移动性能基准（10 万字含表格，< 16ms 一�
   /** 生成约 10 万字正文，中部嵌一张 GFM 表格。 */
   function build100kDocWithTable(): { doc: string; tableFrom: number } {
     const head: string[] = [];
+    let headLength = 0;
     let i = 0;
-    while (head.join('\n').length < 50_000) {
-      head.push(`## 章节 ${i}`, `含 **加粗${i}** 与 *斜体${i}* 的正文占位以撑足字符数。`, '');
+    while (headLength < 50_000) {
+      const heading = `## 章节 ${i}`;
+      const paragraph = `含 **加粗${i}** 与 *斜体${i}* 的正文占位以撑足字符数。`;
+      head.push(heading, paragraph, '');
+      headLength += heading.length + paragraph.length + 3;
       i += 1;
     }
     const table = ['| a | b |', '| - | - |', '| 1 | 2 |'];
     const tail: string[] = [];
-    while (tail.join('\n').length < 50_000) {
-      tail.push(`### 小节 ${i}`, `更多中文正文占位用于性能基准测量段落 ${i}。`, '');
+    let tailLength = 0;
+    while (tailLength < 50_000) {
+      const heading = `### 小节 ${i}`;
+      const paragraph = `更多中文正文占位用于性能基准测量段落 ${i}。`;
+      tail.push(heading, paragraph, '');
+      tailLength += heading.length + paragraph.length + 3;
       i += 1;
     }
     const headStr = head.join('\n');
@@ -249,13 +258,21 @@ describe('blockField 选区移动性能基准（10 万字含表格，< 16ms 一�
 
     const before = view.state.field(blockField);
     let worst = 0;
+    let worstCpu = 0;
     // 在文档头部连续移动光标（始终在表格外，绝不跨越表格边界）。
     for (let pos = 1; pos <= 200; pos += 1) {
+      const cpuStart = threadCpuUsage();
       const start = performance.now();
       view.dispatch({ selection: EditorSelection.cursor(pos) });
       worst = Math.max(worst, performance.now() - start);
+      const cpu = threadCpuUsage(cpuStart);
+      worstCpu = Math.max(worstCpu, (cpu.user + cpu.system) / 1000);
     }
 
+    // Build the fixture in O(n), avoiding tens of MB of discarded join() strings
+    // whose later GC used to contaminate this measurement. Retain the wall-clock
+    // budget unchanged; CPU is diagnostic evidence for any shared-runner preemption.
+    stdout.write(`blockField selection benchmark ${JSON.stringify({ worstWallMs: worst, worstThreadCpuMs: worstCpu })}\n`);
     // 性能纪律：每次纯选区移动远低于一帧预算（无全文语法树访问）。
     expect(worst).toBeLessThan(16);
     // 复用证明：200 次非边界移动后仍是同一 BlockState 引用（零重建）。

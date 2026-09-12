@@ -2,6 +2,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { requestOpenFile, requestOpenFolder, requestOpenRecent } from './vaultFlow';
 import { useVaultStore } from '../stores/useVaultStore';
 import type { VaultInfo } from '../types/vault';
+import { useProjectStore } from '../stores/useProjectStore';
+import { useEditorStore } from '../stores/useEditorStore';
+import { EditorState } from '@codemirror/state';
+import { EditorView } from '@codemirror/view';
+import { setView } from './viewHandle';
+
+const project = vi.hoisted(() => vi.fn<(...args: unknown[]) => Promise<boolean>>());
+vi.mock('../projects/actions', () => ({ openProjectDirectory: project }));
 
 const pickFolder = vi.fn<() => Promise<string | null>>();
 const pickFile = vi.fn<() => Promise<string | null>>();
@@ -39,25 +47,31 @@ vi.mock('../stores/useToastStore', () => ({
 }));
 
 const INFO: VaultInfo = { root: '/v', repoRoot: '/v', name: 'v' };
+let view: EditorView;
 
 beforeEach(() => {
   vi.clearAllMocks();
   openVault.mockResolvedValue(INFO);
+  project.mockReset().mockResolvedValue(true);
+  useProjectStore.setState(useProjectStore.getInitialState(), true);
+  useEditorStore.setState({ tabs: [{ path: 'keep.md', name: 'keep.md' }], activePath: 'keep.md', dirty: { 'keep.md': true } });
+  view = new EditorView({ state: EditorState.create({ doc: '需要保留的正文' }) }); setView(view);
   useVaultStore.setState(useVaultStore.getInitialState(), true);
 });
 
 afterEach(() => {
+  view.destroy(); setView(null);
   useVaultStore.setState(useVaultStore.getInitialState(), true);
 });
 
 describe('requestOpenFolder（原生目录对话框）', () => {
-  it('选中路径 → switchVault：停旧 watcher、open_vault、启新 watcher', async () => {
+  it('选中路径交给统一项目入口，目录命令自身不绕过保存协议切watcher或正文', async () => {
     pickFolder.mockResolvedValue('/v');
     await requestOpenFolder();
-    expect(stopWatch).toHaveBeenCalledTimes(1);
-    expect(openVault).toHaveBeenCalledWith('/v');
-    expect(startWatch).toHaveBeenCalledWith('/v');
-    expect(useVaultStore.getState().vault?.root).toBe('/v');
+    expect(project).toHaveBeenCalledWith('/v');
+    expect(stopWatch).not.toHaveBeenCalled(); expect(startWatch).not.toHaveBeenCalled(); expect(openVault).not.toHaveBeenCalled();
+    expect(view.state.doc.toString()).toBe('需要保留的正文');
+    expect(useEditorStore.getState().dirty['keep.md']).toBe(true);
   });
 
   it('取消（null）：no-op，不触碰 watcher / open_vault', async () => {
@@ -68,11 +82,17 @@ describe('requestOpenFolder（原生目录对话框）', () => {
     expect(startWatch).not.toHaveBeenCalled();
   });
 
-  it('打开失败：openVaultByPath 弹错误 toast，不抛出未处理拒绝', async () => {
+  it('项目入口失败保留其可见错误和当前正文，不产生未处理拒绝', async () => {
     pickFolder.mockResolvedValue('/bad');
-    openVault.mockRejectedValue(new Error('boom'));
+    project.mockImplementation(async () => {
+      useProjectStore.setState({ error: '无法打开目标项目，当前项目保留', archiveOpen: true });
+      throw new Error('fixture project failure');
+    });
     await expect(requestOpenFolder()).resolves.toBeUndefined();
-    expect(showToast).toHaveBeenCalledWith('error', expect.stringContaining('无法打开'));
+    expect(useProjectStore.getState()).toMatchObject({ error: '无法打开目标项目，当前项目保留', archiveOpen: true });
+    expect(view.state.doc.toString()).toBe('需要保留的正文');
+    expect(useEditorStore.getState()).toMatchObject({ activePath: 'keep.md', dirty: { 'keep.md': true } });
+    expect(stopWatch).not.toHaveBeenCalled(); expect(openVault).not.toHaveBeenCalled();
   });
 });
 
@@ -104,7 +124,8 @@ describe('requestOpenRecent', () => {
   it('恰好一个最近项：直接重开', async () => {
     useVaultStore.getState().pushRecent('/r');
     await requestOpenRecent();
-    expect(openVault).toHaveBeenCalledWith('/r');
+    expect(project).toHaveBeenCalledWith('/r');
+    expect(openVault).not.toHaveBeenCalled();
   });
 
   it('多个最近项：提示去子菜单/侧栏选', async () => {

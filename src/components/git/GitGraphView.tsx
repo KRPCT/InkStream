@@ -21,6 +21,7 @@ import {
 import { useGitGraphStore } from '../../stores/useGitGraphStore';
 import { useGitStore } from '../../stores/useGitStore';
 import { useWorkbenchStore } from '../../stores/useWorkbenchStore';
+import { useVaultStore } from '../../stores/useVaultStore';
 import BranchFilter from './BranchFilter';
 import BranchManager from './BranchManager';
 import IssuePanel from './IssuePanel';
@@ -42,6 +43,8 @@ import '../../styles/git-graph.css';
  */
 export default function GitGraphView() {
   const repoRoot = useGitStore((s) => s.repoRoot);
+  const vault = useVaultStore((s) => s.vault);
+  const comparisonStart = useGitGraphStore((s) => s.comparisonStart);
   const loading = useGitGraphStore((s) => s.loading);
   const commitCount = useGitGraphStore((s) => s.commits.length);
   const remoteBusy = useGitGraphStore((s) => s.remoteBusy);
@@ -58,7 +61,7 @@ export default function GitGraphView() {
   // 进入 Git Graph 视图即全量刷新（状态栏 + 图谱），同时捕获 app 外（终端等）改动。
   useEffect(() => {
     if (repoRoot) void refreshGitAll(repoRoot);
-  }, [repoRoot]);
+  }, [repoRoot, vault]);
 
   return (
     <div className="flex h-full flex-col bg-[var(--background-primary)]">
@@ -166,7 +169,7 @@ export default function GitGraphView() {
           </button>
         </div>
       </div>
-      {leftMode === 'compare' ? <BranchCompareView key={repoRoot} /> : <Group orientation="horizontal" className="min-h-0 flex-1">
+      {leftMode === 'compare' ? <BranchCompareView key={`${repoRoot}:${comparisonStart?.comparison.from.oid ?? ''}:${comparisonStart?.comparison.to.oid ?? ''}:${comparisonStart?.path ?? ''}`} initial={comparisonStart} /> : <Group orientation="horizontal" className="min-h-0 flex-1">
         <Panel id="graph-list" minSize={300} defaultSize={560} className="h-full">
           {leftMode === 'branches' ? (
             <BranchManager />

@@ -21,6 +21,8 @@ import { useGitRebaseStore } from '../../stores/useGitRebaseStore';
 import { useVaultStore } from '../../stores/useVaultStore';
 import { useWorkbenchStore } from '../../stores/useWorkbenchStore';
 import RebaseControls from '../git/RebaseControls';
+import { useGitOperationStore } from '../../stores/useGitOperationStore';
+import { cancelLocalGitOperation } from '../../editor/gitLocalOperation';
 import '../../styles/git-graph.css';
 
 /**
@@ -68,6 +70,7 @@ export default function SidebarGitPanel() {
   const status = useGitStore((s) => s.status);
   const vault = useVaultStore((s) => s.vault);
   const rebase = useGitRebaseStore();
+  const pendingOperation = useGitOperationStore((s) => s.current);
   const [expanded, setExpanded] = useState(true);
   const [message, setMessage] = useState('');
 
@@ -75,6 +78,7 @@ export default function SidebarGitPanel() {
   const files = status?.files ?? [];
   const branch = status?.branch ?? '未在分支上';
   const rebasing = rebase.scope?.vault === vault && rebase.scope?.repoRoot === repoRoot && (rebase.busy || rebase.status?.inProgress);
+  const operation = pendingOperation?.scope.vault === vault && pendingOperation.scope.repoRoot === repoRoot ? pendingOperation : null;
 
   return (
     <div data-onboarding="git-panel" className="shrink-0 border-t border-[var(--background-modifier-border)]">
@@ -98,6 +102,10 @@ export default function SidebarGitPanel() {
       {expanded ? (
         <div className="px-2 pb-2">
           <RebaseControls compact />
+          {operation ? <div role="status" className="flex items-center justify-between gap-2 py-1 text-[12px] text-[var(--text-muted)]">
+            <span>{operation.label}进行中…</span>
+            <button type="button" disabled={operation.cancelling} onClick={() => void cancelLocalGitOperation()} className="underline disabled:opacity-50">{operation.cancelling ? '正在停止…' : '停止 Git 操作'}</button>
+          </div> : null}
           <div className="flex items-center gap-0.5 pb-1">
             <IconBtn icon={Download} title="获取（fetch）" onClick={() => void fetchRemote()} />
             <IconBtn icon={ArrowDownToLine} title="拉取（pull）" onClick={() => void pullCurrent()} />
@@ -131,7 +139,7 @@ export default function SidebarGitPanel() {
           />
           <button
             type="button"
-            disabled={rebasing || !message.trim() || files.length === 0}
+            disabled={rebasing || operation !== null || !message.trim() || files.length === 0}
             onClick={async () => {
               if (await commitWithMessage(message)) setMessage('');
             }}

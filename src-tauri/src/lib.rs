@@ -5,6 +5,7 @@ mod index;
 mod os_open;
 mod pandoc;
 mod path_guard;
+pub(crate) mod projects;
 mod terminal;
 mod vault;
 mod watcher;
@@ -38,6 +39,18 @@ pub fn run() {
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())
         .invoke_handler(tauri::generate_handler![
+            projects::project_catalog_get,
+            projects::project_register,
+            projects::project_update,
+            projects::project_relocate,
+            projects::project_remove,
+            projects::project_activate,
+            projects::project_import_cover,
+            projects::project_session_read,
+            projects::project_session_begin,
+            projects::project_session_commit,
+            projects::project_session_abort,
+            projects::project_restore_backup,
             vault::open_vault,
             vault::list_dir,
             vault::list_files,
@@ -78,12 +91,14 @@ pub fn run() {
             git::log::git_log,
             git::diff::git_diff,
             git::compare::git_compare_files,
+            git::compare::git_commit_files,
             git::refs::git_refs,
             git::commit::git_commit,
             git::commit::git_merge,
             git::commit::git_cherry_pick,
             git::commit::git_revert,
             git::commit::git_abort_op,
+            git::commit::git_cancel_operation,
             git::rebase::git_rebase,
             git::rebase::git_rebase_status,
             git::rebase::git_cancel_rebase,
@@ -111,6 +126,12 @@ pub fn run() {
             git::auth::git_github_device_poll,
             git::auth::git_github_device_cancel,
             git::pr::gh_pr_list,
+            git::pr::pages::gh_issue_page,
+            git::pr::pages::gh_pr_page,
+            git::pr::pages::gh_comment_page,
+            git::pr::pages::gh_review_page,
+            git::pr::pages::gh_pr_diff_page,
+            git::pr::pages::gh_pr_local_base,
             git::pr::gh_pr_create,
             git::pr::gh_pr_merge,
             git::pr::gh_pr_diff,
@@ -125,6 +146,7 @@ pub fn run() {
             git::auth::gh_cli_status,
             git::auth::git_login_github_gh,
             git::conflict::git_read_conflict,
+            git::conflict_snapshot::git_conflict_snapshot,
             git::conflict::git_resolve_conflict,
             zotero::zotero_cayw,
             zotero::zotero_citekeys,
@@ -144,6 +166,7 @@ pub fn run() {
         .on_window_event(|window, event| {
             if matches!(event, tauri::WindowEvent::Destroyed) {
                 files::write_session::close_owner(window.label());
+                projects::close_owner(window.app_handle(), window.label());
                 git::clone::close_owner(window.label());
                 git::auth::close_owner(window.label());
             }

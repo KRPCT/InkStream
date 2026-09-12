@@ -19,11 +19,17 @@ pub(super) fn relative_path(path: &str) -> Result<String, String> {
     Ok(path)
 }
 
-pub(super) async fn open(root: &Path) -> Result<SqlitePool, String> {
-    let dir = root.join(".inkstream");
-    std::fs::create_dir_all(&dir).map_err(|e| format!("无法创建 .inkstream: {e}"))?;
-    let gi = dir.join(".gitignore");
-    if !gi.exists() { std::fs::write(&gi, "*\n").map_err(|e| format!("无法写 .gitignore: {e}"))?; }
+pub(super) async fn open(dir: &Path) -> Result<SqlitePool, String> {
+    if !dir.is_absolute() { return Err("本机索引目录必须是绝对路径。".into()); }
+    std::fs::create_dir_all(dir).map_err(|e| format!("无法创建本机索引目录: {e}"))?;
+    for name in ["index.db", "index.db-wal", "index.db-shm"] {
+        match std::fs::symlink_metadata(dir.join(name)) {
+            Ok(metadata) if metadata.file_type().is_symlink() || !metadata.is_file() => return Err("索引数据库路径含非普通文件，已保留原件。".into()),
+            Ok(_) => {},
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {},
+            Err(error) => return Err(format!("无法确认本机索引路径: {error}")),
+        }
+    }
     let options = SqliteConnectOptions::new().filename(dir.join("index.db"))
         .create_if_missing(true).journal_mode(SqliteJournalMode::Wal)
         .synchronous(SqliteSynchronous::Normal).busy_timeout(Duration::from_secs(5));
@@ -72,7 +78,8 @@ pub(super) fn collect(root: &Path) -> Result<Vec<(String, PathBuf)>, String> {
             let kind = entry.file_type().map_err(|e| e.to_string())?;
             let path = entry.path();
             if kind.is_dir() { walk(root, &path, out)?; }
-            else if kind.is_file() && name.ends_with(".md") {
+            else if kind.is_file() && path.extension().and_then(|value| value.to_str())
+                .is_some_and(|extension| extension.eq_ignore_ascii_case("md") || extension.eq_ignore_ascii_case("markdown")) {
                 let rel = path.strip_prefix(root).map_err(|e| e.to_string())?;
                 out.push((relative_path(&rel.to_string_lossy())?, path));
             }

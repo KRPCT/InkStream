@@ -18,6 +18,11 @@ export function getRenderModeForPath(path: string): RenderMode | null {
   return renderModeCache.get(path) ?? null;
 }
 
+export function restoreRenderModeMemory(entries: ReadonlyArray<{ path: string; renderMode: RenderMode | null }>): void {
+  renderModeCache.clear();
+  for (const entry of entries) if (entry.renderMode) renderModeCache.set(entry.path, entry.renderMode);
+}
+
 /**
  * 把当前 view 的 renderMode 态镜像到 store（仿 syncRichtext 单向纪律，D-01 显隐）。
  *

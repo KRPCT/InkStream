@@ -58,23 +58,23 @@ export function gitRefs(repoRoot: string): Promise<GitRef[]> {
 // ── 写命令（W3）。产生提交类走 git CLI -S 签名（保 Verified）；引用操作走 git2 ──────────
 
 /** 暂存 + 签名提交（paths 空 = 全部改动）。 */
-export function gitCommit(repoRoot: string, message: string, paths: string[] = []): Promise<GitOpResult> {
-  return invoke('git_commit', { repoRoot, message, paths });
+export function gitCommit(repoRoot: string, message: string, paths: string[] = [], requestId?: string): Promise<GitOpResult> {
+  return invoke('git_commit', { repoRoot, message, paths, ...(requestId ? { requestId } : {}) });
 }
 
 /** 合并分支到当前分支（--no-ff -S）。 */
-export function gitMerge(repoRoot: string, branch: string): Promise<GitOpResult> {
-  return invoke('git_merge', { repoRoot, branch });
+export function gitMerge(repoRoot: string, branch: string, requestId?: string): Promise<GitOpResult> {
+  return invoke('git_merge', { repoRoot, branch, ...(requestId ? { requestId } : {}) });
 }
 
 /** cherry-pick 一个提交（-S）。 */
-export function gitCherryPick(repoRoot: string, oid: string): Promise<GitOpResult> {
-  return invoke('git_cherry_pick', { repoRoot, oid });
+export function gitCherryPick(repoRoot: string, oid: string, requestId?: string): Promise<GitOpResult> {
+  return invoke('git_cherry_pick', { repoRoot, oid, ...(requestId ? { requestId } : {}) });
 }
 
 /** revert 一个提交（-S）。 */
-export function gitRevert(repoRoot: string, oid: string): Promise<GitOpResult> {
-  return invoke('git_revert', { repoRoot, oid });
+export function gitRevert(repoRoot: string, oid: string, requestId?: string): Promise<GitOpResult> {
+  return invoke('git_revert', { repoRoot, oid, ...(requestId ? { requestId } : {}) });
 }
 
 /** checkout 分支/提交（force=丢弃冲突改动，须二次确认）。 */
@@ -143,8 +143,12 @@ export function gitStashList(repoRoot: string): Promise<StashEntry[]> {
 }
 
 /** 中止进行中的 merge/cherry-pick/revert，还原到操作前（冲突卡死时的安全出口）。 */
-export function gitAbortOp(repoRoot: string): Promise<null> {
-  return invoke('git_abort_op', { repoRoot });
+export function gitAbortOp(repoRoot: string, requestId?: string): Promise<null> {
+  return invoke('git_abort_op', { repoRoot, ...(requestId ? { requestId } : {}) });
+}
+
+export function gitCancelOperation(repoRoot: string, requestId: string): Promise<boolean> {
+  return invoke('git_cancel_operation', { repoRoot, requestId });
 }
 
 export function gitRebaseStatus(repoRoot: string): Promise<GitRebaseStatus> {
@@ -244,8 +248,9 @@ export function ghPrMerge(
   repoRoot: string,
   prNumber: number,
   method: MergeMethod,
+  expectedHead: string | null = null,
 ): Promise<MergeResult> {
-  return invoke('gh_pr_merge', { repoRoot, number: prNumber, method });
+  return invoke('gh_pr_merge', { repoRoot, number: prNumber, method, expectedHead });
 }
 
 // ── GitHub Issue / 评论 / PR diff / review（Phase 11 GH-02/03，REST 走 Rust）────────────

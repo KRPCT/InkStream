@@ -5,6 +5,7 @@ import { getAppVersion } from '../../ipc/app';
 import { pickExportPath } from '../../ipc/dialog';
 import { readImageBytes, writeBytesToPath, writeFileToPath } from '../../ipc/files';
 import { pandocConvert } from '../../ipc/pandoc';
+import { zoteroCslResilient } from '../../ipc/zotero';
 import { useEditorStore } from '../../stores/useEditorStore';
 import { useSettingsStore } from '../../stores/useSettingsStore';
 import { useVaultStore } from '../../stores/useVaultStore';
@@ -19,6 +20,7 @@ vi.mock('../../ipc/files', async (original) => ({
   ...await original<typeof import('../../ipc/files')>(), readImageBytes: vi.fn(), writeFileToPath: vi.fn(), writeBytesToPath: vi.fn(),
 }));
 vi.mock('../../ipc/pandoc', () => ({ pandocConvert: vi.fn() }));
+vi.mock('../../ipc/zotero', async (original) => ({ ...await original<typeof import('../../ipc/zotero')>(), zoteroCslResilient: vi.fn() }));
 vi.mock('../livepreview/mathLoader', () => ({ loadKatex: vi.fn().mockRejectedValue(new Error('Use plain math fallback in export fixture')) }));
 vi.mock('./exportPdf', () => ({ printHtml: vi.fn() }));
 
@@ -48,6 +50,25 @@ function switchWorkspace(): void {
 }
 
 describe('document exports capture a single source before asynchronous work', () => {
+  it('exports formatted document citations while preserving the live source and selected document', async () => {
+    view.setState(EditorState.create({ doc: 'Reference [@paper]\n\n<!-- biblio:apa -->' }));
+    const source = view.state.doc;
+    vi.mocked(zoteroCslResilient).mockResolvedValueOnce([{ 'citation-key': 'paper', type: 'book', title: 'Book', author: [{ family: 'ReferenceAuthor' }], issued: { 'date-parts': [[2024]] } }]);
+    await exportDocument('html');
+    const html = vi.mocked(writeFileToPath).mock.calls[0][1];
+    expect(html).toContain('ReferenceAuthor');
+    expect(html).not.toContain('[@paper]');
+    expect(view.state.doc).toBe(source);
+  });
+
+  it('does not write a file after a citation resolution failure', async () => {
+    view.setState(EditorState.create({ doc: 'Reference [@missing]' }));
+    vi.mocked(zoteroCslResilient).mockResolvedValueOnce([]);
+    await exportDocument('html');
+    expect(writeFileToPath).not.toHaveBeenCalled();
+    expect(view.state.doc.toString()).toBe('Reference [@missing]');
+  });
+
   it('HTML preserves the original text and original image directory when the workspace switches while loading', async () => {
     let resolveVersion!: (version: string) => void;
     vi.mocked(getAppVersion).mockReturnValueOnce(new Promise((resolve) => { resolveVersion = resolve; }));

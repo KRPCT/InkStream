@@ -91,3 +91,20 @@ fn blob_reads_reject_wrong_identity_paths_and_binary_without_altering_index() {
     }
     assert!(f.repo.index().unwrap().is_empty());
 }
+
+#[test]
+fn root_commit_metadata_uses_an_empty_baseline_and_large_body_stays_on_the_blob_path() {
+    let f = Fixture::new();
+    let body = format!("{}TAIL_CHOICE", "完整正文。\r\n".repeat(100_000));
+    let oid = f.commit(&[("large.md", body.as_bytes())]);
+    let page = tauri::async_runtime::block_on(super::git_commit_files(f.root(), oid.to_string(), 0, 100, None)).unwrap();
+    assert_eq!(page.from_oid, Oid::ZERO_SHA1.to_string());
+    assert_eq!(page.to_oid, oid.to_string());
+    assert_eq!(page.total, 1);
+    assert!(page.files[0].old.is_none());
+    let side = page.files[0].new.as_ref().unwrap();
+    assert_eq!(side.byte_length, body.len());
+    assert!(serde_json::to_vec(&page).unwrap().len() < 4096);
+    assert_eq!(read_blob(&f.root(), &side.commit_oid, &side.path, &side.blob_oid).unwrap(), body.as_bytes());
+    assert!(crate::git::diff::build_diff(&f.repo, crate::git::types::DiffTarget::Commit { oid: oid.to_string() }).unwrap_err().to_string().contains("Raw"));
+}

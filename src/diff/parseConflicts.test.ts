@@ -1,58 +1,40 @@
 import { describe, expect, it } from 'vitest';
 import { assembleResolution, conflictCount, parseConflicts } from './parseConflicts';
 
-describe('parseConflicts', () => {
-  it('切分干净段与冲突块', () => {
-    const content = 'a\n<<<<<<< HEAD\nb\n=======\nc\n>>>>>>> x\nd';
-    const parts = parseConflicts(content);
-    expect(parts).toEqual([
-      { kind: 'clean', text: 'a' },
-      { kind: 'conflict', ours: 'b', theirs: 'c' },
-      { kind: 'clean', text: 'd' },
-    ]);
-    expect(conflictCount(parts)).toBe(1);
+describe('strict conflict parsing and exact resolution', () => {
+  it('preserves diff3 base and CRLF bytes outside and inside the chosen side', () => {
+    const parsed = parseConflicts('before\r\n<<<<<<< HEAD\r\nours\r\n||||||| base\r\nbase\r\n=======\r\ntheirs\r\n>>>>>>> topic\r\nafter');
+    expect(parsed).toEqual({ kind: 'valid', parts: [{ kind: 'clean', text: 'before\r\n' }, { kind: 'conflict', ours: 'ours\r\n', base: 'base\r\n', theirs: 'theirs\r\n' }, { kind: 'clean', text: 'after' }] });
+    expect(assembleResolution(parsed, ['theirs'])).toBe('before\r\ntheirs\r\nafter');
+    expect(assembleResolution(parsed, ['both'])).toBe('before\r\nours\r\ntheirs\r\nafter');
   });
-
-  it('无标记返回单个干净段', () => {
-    const parts = parseConflicts('hello\nworld');
-    expect(parts).toEqual([{ kind: 'clean', text: 'hello\nworld' }]);
-    expect(conflictCount(parts)).toBe(0);
+  it('handles adjacent conflicts, empty sides and custom marker widths without adding newlines', () => {
+    const parsed = parseConflicts('<<<<<<<<< a\n=========\nx\n>>>>>>>>> b\n<<<<<<<<< a\ny\n=========\n>>>>>>>>> b\n');
+    expect(conflictCount(parsed)).toBe(2);
+    expect(assembleResolution(parsed, ['ours', 'theirs'])).toBe('');
+    expect(assembleResolution(parsed, ['both', 'both'])).toBe('x\ny\n');
   });
-
-  it('diff3 风格丢弃 base 块，保留 ours/theirs', () => {
-    const content = '<<<<<<< HEAD\nb1\nb2\n||||||| base\nx\n=======\nc\n>>>>>>> y';
-    const parts = parseConflicts(content);
-    expect(parts).toEqual([{ kind: 'conflict', ours: 'b1\nb2', theirs: 'c' }]);
+  it.each([
+    '<<<<<<< a\nours\n',
+    '<<<<<<< a\nours\n>>>>>>> b\n',
+    '<<<<<<< a\nours\n=======\ntheirs\n',
+    '<<<<<<< a\n<<<<<<< nested\n=======\nx\n>>>>>>> b\n',
+    '<<<<<<< a\nx\n========\ny\n>>>>>>> b\n',
+    '<<<<<<< a\nx\n=======\n=======\ny\n>>>>>>> b\n',
+    '||||||| orphan\nbase\n=======\nx\n>>>>>>> b\n',
+  ])('rejects damaged source without offering an assembled result: %s', (source) => {
+    const parsed = parseConflicts(source);
+    expect(parsed.kind).toBe('invalid');
+    expect(() => assembleResolution(parsed, ['ours'])).toThrow();
   });
-
-  it('多冲突块按序解析', () => {
-    const content = '<<<<<<< a\n1\n=======\n2\n>>>>>>> b\nmid\n<<<<<<< a\n3\n=======\n4\n>>>>>>> b';
-    expect(conflictCount(parseConflicts(content))).toBe(2);
+  it('preserves ordinary marker characters and standalone Markdown heading underlines', () => {
+    for (const source of ['a <<<<<<< literal\n', '<<<<<<<not-a-marker\n', 'Heading\n=======\ntext\n']) {
+      expect(assembleResolution(parseConflicts(source), [])).toBe(source);
+    }
   });
-});
-
-describe('assembleResolution', () => {
-  const parts = parseConflicts('a\n<<<<<<< HEAD\nb\n=======\nc\n>>>>>>> x\nd');
-
-  it('采纳 ours / theirs / both', () => {
-    expect(assembleResolution(parts, ['ours'])).toBe('a\nb\nd');
-    expect(assembleResolution(parts, ['theirs'])).toBe('a\nc\nd');
-    expect(assembleResolution(parts, ['both'])).toBe('a\nb\nc\nd');
-  });
-
-  it('缺省选择按 ours', () => {
-    expect(assembleResolution(parts, [])).toBe('a\nb\nd');
-  });
-
-  it('采纳纯删除侧不留空行（空 ours/theirs）', () => {
-    const p = parseConflicts('before\n<<<<<<< HEAD\n=======\nx\n>>>>>>> b\nafter');
-    expect(p).toEqual([
-      { kind: 'clean', text: 'before' },
-      { kind: 'conflict', ours: '', theirs: 'x' },
-      { kind: 'clean', text: 'after' },
-    ]);
-    expect(assembleResolution(p, ['ours'])).toBe('before\nafter'); // 删除：无空行
-    expect(assembleResolution(p, ['theirs'])).toBe('before\nx\nafter');
-    expect(assembleResolution(p, ['both'])).toBe('before\nx\nafter'); // both 过滤空侧
+  it('does not silently default an unreviewed or stale choice to ours', () => {
+    const parsed = parseConflicts('<<<<<<< a\nx\n=======\ny\n>>>>>>> b\n');
+    expect(() => assembleResolution(parsed, [])).toThrow('每处冲突');
+    expect(() => assembleResolution(parsed, ['ours', 'theirs'])).toThrow('不一致');
   });
 });

@@ -5,7 +5,8 @@ export interface FileReadOptions {
 
 export type FileWriteTarget =
   | { kind: 'vault'; root: string; path: string }
-  | { kind: 'absolute'; path: string };
+  | { kind: 'absolute'; path: string }
+  | { kind: 'gitConflict'; repoRoot: string; path: string; baseline: import('./gitConflict').ConflictBaseline };
 
 export interface FileWriteMetadata {
   version: 1;
@@ -21,7 +22,8 @@ export type FileReadTarget =
   | { kind: 'text'; root: string; path: string }
   | { kind: 'reading'; path: string }
   | { kind: 'image'; path: string }
-  | { kind: 'gitBlob'; repoRoot: string; commitOid: string; path: string; blobOid: string };
+  | { kind: 'gitBlob'; repoRoot: string; commitOid: string; path: string; blobOid: string }
+  | { kind: 'gitConflict'; repoRoot: string; path: string; baseline: import('./gitConflict').ConflictBaseline; part: import('./gitConflict').ConflictPart };
 
 /** Raw 帧前 8 字节是小端无符号文件偏移，其余为原始内容。 */
 export type FileReadMessage =

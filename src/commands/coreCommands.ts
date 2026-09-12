@@ -5,6 +5,7 @@ import {
   renameNodeInTree,
 } from '../components/workbench/fileTreeController';
 import { createFileTreeOps } from '../components/workbench/fileTreeOps';
+import { restoreWorkbenchLayout } from '../components/workbench/layoutRestore';
 import { newDraftDocument } from '../editor/draftFlow';
 import { requestOpenFile, requestOpenFolder, requestOpenRecent } from '../editor/vaultFlow';
 import { cycleDocumentLanguage } from '../editor/richtext/switchLanguage';
@@ -15,6 +16,7 @@ import { useEditorStore } from '../stores/useEditorStore';
 import { useHelpStore } from '../stores/useHelpStore';
 import { useOnboardingStore } from '../stores/useOnboardingStore';
 import { usePaletteStore } from '../stores/usePaletteStore';
+import { useProjectStore } from '../stores/useProjectStore';
 import { useUpdaterStore } from '../stores/useUpdaterStore';
 import { useWhatsNewStore } from '../stores/useWhatsNewStore';
 import { useSettingsStore } from '../stores/useSettingsStore';
@@ -72,7 +74,7 @@ export const CORE_COMMANDS: Command[] = [
   {
     id: 'view.reset-layout',
     title: '视图：重置当前模式布局',
-    run: () => useWorkbenchStore.getState().resetCurrentLayout(),
+    run: () => { useWorkbenchStore.getState().resetCurrentLayout(); restoreWorkbenchLayout(); },
   },
   {
     id: 'view.command-palette',
@@ -103,6 +105,15 @@ export const CORE_COMMANDS: Command[] = [
     title: '模式：切换到 Creative（长篇创作）',
     advanced: true,
     run: () => useWorkbenchStore.getState().setMode('creative'),
+  },
+  {
+    id: 'project.archive',
+    title: '项目：项目档案',
+    shortcut: 'Ctrl+Alt+P',
+    run: () => {
+      const projects = useProjectStore.getState();
+      if (projects.phase === 'idle') projects.setArchiveOpen(!projects.archiveOpen);
+    },
   },
   {
     id: 'file.open-file',

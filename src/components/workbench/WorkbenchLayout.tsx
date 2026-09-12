@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef } from 'react';
+import { useCallback, useEffect, useRef, type CSSProperties } from 'react';
 import {
   Group,
   Panel,
@@ -8,8 +8,9 @@ import {
   type PanelImperativeHandle,
 } from 'react-resizable-panels';
 import { useSettingsStore } from '../../stores/useSettingsStore';
+import { useProjectStore } from '../../stores/useProjectStore';
 import { useWorkbenchStore } from '../../stores/useWorkbenchStore';
-import { buildLayoutPatch } from './layoutPatch';
+import { createLayoutWriteback } from './layoutPatch';
 import GitGraphView from '../git/GitGraphView';
 import MergeResolver from '../git/MergeResolver';
 import ReadingView from '../reading/ReadingView';
@@ -21,11 +22,14 @@ import RightPanel from './RightPanel';
 import Sidebar from './Sidebar';
 import StatusBar from './StatusBar';
 import TitleBar from './TitleBar';
+import ProjectRail from '../projects/ProjectRail';
+import ProjectArchive from '../projects/ProjectArchive';
+import { isCompactWorkbench, useCompactWorkbench } from './useCompactWorkbench';
+import { registerLayoutRestore } from './layoutRestore';
 import './workbench.css';
 
 /**
  * store 折叠态 → 面板命令式 collapse/expand（仅在不一致时调用，幂等）。
- * 返回是否真正执行了命令式操作 —— 调用方据此为「将异步到来的 onLayoutChanged」记一次 suppress。
  */
 function syncCollapsed(panel: PanelImperativeHandle | null, collapsed: boolean): boolean {
   if (!panel || panel.isCollapsed() === collapsed) return false;
@@ -36,7 +40,6 @@ function syncCollapsed(panel: PanelImperativeHandle | null, collapsed: boolean):
 
 /**
  * 模式切换时命令式应用该模式记忆几何（D-10）：折叠态 + 像素宽度，瞬时无动画。
- * 返回是否真正执行了命令式操作（折叠切换或 resize）—— 用于精确记 suppress，避免计数泄漏。
  */
 function applyPanelLayout(
   panel: PanelImperativeHandle | null,
@@ -49,7 +52,9 @@ function applyPanelLayout(
     panel.collapse();
     return true;
   }
-  if (panel.isCollapsed()) panel.expand();
+  const wasCollapsed = panel.isCollapsed();
+  if (wasCollapsed) panel.expand();
+  if (Math.abs(panel.getSize().inPixels - width) <= .5) return wasCollapsed;
   panel.resize(width);
   return true;
 }
@@ -63,7 +68,13 @@ function applyPanelLayout(
 export default function WorkbenchLayout() {
   const mode = useWorkbenchStore((s) => s.mode);
   const layout = useWorkbenchStore((s) => s.layouts[s.mode]);
-  const setLayout = useWorkbenchStore((s) => s.setLayout);
+  const reducedMotion = useSettingsStore((s) => s.reducedMotion);
+  const reducedTransparency = useSettingsStore((s) => s.reducedTransparency);
+  const compact = useCompactWorkbench();
+  const projectPhase = useProjectStore((s) => s.phase);
+  const projectId = useProjectStore((s) => s.activeId);
+  const archiveOpen = useProjectStore((s) => s.archiveOpen);
+  const editingBlocked = projectPhase !== 'idle' || archiveOpen;
   // 简易模式：图谱 / Git Graph / 合并均为高级覆盖层——纵深防御在渲染层兜底，挡住编辑器内 Ctrl+G
   // 直连 toggleCentralView（绕过 registry.execute 门控）及任何残留 centralView 状态。
   const simpleMode = useSettingsStore((s) => s.simpleMode);
@@ -79,113 +90,178 @@ export default function WorkbenchLayout() {
   const bookshelfEnabled = useSettingsStore((s) => s.bookshelfEnabled);
   const bookshelfOpen = useWorkbenchStore((s) => s.centralView === 'bookshelf') && bookshelfEnabled;
   const groupRef = useGroupRef();
+  const groupElement = useRef<HTMLDivElement>(null);
   const sidebarRef = usePanelRef();
   const rightRef = usePanelRef();
   // defaultSize 仅挂载时读取：捕获挂载时刻的当前模式几何
   const mountLayout = useRef(layout);
   const prevMode = useRef(mode);
-  // 命令式 collapse/expand/resize 会异步触发一次 onLayoutChanged（晚于操作落地，库的测量订阅驱动），
-  // 故同步 set→op→clear 守卫是 no-op。改用计数器：每次命令式操作 +1，由下一次 onLayoutChanged 消费 -1。
-  // 被消费的那拍只采样宽度、绝不回写任一面板的 collapsed —— 否则展开一侧把对侧瞬时挤到 collapsedSize
-  // 会被误读为「折叠」并写回 store，造成两侧互斥（UAT #6）。折叠态真相源是 store 各自的 toggle。
-  const suppressCollapsedWrites = useRef(0);
+  const previousProject = useRef(projectId);
+  const previousPhase = useRef(projectPhase);
+  const previousCompact = useRef(compact);
+  const writeback = useRef(createLayoutWriteback(() => {
+    const workbench = useWorkbenchStore.getState();
+    const project = useProjectStore.getState();
+    return {
+      compact: isCompactWorkbench(),
+      blocked: project.phase !== 'idle' || project.archiveOpen || !project.ready,
+      projectId: project.activeId,
+      mode: workbench.mode,
+      layout: workbench.layouts[workbench.mode],
+      viewportWidth: window.innerWidth,
+    };
+  }, (patch) => useWorkbenchStore.getState().setLayout(patch))).current;
 
-  // 模式切换（D-10）：命令式恢复该模式记忆布局（宽度 + 折叠态），瞬时无动画。
-  // 严禁 key={mode} 重建（Anti-Pattern）——五插槽与 EditorArea 全程零卸载。
   useEffect(() => {
-    if (prevMode.current === mode) return;
+    // The panel library handles pointer/double-click at document capture and
+    // keyboard events at the separator. Capture at window before either path.
+    const begin = (event: MouseEvent | KeyboardEvent) => {
+      writeback.cancel();
+      if (event.defaultPrevented || !(event.target instanceof Element)) return;
+      const group = groupElement.current;
+      if (!group || !group.contains(event.target)) return;
+      if (event instanceof KeyboardEvent) {
+        if (!['ArrowLeft', 'ArrowRight', 'Home', 'End', 'Enter'].includes(event.key) || event.isComposing) return;
+        if (!event.target.closest('.workbench-separator')) return;
+      } else {
+        if (event.button !== 0) return;
+        // Keep the library's larger touch/mouse hit area around separators.
+        const hitSize = 'pointerType' in event && event.pointerType === 'touch' ? 20 : 10;
+        const hit = [...group.querySelectorAll<HTMLElement>('.workbench-separator')].some((separator) => {
+          const rect = separator.getBoundingClientRect();
+          return rect.height > 0 && event.clientY >= rect.top && event.clientY <= rect.bottom &&
+            Math.abs(event.clientX - (rect.left + rect.width / 2)) <= Math.max(rect.width, hitSize) / 2;
+        });
+        if (!hit && !event.target.closest('.workbench-separator')) return;
+      }
+      writeback.begin();
+    };
+    const cancel = () => writeback.cancel();
+    window.addEventListener('pointerdown', begin, true);
+    window.addEventListener('dblclick', begin, true);
+    window.addEventListener('keydown', begin, true);
+    // onLayoutChanged runs at document capture on pointer release; retire the
+    // gesture afterwards, including clicks/keys that produced no layout change.
+    window.addEventListener('pointerup', cancel);
+    window.addEventListener('pointercancel', cancel);
+    window.addEventListener('keyup', cancel);
+    window.addEventListener('blur', cancel);
+    window.addEventListener('resize', cancel);
+    const unsubscribe = useProjectStore.subscribe((next, previous) => {
+      if (next.phase !== previous.phase || next.activeId !== previous.activeId ||
+        next.archiveOpen !== previous.archiveOpen || next.ready !== previous.ready) cancel();
+    });
+    return () => {
+      unsubscribe();
+      window.removeEventListener('pointerdown', begin, true);
+      window.removeEventListener('dblclick', begin, true);
+      window.removeEventListener('keydown', begin, true);
+      window.removeEventListener('pointerup', cancel);
+      window.removeEventListener('pointercancel', cancel);
+      window.removeEventListener('keyup', cancel);
+      window.removeEventListener('blur', cancel);
+      window.removeEventListener('resize', cancel);
+      cancel();
+    };
+  }, [writeback]);
+
+  const restorePanels = useCallback(() => {
+    writeback.cancel();
+    if (isCompactWorkbench() || useProjectStore.getState().phase !== 'idle') return;
+    const workbench = useWorkbenchStore.getState();
+    const remembered = workbench.layouts[workbench.mode];
+    applyPanelLayout(sidebarRef.current, remembered.sidebarCollapsed, remembered.sidebarWidth);
+    applyPanelLayout(rightRef.current, remembered.rightPanelCollapsed, remembered.rightPanelWidth);
+  }, [sidebarRef, rightRef, writeback]);
+
+  // Panel measurements write layout back to the store. That write must never
+  // trigger another resize: restore only at a semantic handover or explicit reset.
+  useEffect(() => registerLayoutRestore(restorePanels), [restorePanels]);
+  useEffect(() => {
+    const changed = prevMode.current !== mode || previousProject.current !== projectId || previousCompact.current !== compact ||
+      (previousPhase.current !== 'idle' && projectPhase === 'idle');
     prevMode.current = mode;
-    const remembered = useWorkbenchStore.getState().layouts[mode];
-    // 仅为真正执行了的命令式操作记 suppress，避免「目标几何已满足」时计数泄漏。
-    if (applyPanelLayout(sidebarRef.current, remembered.sidebarCollapsed, remembered.sidebarWidth)) {
-      suppressCollapsedWrites.current += 1;
-    }
-    if (applyPanelLayout(rightRef.current, remembered.rightPanelCollapsed, remembered.rightPanelWidth)) {
-      suppressCollapsedWrites.current += 1;
-    }
-  }, [mode, sidebarRef, rightRef]);
+    previousProject.current = projectId;
+    previousPhase.current = projectPhase;
+    previousCompact.current = compact;
+    if (changed && projectPhase === 'idle') restorePanels();
+  }, [mode, projectId, projectPhase, compact, restorePanels]);
 
   useEffect(() => {
-    if (syncCollapsed(sidebarRef.current, layout.sidebarCollapsed)) {
-      suppressCollapsedWrites.current += 1;
-    }
-  }, [layout.sidebarCollapsed, sidebarRef]);
+    writeback.cancel();
+    if (!isCompactWorkbench() && useProjectStore.getState().phase === 'idle') syncCollapsed(sidebarRef.current, layout.sidebarCollapsed);
+  }, [layout.sidebarCollapsed, sidebarRef, writeback]);
 
   useEffect(() => {
-    if (syncCollapsed(rightRef.current, layout.rightPanelCollapsed)) {
-      suppressCollapsedWrites.current += 1;
-    }
-  }, [layout.rightPanelCollapsed, rightRef]);
+    writeback.cancel();
+    if (!isCompactWorkbench() && useProjectStore.getState().phase === 'idle') syncCollapsed(rightRef.current, layout.rightPanelCollapsed);
+  }, [layout.rightPanelCollapsed, rightRef, writeback]);
 
   // 窗口缩放后和解（修「小窗侧栏被挤折叠、放大后不恢复、需重复打开」）：窗口足够宽时，把 store 认为应展开
-  // 却被库挤到 collapsedSize(0) 的面板重新展开。命令式 expand 记 suppress，避免那拍误判对侧折叠（UAT #6 纪律）。
+  // 却被库挤到 collapsedSize(0) 的面板重新展开。和解测量不回写记忆几何。
   // 真相源仍是 store 各自的 toggle；本和解仅修复 squeeze 引发的 store↔面板脱同步。
   useEffect(() => {
-    const RECONCILE_MIN_WIDTH = 870; // 三栏 minSize 合计≈854，宽于此才有空间展开侧栏
+    let frame = 0;
     const reconcile = (): void => {
-      if (window.innerWidth < RECONCILE_MIN_WIDTH) return;
-      const l = useWorkbenchStore.getState().layouts[useWorkbenchStore.getState().mode];
-      const sb = sidebarRef.current;
-      if (sb && !l.sidebarCollapsed && sb.isCollapsed()) {
-        sb.expand();
-        suppressCollapsedWrites.current += 1;
-      }
-      const rp = rightRef.current;
-      if (rp && !l.rightPanelCollapsed && rp.isCollapsed()) {
-        rp.expand();
-        suppressCollapsedWrites.current += 1;
-      }
+      writeback.cancel();
+      cancelAnimationFrame(frame);
+      // Let the Group's ResizeObserver accept the new geometry before applying pixel memory.
+      frame = requestAnimationFrame(() => { frame = requestAnimationFrame(() => { frame = 0; restorePanels(); }); });
     };
     window.addEventListener('resize', reconcile);
-    return () => window.removeEventListener('resize', reconcile);
-  }, [sidebarRef, rightRef]);
+    return () => { window.removeEventListener('resize', reconcile); cancelAnimationFrame(frame); };
+  }, [restorePanels, writeback]);
 
   // 拖拽结束采样（onLayoutChanged：指针释放后触发，d.ts 推荐的持久化时点）。
-  // 回调对命令式操作与用户拖拽一视同仁地触发、签名不区分来源；因此命令式触发的那拍
-  // 只采样宽度（展开侧真实像素），绝不回写 collapsed flag。仅当 suppress 归零（真正的用户拖拽）
-  // 才允许从布局派生 collapsed —— 此时两侧各写各的，互不串扰。
+  // 回调本身不区分来源；仅接收仍属于当前项目、模式及窗口尺寸的用户调整。
+  // writeback 在执行当时读取 matchMedia 和 project phase，不依赖上一拍 React closure。
   const handleLayoutChanged = useCallback(() => {
-    const suppressed = suppressCollapsedWrites.current > 0;
-    if (suppressed) suppressCollapsedWrites.current -= 1;
-    setLayout(buildLayoutPatch(sidebarRef.current, rightRef.current, suppressed));
-  }, [setLayout, sidebarRef, rightRef]);
+    writeback.commit(sidebarRef.current, rightRef.current);
+  }, [sidebarRef, rightRef, writeback]);
 
   return (
-    <div className="flex h-screen flex-col bg-[var(--background-primary)]">
+    <div className="inkstream-shell flex h-screen flex-col" data-reduced-motion={reducedMotion} data-reduced-transparency={reducedTransparency}
+      data-left-collapsed={layout.sidebarCollapsed} data-right-collapsed={layout.rightPanelCollapsed}
+      style={{ '--navigation-width': `${layout.sidebarWidth}px`, '--tools-width': `${layout.rightPanelWidth}px` } as CSSProperties}>
       <TitleBar />
-      <div className="relative min-h-0 flex-1">
+      <div className="workbench-stage relative min-h-0 flex-1">
+      <ProjectRail />
+      <div className="workbench-content" inert={editingBlocked} data-testid="workbench-content">
       <Group
         groupRef={groupRef}
+        elementRef={groupElement}
         orientation="horizontal"
         onLayoutChanged={handleLayoutChanged}
-        className="h-full w-full"
+        className="workbench-group h-full w-full"
       >
         <Panel
           id="sidebar"
+          groupResizeBehavior="preserve-pixel-size"
           panelRef={sidebarRef}
           defaultSize={mountLayout.current.sidebarWidth}
           minSize={200}
           maxSize={480}
           collapsible
           collapsedSize={0}
-          className="h-full"
+          className="workbench-navigation-panel h-full"
         >
           <Sidebar />
         </Panel>
-        <Separator className="workbench-separator" />
-        <Panel id="editor-area" minSize={400} className="h-full">
+        <Separator className="workbench-separator navigation-separator" />
+        <Panel id="editor-area" minSize={400} className="workbench-document-panel h-full">
           <CentralArea />
         </Panel>
-        <Separator className="workbench-separator" />
+        <Separator className="workbench-separator tools-separator" />
         <Panel
           id="right-panel"
+          groupResizeBehavior="preserve-pixel-size"
           panelRef={rightRef}
           defaultSize={mountLayout.current.rightPanelWidth}
           minSize={240}
           maxSize={560}
           collapsible
           collapsedSize={0}
-          className="h-full"
+          className="workbench-tools-panel h-full"
         >
           <RightPanel />
         </Panel>
@@ -221,7 +297,10 @@ export default function WorkbenchLayout() {
           </div>
         ) : null}
       </div>
+      {projectPhase !== 'idle' && !archiveOpen ? <div className="project-transition-notice" role="status">{projectPhase === 'saving' ? '保存当前文稿与会话…' : projectPhase === 'restoring' ? '恢复项目会话…' : '正在打开项目…'}</div> : null}
+      </div>
       <StatusBar />
+      <ProjectArchive />
     </div>
   );
 }

@@ -31,6 +31,7 @@ export default function ProjectSearchView() {
   const hasVault = useVaultStore((s) => s.vault !== null);
   const run = useProjectSearchStore((s) => s.run);
   const clear = useProjectSearchStore((s) => s.clear);
+  const cancel = useProjectSearchStore((s) => s.cancel);
   const query = useProjectSearchStore((s) => s.query);
   const results = useProjectSearchStore((s) => s.results);
   const totalMatches = useProjectSearchStore((s) => s.totalMatches);
@@ -48,6 +49,7 @@ export default function ProjectSearchView() {
   useEffect(() => {
     inputRef.current?.focus();
   }, []);
+  useEffect(() => () => cancel(), [cancel]);
 
   // 结果集变化（重新搜索 / replace-all 刷新）即收起任何开着的行内编辑器：摘录对象会重建、偏移会变，
   // 旧 editing{path,from} 可能错绑到同偏移的另一摘录或随 key 变化静默卸载——一律收起，杜绝错绑/错写。
@@ -211,8 +213,8 @@ interface BodyProps {
 function Body({ hasVault, query, status, results, editing, onOpen, onEdit, onSaveEdit, onCancelEdit }: BodyProps) {
   if (status === 'error') return null;
   if (!hasVault) return <Hint text="请先打开一个文件夹作为工作区，再全库搜索。" />;
-  if (query.length < 3) {
-    return <Hint text={query === '' ? '输入关键字，在工作区 .md 文件中搜索。' : '全库搜索请至少输入 3 个字符。'} />;
+  if (!query) {
+    return <Hint text="输入关键字，在工作区 Markdown 文件中搜索。" />;
   }
   if (status === 'searching' && results.length === 0) return <Hint text="搜索中…" />;
   if (results.length === 0) return <Hint text={`未找到「${query}」。`} />;
@@ -255,7 +257,7 @@ function Body({ hasVault, query, status, results, editing, onOpen, onEdit, onSav
                   <div className="group flex min-w-0 flex-1 items-start gap-1">
                     <button
                       type="button"
-                      onClick={() => onOpen(fm.path, ex.matches[0]?.from ?? ex.sourceFrom)}
+                      onClick={() => onOpen(fm.path, ex.matches[0]?.editorFrom ?? ex.matches[0]?.from ?? ex.sourceFrom)}
                       className="min-w-0 flex-1 rounded-[4px] px-1 py-0.5 text-left hover:bg-[var(--background-modifier-hover)]"
                     >
                       <code className="whitespace-pre-wrap break-words font-mono text-[12px] text-[var(--text-muted)]">

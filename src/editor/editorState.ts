@@ -1,9 +1,9 @@
 import { Compartment, EditorState, type ChangeSpec, type Extension } from '@codemirror/state';
 import type { EditorView } from '@codemirror/view';
 import { readFile } from '../ipc/files';
-import { useEditorStore } from '../stores/useEditorStore';
+import { useEditorStore, type TabMeta } from '../stores/useEditorStore';
 import { useVaultStore } from '../stores/useVaultStore';
-import { queueAfterComposition, refreshLivePreview } from './composition';
+import { isComposing, queueAfterComposition, refreshLivePreview } from './composition';
 import { baseExtensions } from './extensions';
 import { readLanguage } from './frontmatter';
 import { initialLanguageForDocument, languageFromDoc, markAppliedLanguage } from './languages';
@@ -17,12 +17,16 @@ import { rebaseWordCount } from './wordCount';
 import { imageVaultFacet } from './livepreview/inlinePlugin';
 import { basename, isAbsolutePath, parentDir } from './pathUtil';
 import { beginDocumentNavigation, currentDocumentNavigation, documentNavigationSignal, isCurrentDocumentNavigation } from './editorState.navigation';
+import { forgetSessionSource, rekeySessionSource, replaceSessionSources, sessionSource, type SessionSource } from './sessionSources';
+import type { RenderMode } from '../types/editor';
 import {
   applyRenderMode,
   clearRenderModeCache,
   disposeRenderMode,
   rekeyRenderMode,
   snapshotRenderMode,
+  getRenderModeForPath,
+  restoreRenderModeMemory,
 } from './editorState.renderMode';
 
 /**
@@ -146,7 +150,11 @@ export function openFile(view: EditorView, path: string, doc: string, ext: Exten
   // 图片 vault 上下文经 per-view facet 注入（WR-07）：装饰构建不读全局 store，绑定各自 EditorState；
   // 换装入口是 store 读取合法位（同 applyRenderMode/syncRichtext），root+docPath 一次取写入门生命周期恒定。
   const vaultFacet = imageVaultCompartment.of(imageVaultFacet.of(imageContextForPath(path)));
-  const state = cached ?? EditorState.create({ doc, extensions: [ext, vaultFacet] });
+  const source = sessionSource(path)?.document;
+  let state = cached ?? EditorState.create({ doc, extensions: [ext, vaultFacet] });
+  if (source && !cached) state = state.update({ selection: {
+    anchor: Math.min(state.doc.length, source.anchor), head: Math.min(state.doc.length, source.head),
+  } }).state;
   return swapState(view, path, () => {
     if (!isCurrentDocumentNavigation(request)) return false;
     const active = useEditorStore.getState().activePath;
@@ -226,7 +234,20 @@ export async function switchToTab(path: string): Promise<boolean> {
       const doc = await readFile(tab.external ? parentDir(path) : vault!.root, tab.external ? basename(path) : path, { signal: documentNavigationSignal(request) });
       if (!isCurrentDocumentNavigation(request) || useVaultStore.getState().vault !== vault || !useEditorStore.getState().tabs.includes(tab)) return false;
       return openFile(view, path, doc, baseExtensions(initialLanguageForDocument(doc, path), doc.length), request);
-    } catch { return false; }
+    } catch {
+      const source = sessionSource(path);
+      if (!source || !isCurrentDocumentNavigation(request)) return false;
+      try {
+        const text = await readFile(source.root, source.document.contentFile, { signal: documentNavigationSignal(request) });
+        if (!isCurrentDocumentNavigation(request) || useVaultStore.getState().vault !== vault || !useEditorStore.getState().tabs.includes(tab)) return false;
+        const recoveryPath = `draft://recovery-${source.document.key}`;
+        if (!await openFile(view, recoveryPath, text, baseExtensions(initialLanguageForDocument(text, path), text.length), request)) return false;
+        useEditorStore.getState().rehomeTab(path, recoveryPath, false, `${tab.name}（恢复副本）`);
+        useEditorStore.getState().markDirty(recoveryPath);
+        disposeState(path);
+        return true;
+      } catch { return false; }
+    }
   }
   return swapState(view, path, () => {
     if (!isCurrentDocumentNavigation(request)) return false;
@@ -306,6 +327,7 @@ export function disposeState(path: string): void {
   cache.delete(path);
   scrollCache.delete(path);
   disposeRenderMode(path);
+  forgetSessionSource(path);
 }
 
 /** Release only after the remaining active document has actually been installed in the view. */
@@ -350,12 +372,99 @@ export function rekeyState(oldPath: string, newPath: string): void {
     scrollCache.delete(oldPath);
   }
   rekeyRenderMode(oldPath, newPath);
+  rekeySessionSource(oldPath, newPath);
 }
 
 /** 仅供测试：清空缓存以隔离用例。 */
 export function __clearCacheForTest(): void {
+  replaceSessionSources([]);
   beginDocumentNavigation();
   cache.clear();
   scrollCache.clear();
   clearRenderModeCache();
+}
+
+export interface SessionEditorEntry {
+  tab: TabMeta;
+  state: EditorState | null;
+  text?: string;
+  anchor: number;
+  head: number;
+  scrollTop: number;
+  renderMode: RenderMode | null;
+  dirty: boolean;
+  frozen: boolean;
+  externalChanged: boolean;
+  source?: SessionSource;
+}
+export interface EditorSession { entries: SessionEditorEntry[]; activePath: string | null }
+
+/** Immutable checkpoint of the single editor authority; unopened restored tabs stay lazy. */
+export function captureEditorSession(): EditorSession {
+  const store = useEditorStore.getState();
+  const view = getView();
+  if (view && store.activePath) snapshotBeforeSwitch(view, store.activePath);
+  return {
+    activePath: store.activePath,
+    entries: store.tabs.map((tab) => {
+      const state = store.activePath === tab.path && view ? view.state : cache.get(tab.path) ?? null;
+      const source = sessionSource(tab.path);
+      if (!state && !source) throw new Error(`「${tab.name}」的正文尚未就绪，请稍后重试。`);
+      return { tab: { ...tab }, state, source, anchor: state?.selection.main.anchor ?? source?.document.anchor ?? 0,
+        head: state?.selection.main.head ?? source?.document.head ?? 0,
+        scrollTop: scrollCache.get(tab.path) ?? source?.document.scrollTop ?? 0,
+        renderMode: getRenderModeForPath(tab.path) ?? source?.document.renderMode ?? null,
+        dirty: !!store.dirty[tab.path], frozen: !!store.frozen[tab.path], externalChanged: !!store.externalChanged[tab.path] };
+    }),
+  };
+}
+
+let compositionBarrier = 0;
+export async function settleEditorComposition(): Promise<void> {
+  const view = getView();
+  if (view) await new Promise<void>((resolve) => queueAfterComposition(view, `project-checkpoint:${++compositionBarrier}`, resolve));
+}
+
+/** Called in the accepted workspace handover, after the composition and save barriers. */
+export function installEditorSession(session: EditorSession, root: string | null): void {
+  const view = getView();
+  if (!view || isComposing(view)) throw new Error('编辑器尚未完成输入，项目会话尚未切换。');
+  const states = new Map<string, EditorState>();
+  for (const entry of session.entries) {
+    if (!entry.state && entry.text === undefined) continue;
+    const path = entry.tab.path;
+    const text = (entry.text ?? entry.state!.doc.toString()).replace(/\r\n?/g, '\n');
+    const context = entry.tab.external ? { root: parentDir(path), docPath: basename(path) } : root ? { root, docPath: path } : null;
+    let state = entry.state && entry.state.doc.toString() === text ? entry.state : EditorState.create({
+      doc: text,
+      extensions: [baseExtensions(initialLanguageForDocument(text, path), text.length), imageVaultCompartment.of(imageVaultFacet.of(context))],
+    });
+    state = state.update({
+      selection: { anchor: Math.max(0, Math.min(state.doc.length, entry.anchor)), head: Math.max(0, Math.min(state.doc.length, entry.head)) },
+      effects: imageVaultCompartment.reconfigure(imageVaultFacet.of(context)),
+    }).state;
+    states.set(path, state);
+  }
+  const active = session.activePath && session.entries.some((entry) => entry.tab.path === session.activePath) ? session.activePath : session.entries[0]?.tab.path ?? null;
+  if (active && !states.has(active)) throw new Error('目标活动文档尚未准备完成。');
+  const state = active ? states.get(active)! : EditorState.create({ extensions: [baseExtensions(), EditorState.readOnly.of(true)] });
+  beginDocumentNavigation();
+  view.setState(state);
+  cache.clear(); scrollCache.clear();
+  for (const [path, value] of states) cache.set(path, value);
+  for (const entry of session.entries) scrollCache.set(entry.tab.path, entry.scrollTop);
+  restoreRenderModeMemory(session.entries.map((entry) => ({ path: entry.tab.path, renderMode: entry.renderMode })));
+  replaceSessionSources(session.entries.flatMap((entry) => entry.source ? [entry.source] : []));
+  useEditorStore.setState({
+    tabs: session.entries.map((entry) => entry.tab), activePath: active,
+    dirty: Object.fromEntries(session.entries.map((entry) => [entry.tab.path, entry.dirty])),
+    frozen: Object.fromEntries(session.entries.map((entry) => [entry.tab.path, entry.frozen])),
+    externalChanged: Object.fromEntries(session.entries.map((entry) => [entry.tab.path, entry.externalChanged])),
+    cursor: state.selection.main.head,
+  });
+  syncDocumentBudget(view); syncRichtext(view);
+  if (active) { applyRenderMode(view, active); restoreScroll(view, scrollCache.get(active) ?? 0); }
+  else useEditorStore.getState().setActiveRenderMode(null);
+  markAppliedLanguage(view, isBasicEditing(view.state) ? view.state.facet(documentLanguageHint) : languageFromDoc(view.state.doc.toString(), active ?? ''));
+  syncOutline(view); syncCitations(view); syncSceneSummary(view); rebaseWordCount(view);
 }

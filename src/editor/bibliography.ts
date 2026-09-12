@@ -1,10 +1,11 @@
-import { zoteroCslResilient } from '../ipc/zotero';
+import { currentZoteroLibraryRevision, zoteroCslResilient } from '../ipc/zotero';
 import { showToast } from '../stores/useToastStore';
 import { useEditorStore } from '../stores/useEditorStore';
 import { useVaultStore } from '../stores/useVaultStore';
 import type { CitationStyle, CslItem } from '../types/zotero';
 import { extractCitations } from './citations';
-import { formatBibliography } from './cslFormat';
+import { formatCitationDocument } from './cslFormat';
+import { citationDocument, findBibliographyRegion } from './citationDocument';
 import { isBasicEditing } from './documentBudget';
 import { applyCommandIntent, captureCommandIntent, getWritableCommandView, runWritableCommand } from './commandView';
 
@@ -16,23 +17,15 @@ import { applyCommandIntent, captureCommandIntent, getWritableCommandView, runWr
 
 const HEADING = '## 参考文献';
 const END_MARK = '<!-- /biblio -->';
-/** 匹配 `<!-- biblio -->` 或 `<!-- biblio:apa -->`，捕获样式标识。 */
-const BIBLIO_RE = /<!--\s*biblio(?::([a-z0-9]+))?\s*-->/i;
-const STYLES = new Set<CitationStyle>(['gbt7714', 'apa', 'vancouver']);
 let generation = 0;
 
 function errText(e: unknown): string {
   return typeof e === 'string' ? e : e instanceof Error ? e.message : String(e);
 }
 
-function parseStyle(s: string | undefined): CitationStyle {
-  return s && STYLES.has(s as CitationStyle) ? (s as CitationStyle) : 'gbt7714';
-}
-
 /** 文档当前参考文献样式（无占位返回 null）。纯函数，可测。 */
 export function detectBiblioStyle(doc: string): CitationStyle | null {
-  const m = BIBLIO_RE.exec(doc);
-  return m ? parseStyle(m[1]) : null;
+  return findBibliographyRegion(doc)?.style ?? null;
 }
 
 /**
@@ -43,13 +36,8 @@ export function planBiblioEdit(
   doc: string,
   block: string,
 ): { from: number; to: number; insert: string } {
-  const m = BIBLIO_RE.exec(doc);
-  if (m) {
-    const from = m.index;
-    const endIdx = doc.indexOf(END_MARK, from + m[0].length);
-    const to = endIdx >= 0 ? endIdx + END_MARK.length : from + m[0].length;
-    return { from, to, insert: block };
-  }
+  const region = findBibliographyRegion(doc);
+  if (region) return { from: region.from, to: region.to, insert: block };
   const prefix = doc.endsWith('\n\n') ? '' : doc.endsWith('\n') ? '\n' : '\n\n';
   return { from: doc.length, to: doc.length, insert: `${prefix}${HEADING}\n\n${block}\n` };
 }
@@ -59,10 +47,9 @@ function marker(style: CitationStyle): string {
 }
 
 function currentBlock(doc: string): string | null {
-  const found = BIBLIO_RE.exec(doc);
+  const found = findBibliographyRegion(doc);
   if (!found) return null;
-  const end = doc.indexOf(END_MARK, found.index + found[0].length);
-  return doc.slice(found.index, end < 0 ? found.index + found[0].length : end + END_MARK.length);
+  return doc.slice(found.from, found.to);
 }
 
 /** Resolve every requested key before replacing a previously complete, correctly numbered block. */
@@ -83,7 +70,7 @@ function orderItems(keys: readonly string[], items: readonly CslItem[]): CslItem
 function insertPlaceholder(): void {
   runWritableCommand((view) => {
     const doc = view.state.doc.toString();
-    if (BIBLIO_RE.test(doc)) {
+    if (findBibliographyRegion(doc)) {
       showToast('warning', '文末已有参考文献占位（点「展开」可生成条目）。');
       return;
     }
@@ -112,21 +99,23 @@ async function expand(styleOverride?: CitationStyle): Promise<void> {
     return;
   }
   const request = ++generation;
+  const libraryRevision = currentZoteroLibraryRevision();
   const path = useEditorStore.getState().activePath;
   const tab = useEditorStore.getState().tabs.find((item) => item.path === path);
   const vault = useVaultStore.getState().vault;
   const doc = view.state.doc.toString();
   const beforeBlock = currentBlock(doc);
   const style = styleOverride ?? detectBiblioStyle(doc) ?? 'gbt7714';
+  const model = citationDocument(view.state);
   const keys = extractCitations(view.state).map((c) => c.key);
-  const isCurrent = () => request === generation && intent.isCurrent() && getWritableCommandView() === view &&
+  const isCurrent = () => request === generation && currentZoteroLibraryRevision() === libraryRevision && intent.isCurrent() && getWritableCommandView() === view &&
     useVaultStore.getState().vault === vault && useEditorStore.getState().activePath === path &&
     useEditorStore.getState().tabs.find((item) => item.path === path) === tab;
   let body: string;
   try {
     const items = keys.length ? await zoteroCslResilient(keys) : [];
     if (!isCurrent()) return;
-    body = await formatBibliography(orderItems(keys, items), style) || '（暂无引用）';
+    body = (await formatCitationDocument(orderItems(keys, items), model.clusters, style)).bibliography || '（暂无引用）';
   } catch (e) {
     if (isCurrent()) showToast('error', `展开参考文献失败：${errText(e)}`);
     return;

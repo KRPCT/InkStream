@@ -7,6 +7,7 @@ import { showToast } from '../stores/useToastStore';
 import { useWorkbenchStore } from '../stores/useWorkbenchStore';
 import type { GitOpResult, GitProgress, ResetMode } from '../types/git';
 import { captureGitWorktreeScope, isCurrentGitScope, runGitWorktreeMutation, type GitWorktreeScope } from './gitWorktreeMutation';
+import { runLocalGitOperation } from './gitLocalOperation';
 
 export { rebaseCurrentOnto } from './gitRebaseActions';
 export { stashChanges } from './gitStashActions';
@@ -61,7 +62,7 @@ export async function abortOp(): Promise<boolean> {
   if (!scope) return false;
   const root = scope.repoRoot;
   try {
-    const result = await runGitWorktreeMutation(scope, () => git.gitAbortOp(root), { preserveDirty: true });
+    const result = await runGitWorktreeMutation(scope, () => runLocalGitOperation(scope, '中止 Git 操作', (id) => git.gitAbortOp(root, id)), { preserveDirty: true });
     return result.kind === 'executed' && isCurrentGitScope(scope);
   } catch (e) {
     if (isCurrentGitScope(scope)) showToast('error', `中止失败：${errText(e)}`);
@@ -87,7 +88,7 @@ export async function commitWithMessage(message: string): Promise<boolean> {
     if (!ok) return false;
   }
   try {
-    const result = await runGitWorktreeMutation(scope, () => git.gitCommit(root, message));
+    const result = await runGitWorktreeMutation(scope, () => runLocalGitOperation(scope, '提交', (id) => git.gitCommit(root, message, [], id)));
     return result.kind === 'executed' && isCurrentGitScope(scope);
   } catch (e) {
     if (isCurrentGitScope(scope)) showToast('error', `提交失败：${errText(e)}`);
@@ -177,7 +178,7 @@ export async function mergeBranchInto(branch: string): Promise<void> {
   if (!scope) return;
   const root = scope.repoRoot;
   try {
-    const result = await runGitWorktreeMutation(scope, () => git.gitMerge(root, branch));
+    const result = await runGitWorktreeMutation(scope, () => runLocalGitOperation(scope, '合并', (id) => git.gitMerge(root, branch, id)));
     if (result.kind === 'executed' && isCurrentGitScope(scope)) reportConflict(result.value, '合并');
   } catch (e) {
     if (isCurrentGitScope(scope)) showToast('error', `合并失败：${errText(e)}`);
@@ -190,7 +191,7 @@ export async function cherryPickCommit(oid: string): Promise<void> {
   if (!scope) return;
   const root = scope.repoRoot;
   try {
-    const result = await runGitWorktreeMutation(scope, () => git.gitCherryPick(root, oid));
+    const result = await runGitWorktreeMutation(scope, () => runLocalGitOperation(scope, '拣选提交', (id) => git.gitCherryPick(root, oid, id)));
     if (result.kind === 'executed' && isCurrentGitScope(scope)) reportConflict(result.value, 'cherry-pick');
   } catch (e) {
     if (isCurrentGitScope(scope)) showToast('error', `cherry-pick 失败：${errText(e)}`);
@@ -209,7 +210,7 @@ export async function revertCommit(oid: string): Promise<void> {
   });
   if (!ok) return;
   try {
-    const result = await runGitWorktreeMutation(scope, () => git.gitRevert(root, oid));
+    const result = await runGitWorktreeMutation(scope, () => runLocalGitOperation(scope, '撤销提交', (id) => git.gitRevert(root, oid, id)));
     if (result.kind === 'executed' && isCurrentGitScope(scope)) reportConflict(result.value, 'revert');
   } catch (e) {
     if (isCurrentGitScope(scope)) showToast('error', `revert 失败：${errText(e)}`);

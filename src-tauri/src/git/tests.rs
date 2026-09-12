@@ -184,7 +184,7 @@ fn generic_abort_restores_a_real_local_rebase() {
     let start = git(&dir, &["rebase", "--merge", "--no-gpg-sign", "--no-autostash", "upstream"]);
     assert!(!start.status.success(), "fixture must stop at a real textual conflict");
     assert!(Repository::open(&dir).unwrap().index().unwrap().has_conflicts());
-    let result = tauri::async_runtime::block_on(super::commit::git_abort_op(dir.to_string_lossy().into_owned()));
+    let result = tauri::async_runtime::block_on(super::commit::git_abort_op(dir.to_string_lossy().into_owned(), None));
     let after = Repository::open(&dir).unwrap();
     let actual_head = after.head().unwrap().target();
     let actual_body = std::fs::read_to_string(dir.join("文稿.md")).unwrap();

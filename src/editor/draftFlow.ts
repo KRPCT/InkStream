@@ -10,8 +10,9 @@ import { queueAfterComposition } from './composition';
 import { scheduleAutosave } from '../stores/autosave';
 import { stripVerbatim } from './pathUtil';
 import { refreshTree } from './fileTreeData';
-import { parentDir, relativeWithinVault, switchVault } from './vaultFlow';
+import { relativeWithinVault } from './vaultFlow';
 import { getView } from './viewHandle';
+import { getCommandView } from './commandView';
 
 /**
  * 草稿文档编排：新建（file.new-document）与另存为转正（Ctrl+S 的 draft 分支）。
@@ -30,7 +31,7 @@ function fileName(absPath: string): string {
  * 不依赖 vault / 文件树（解「无 vault 无法新建」阻塞）。无 view（未挂载）静默 no-op。
  */
 export function newDraftDocument(): void {
-  const view = getView();
+  const view = getCommandView();
   if (!view) return;
   const active = useEditorStore.getState().activePath;
   if (active) snapshotBeforeSwitch(view, active);
@@ -45,7 +46,7 @@ export function newDraftDocument(): void {
  * path 来自原生对话框，属用户显式授权边界，Rust 侧不经 vault path_guard（write_file_to_path）。
  * 取消对话框 no-op（草稿保留）；写失败 toast + 草稿保留。写成功后：
  * - 位置在当前 vault 内 → 按相对路径打开（复用单内核换装链路）+ refreshTree；
- * - vault 外（或无 vault）→ 切其父目录为 vault 后按文件名打开（与「打开文件」同约定）。
+ * - vault 外（或无 vault）→ 保持当前项目，以绝对路径作为外部文件打开。
  * 真实文件 tab 激活后才关草稿 tab + disposeState（先开后关：快照永不串 path）。
  */
 export async function saveDraftAs(draftPath: string): Promise<void> {
@@ -69,15 +70,6 @@ export async function saveDraftAs(draftPath: string): Promise<void> {
   } catch {
     showToast('error', '保存失败，草稿内容仍保留在编辑器中。');
     return;
-  }
-  const root = useVaultStore.getState().vault?.root ?? null;
-  const rel = root !== null ? relativeWithinVault(absPath, root) : null;
-  if (rel === null) {
-    try {
-      if (await switchVault(parentDir(absPath), { confirmLeave: false }) === false) return;
-    } catch {
-      return; // 切 vault 失败（已弹 toast）：内容已落盘，草稿保留供重试
-    }
   }
   const finalize = () => {
     if (!useEditorStore.getState().tabs.includes(tab)) return;

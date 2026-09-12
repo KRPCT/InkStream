@@ -2,12 +2,12 @@ import { act, fireEvent, render, screen } from '@testing-library/react';
 import { beforeEach, expect, it, vi } from 'vitest';
 import type { GitFileStatus, GitRebaseStatus } from '../../types/git';
 
-const io = vi.hoisted(() => ({ read: vi.fn(), resolve: vi.fn().mockResolvedValue(null) }));
+const io = vi.hoisted(() => ({ read: vi.fn(), snapshot: vi.fn(), resolve: vi.fn().mockResolvedValue(null) }));
 vi.mock('../../ipc/git', () => ({
-  gitReadConflict: io.read, gitResolveConflict: io.resolve,
   gitStatus: vi.fn().mockResolvedValue(null), gitBranchList: vi.fn().mockResolvedValue([]),
   gitRebaseStatus: vi.fn().mockResolvedValue({ inProgress: false, source: null, conflicts: [] }),
 }));
+vi.mock('../../ipc/gitConflict', () => ({ gitConflictSnapshot: io.snapshot, gitConflictText: io.read, gitSaveConflict: io.resolve }));
 vi.mock('../../editor/gitActions', () => ({ abortOp: vi.fn().mockResolvedValue(false) }));
 
 import { useGitStore } from '../../stores/useGitStore';
@@ -17,6 +17,7 @@ import { captureGitWorktreeScope } from '../../editor/gitWorktreeMutation';
 import MergeResolver from './MergeResolver';
 
 beforeEach(() => {
+  io.snapshot.mockReset().mockResolvedValue({ baseline: { workingOid: 'working', stages: [null, null, null], headOid: 'head', operation: 'merge' }, markerError: null, conflictCount: 1 });
   io.read.mockReset().mockResolvedValue('before\n<<<<<<< HEAD\nours A\n=======\ntheirs A\n>>>>>>> topic\nafter\n');
   io.resolve.mockClear();
   useVaultStore.setState({ vault: { root: '/repo-a', repoRoot: '/repo-a', name: 'a' } });
@@ -35,7 +36,7 @@ it('同一路径进入下一重放提交后，旧段落立即失效并重新读�
   io.read.mockReturnValue(new Promise(() => {}));
   act(() => useGitRebaseStore.setState({ status: { ...status, currentCommit: 'second', step: 2 } }));
   expect(screen.getByRole('button', { name: '保存并标记解决' })).toBeDisabled();
-  expect(io.read).toHaveBeenCalledTimes(2);
+  expect(io.snapshot).toHaveBeenCalledTimes(2);
   expect(io.resolve).not.toHaveBeenCalled();
 });
 
@@ -58,4 +59,24 @@ it('同名冲突文件换仓库后，新正文未读取前不能保存旧仓库�
   });
   expect(screen.getByRole('button', { name: '保存并标记解决' })).toBeDisabled();
   expect(io.resolve).not.toHaveBeenCalled();
+});
+
+it('损坏标记保留原文并阻止写入和暂存', async () => {
+  io.read.mockResolvedValue('<<<<<<< HEAD\n正文缺少结束标记\n');
+  render(<MergeResolver />);
+  expect(await screen.findByRole('alert')).toHaveTextContent('未完整结束');
+  expect(screen.getByLabelText('完整冲突原文')).toHaveTextContent('正文缺少结束标记');
+  const save = screen.getByRole('button', { name: '保存并标记解决' });
+  expect(save).toBeDisabled(); fireEvent.click(save);
+  expect(io.resolve).not.toHaveBeenCalled();
+});
+
+it('diff3 共同基线可见，必须明确采纳后才允许保存', async () => {
+  io.read.mockResolvedValue('<<<<<<< HEAD\r\nours\r\n||||||| base\r\ncommon base\r\n=======\r\ntheirs\r\n>>>>>>> topic\r\n');
+  render(<MergeResolver />);
+  await screen.findByText('共同基线（diff3）');
+  expect(screen.getByLabelText('当前冲突共同基线')).toHaveTextContent('common base');
+  expect(screen.getByRole('button', { name: '保存并标记解决' })).toBeDisabled();
+  fireEvent.click(screen.getByRole('button', { name: '采纳本方' }));
+  expect(screen.getByRole('button', { name: '保存并标记解决' })).toBeEnabled();
 });

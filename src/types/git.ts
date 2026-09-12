@@ -160,6 +160,8 @@ export interface PullRequest {
   headRef: string;
   /** 目标分支名。 */
   baseRef: string;
+  headOid?: string | null;
+  baseOid?: string | null;
 }
 
 /** PR 合并方式（GitHub merge_method）。 */

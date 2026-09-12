@@ -43,6 +43,7 @@ impl Default for Limits {
 enum Target {
     Vault { root: String, path: String },
     Absolute { path: String },
+    GitConflict { #[serde(rename = "repoRoot")] repo_root: String, path: String, baseline: crate::git::conflict_snapshot::Baseline },
 }
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -308,22 +309,23 @@ async fn receive(
     }
 }
 
-fn resolve(target: Target) -> Result<PathBuf, String> {
+fn resolve(target: Target, id: &str) -> Result<(PathBuf, Option<crate::git::conflict_snapshot::WriteGuard>), String> {
     match target {
         Target::Vault { root, path } => {
             let root = Path::new(&root)
                 .canonicalize()
                 .map_err(|error| format!("无法解析工作区根: {error}"))?;
-            resolve_new_target_in_root(&root, &path)
+            resolve_new_target_in_root(&root, &path).map(|path| (path, None))
         }
         Target::Absolute { path } => {
             let path = PathBuf::from(path);
             if path.is_absolute() {
-                Ok(path)
+                Ok((path, None))
             } else {
                 Err("另存为/导出路径必须是绝对路径。".into())
             }
         }
+        Target::GitConflict { repo_root, path, baseline } => crate::git::conflict_snapshot::WriteGuard::begin(repo_root, path, baseline, id.into()).map(|(path, guard)| (path, Some(guard))),
     }
 }
 
@@ -332,6 +334,7 @@ fn finish(
     id: &str,
     control: &Control,
     staged: Option<&mut StagedWrite>,
+    conflict: Option<&mut Option<crate::git::conflict_snapshot::WriteGuard>>,
     result: Result<(), String>,
 ) -> Result<(), String> {
     let result = match staged.map(StagedWrite::discard).transpose() {
@@ -341,6 +344,9 @@ fn finish(
             Err(error) => format!("{error}; {cleanup}"),
         }),
     };
+    // Remove the owned staging file before releasing Git admission, and release
+    // admission before sending the result so a subsequent operation can start.
+    if let Some(guard) = conflict { drop(guard.take()); }
     control.state.store(DONE, Ordering::Release);
     if let Some(registry) = registry.upgrade() {
         registry.controls.lock().unwrap().remove(id);
@@ -364,18 +370,23 @@ fn worker(
     } = metadata;
     let opened = control
         .remaining()
-        .and_then(|_| resolve(target))
-        .and_then(|target| StagedWrite::new(&target));
-    let mut staged = match opened {
-        Ok(staged) => staged,
+        .and_then(|_| {
+            if matches!(&target, Target::GitConflict { .. }) && (!matches!(encoding, Encoding::Utf8) || byte_length > crate::git::conflict_snapshot::MAX_BYTES) {
+                return Err("冲突保存必须为不超过 100MiB 的 UTF-8 正文。".into());
+            }
+            resolve(target, &id)
+        })
+        .and_then(|(target, guard)| StagedWrite::new(&target).map(|staged| (staged, guard)));
+    let (mut staged, mut conflict) = match opened {
+        Ok(value) => value,
         Err(error) => {
-            let result = finish(&registry, &id, &control, None, Err(error));
+            let result = finish(&registry, &id, &control, None, None, Err(error));
             let _ = ready.send(result);
             return;
         }
     };
     if let Err(error) = control.progress() {
-        let result = finish(&registry, &id, &control, Some(&mut staged), Err(error));
+        let result = finish(&registry, &id, &control, Some(&mut staged), Some(&mut conflict), Err(error));
         let _ = ready.send(result);
         return;
     }
@@ -388,7 +399,7 @@ fn worker(
         let remaining = match control.remaining() {
             Ok(remaining) => remaining,
             Err(error) => {
-                let _ = finish(&registry, &id, &control, Some(&mut staged), Err(error));
+                let _ = finish(&registry, &id, &control, Some(&mut staged), Some(&mut conflict), Err(error));
                 return;
             }
         };
@@ -401,6 +412,7 @@ fn worker(
                     &id,
                     &control,
                     Some(&mut staged),
+                    Some(&mut conflict),
                     Err("文件写入通道已关闭。".into()),
                 );
                 return;
@@ -433,7 +445,7 @@ fn worker(
                     Ok(())
                 })();
                 if result.is_err() {
-                    let result = finish(&registry, &id, &control, Some(&mut staged), result);
+                    let result = finish(&registry, &id, &control, Some(&mut staged), Some(&mut conflict), result);
                     let _ = reply.send(result);
                     return;
                 }
@@ -451,10 +463,13 @@ fn worker(
                         utf8.finish()?;
                     }
                     staged.prepare()?;
+                    if let Some(conflict) = &conflict { conflict.verify(staged.prepared_path()?)?; }
                     control.publish_gate()?;
-                    staged.publish()
+                    staged.publish()?;
+                    if let Some(conflict) = &conflict { conflict.stage(control.started + control.limits.total)?; }
+                    Ok(())
                 })();
-                let result = finish(&registry, &id, &control, Some(&mut staged), result);
+                let result = finish(&registry, &id, &control, Some(&mut staged), Some(&mut conflict), result);
                 let _ = reply.send(result);
                 return;
             }

@@ -12,7 +12,15 @@ pub(super) struct StagedWrite {
 }
 
 impl StagedWrite {
+    pub(super) fn prepared_path(&self) -> Result<&Path, String> {
+        if self.file.is_some() { return Err("临时文件尚未同步关闭。".into()); }
+        self.temp.as_deref().ok_or_else(|| "临时文件已完成提交。".into())
+    }
     pub(super) fn new(target: &Path) -> Result<Self, String> {
+        #[cfg(windows)]
+        let resolved = super::publish_path::target(target)?;
+        #[cfg(windows)]
+        let target = resolved.as_path();
         #[cfg(unix)]
         let permissions = match std::fs::metadata(target) {
             Ok(metadata) => Some(metadata.permissions()),

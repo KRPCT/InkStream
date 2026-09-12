@@ -10,6 +10,7 @@ import { useSettingsStore } from '../stores/useSettingsStore';
 import { useIndexStore } from '../stores/useIndexStore';
 import { useVaultStore } from '../stores/useVaultStore';
 import { captureIndexScope, initIndexLifecycle, indexRebuild, indexRemoveDoc, indexSwitchVault, indexUpsertDoc, pauseIndexSession, queryContent, queryGraphData } from './indexService';
+import { nativeIndexReply } from '../test/indexLocationFixture';
 
 function vault(root: string) {
   useVaultStore.setState({ vault: { root, name: root, repoRoot: null }, files: [] });
@@ -18,7 +19,7 @@ function vault(root: string) {
 describe('索引写入绑定工作区生命周期', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    ipc.mockResolvedValue(null);
+    ipc.mockImplementation(async (name, args) => nativeIndexReply(name, args));
     select.mockResolvedValue([]);
     useSettingsStore.setState({ simpleMode: false });
     vault('/index-scope-a');
@@ -57,9 +58,9 @@ describe('索引写入绑定工作区生命周期', () => {
 
   it('准备尚未完成时不把新正文投给尚未就绪的库', async () => {
     let commit!: () => void;
-    ipc.mockImplementation((name) => name === 'index_rebuild'
-      ? new Promise<null>((resolve) => { commit = () => resolve(null); })
-      : Promise.resolve(null));
+    ipc.mockImplementation((name, args) => name === 'index_rebuild'
+      ? new Promise((resolve) => { commit = () => resolve(nativeIndexReply(name, args)); })
+      : Promise.resolve(nativeIndexReply(name, args)));
     const ready = indexRebuild('/index-scope-a');
     const write = indexUpsertDoc('note.md', '新的正文');
     await vi.waitFor(() => expect(commit).toBeTypeOf('function'));
@@ -74,7 +75,7 @@ describe('索引写入绑定工作区生命周期', () => {
     await queryGraphData();
     vault('/index-scope-b');
     await queryGraphData();
-    expect(close).toHaveBeenCalledWith('sqlite:/index-scope-a/.inkstream/index.db');
+    expect(close).toHaveBeenCalledWith('sqlite:/fixture-app-data/indexes/%2Findex-scope-a/index.db');
   });
 
   it('SQL失败与合法零命中不同，查询明确失败', async () => {
@@ -113,9 +114,9 @@ describe('索引写入绑定工作区生命周期', () => {
     await indexSwitchVault('/index-scope-a');
     ipc.mockClear();
     let commit!: () => void;
-    ipc.mockImplementation((name) => name === 'index_upsert_doc'
+    ipc.mockImplementation((name, args) => name === 'index_upsert_doc'
       ? new Promise<null>((resolve) => { commit = () => resolve(null); })
-      : Promise.resolve(null));
+      : Promise.resolve(nativeIndexReply(name, args)));
     const writing = indexUpsertDoc('old-name.md', '即将改名');
     await vi.waitFor(() => expect(commit).toBeTypeOf('function'));
     const rebuilding = indexRebuild('/index-scope-a');

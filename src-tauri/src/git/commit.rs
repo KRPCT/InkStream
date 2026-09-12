@@ -9,7 +9,44 @@
 
 use super::GitError;
 use serde::Serialize;
-use std::process::Command;
+use std::time::{Duration, Instant};
+
+const OPERATION_TIMEOUT: Duration = Duration::from_secs(120);
+
+/// One admission and deadline cover staging, signing/hooks and any recovery command.
+struct Operation {
+    repo: git2::Repository,
+    lease: super::rebase_registry::Lease,
+    deadline: Instant,
+}
+impl Operation {
+    fn begin(root: &str, request_id: Option<String>, timeout: Duration) -> Result<Self, GitError> {
+        let repo = super::open_repo(root)?;
+        let lease = super::rebase_registry::acquire(&repo, request_id.unwrap_or_else(super::rebase_registry::request_id))?;
+        if super::rebase_state::in_progress(&repo) {
+            return Err(GitError::Git("变基尚未结束，请先继续、跳过或中止变基".into()));
+        }
+        Ok(Self { repo, lease, deadline: Instant::now() + timeout })
+    }
+
+    fn run(&self, args: &[&str]) -> Result<(bool, String, String), GitError> {
+        let spec = super::rebase::local_spec(&self.repo, args.iter().map(|arg| (*arg).into()).collect())?;
+        let out = super::rebase_process::run_process(&spec, &self.lease.cancelled,
+            self.deadline.saturating_duration_since(Instant::now())).map_err(GitError::Git)?;
+        let diagnostic = if out.stderr.trim().is_empty() { out.stdout.trim() } else { out.stderr.trim() };
+        if let Some(error) = out.cleanup_error {
+            return Err(GitError::Git(format!("Git 进程回收未确认：{error}。工作树和暂存状态已保留；请检查后恢复。\n{diagnostic}")));
+        }
+        if let Some(reason) = out.interruption {
+            let reason = match reason {
+                super::rebase_process::StopReason::TimedOut => "Git 操作超过执行期限，已停止",
+                super::rebase_process::StopReason::Cancelled => "Git 操作已取消",
+            };
+            return Err(GitError::Git(format!("{reason}。工作树和暂存状态已保留；请检查后重试或中止未完成的合并。\n{diagnostic}")));
+        }
+        Ok((out.exit_code == Some(0), out.stdout, out.stderr))
+    }
+}
 
 /// 产生提交类操作的结果。
 #[derive(Debug, Serialize)]
@@ -21,26 +58,9 @@ pub struct GitOpResult {
     pub conflicted: bool,
 }
 
-/// 跑一条 git 子命令 → (success, stdout, stderr)。无 shell（无注入），current_dir 锁定仓库。
-fn run(repo: &str, args: &[&str]) -> Result<(bool, String, String), GitError> {
-    let out = Command::new("git")
-        .current_dir(repo)
-        .args(args)
-        .output()
-        .map_err(|e| GitError::Internal(format!("无法执行 git（请确认已安装 git）: {e}")))?;
-    Ok((
-        out.status.success(),
-        String::from_utf8_lossy(&out.stdout).into_owned(),
-        String::from_utf8_lossy(&out.stderr).into_owned(),
-    ))
-}
-
-/// 当前 HEAD oid（rev-parse）。
+/// Read HEAD directly; status reporting must not start another hook/signing process.
 fn head_oid(repo: &str) -> Option<String> {
-    match run(repo, &["rev-parse", "HEAD"]) {
-        Ok((true, out, _)) => Some(out.trim().to_string()),
-        _ => None,
-    }
+    super::open_repo(repo).ok()?.head().ok()?.target().map(|oid| oid.to_string())
 }
 
 /// 工作区是否有未解决冲突（git2 读 index）。
@@ -68,9 +88,15 @@ pub async fn git_commit(
     repo_root: String,
     message: String,
     paths: Vec<String>,
+    request_id: Option<String>,
 ) -> Result<GitOpResult, String> {
     super::blocking(move || {
-        let _lease = super::rebase_registry::lock_worktree(&super::open_repo(&repo_root)?)?;
+        commit(&repo_root, &message, &paths, request_id, OPERATION_TIMEOUT)
+    }).await
+}
+
+fn commit(repo_root: &str, message: &str, paths: &[String], request_id: Option<String>, timeout: Duration) -> Result<GitOpResult, GitError> {
+        let operation = Operation::begin(repo_root, request_id, timeout)?;
         let mut add: Vec<&str> = vec!["add"];
         if paths.is_empty() {
             add.push("-A");
@@ -79,30 +105,27 @@ pub async fn git_commit(
             add.push("--");
             add.extend(paths.iter().map(String::as_str));
         }
-        let (ok, _, err) = run(&repo_root, &add)?;
+        let (ok, _, err) = operation.run(&add)?;
         if !ok {
             return Err(GitError::Git(format!("git add 失败: {}", err_msg(&err, "未知错误"))));
         }
-        let (ok, _, err) = run(&repo_root, &["commit", "-S", "-m", &message])?;
+        let (ok, _, err) = operation.run(&["commit", "-S", "-m", message])?;
         if !ok {
             return Err(GitError::Git(format!("提交失败: {}", err_msg(&err, "无可提交的改动"))));
         }
         Ok(GitOpResult {
-            oid: head_oid(&repo_root),
+            oid: head_oid(repo_root),
             conflicted: false,
         })
-    })
-    .await
 }
 
 /// 合并分支到当前分支（--no-ff 留 merge 提交，-S 签名，--no-edit 免编辑器）。冲突 → conflicted。
 #[tauri::command]
-pub async fn git_merge(repo_root: String, branch: String) -> Result<GitOpResult, String> {
+pub async fn git_merge(repo_root: String, branch: String, request_id: Option<String>) -> Result<GitOpResult, String> {
     super::blocking(move || {
-        let _lease = super::rebase_registry::lock_worktree(&super::open_repo(&repo_root)?)?;
+        let operation = Operation::begin(&repo_root, request_id, OPERATION_TIMEOUT)?;
         // --end-of-options：防 branch 以 - 开头被当 flag（review 硬化）。
-        let (ok, _, err) = run(
-            &repo_root,
+        let (ok, _, err) = operation.run(
             &["merge", "--no-ff", "--no-edit", "-S", "--end-of-options", &branch],
         )?;
         finish_op(&repo_root, ok, &err, "合并失败")
@@ -112,10 +135,10 @@ pub async fn git_merge(repo_root: String, branch: String) -> Result<GitOpResult,
 
 /// cherry-pick 一个提交到当前分支（-S 签名）。冲突 → conflicted。
 #[tauri::command]
-pub async fn git_cherry_pick(repo_root: String, oid: String) -> Result<GitOpResult, String> {
+pub async fn git_cherry_pick(repo_root: String, oid: String, request_id: Option<String>) -> Result<GitOpResult, String> {
     super::blocking(move || {
-        let _lease = super::rebase_registry::lock_worktree(&super::open_repo(&repo_root)?)?;
-        let (ok, _, err) = run(&repo_root, &["cherry-pick", "-S", "--end-of-options", &oid])?;
+        let operation = Operation::begin(&repo_root, request_id, OPERATION_TIMEOUT)?;
+        let (ok, _, err) = operation.run(&["cherry-pick", "-S", "--end-of-options", &oid])?;
         finish_op(&repo_root, ok, &err, "cherry-pick 失败")
     })
     .await
@@ -123,18 +146,16 @@ pub async fn git_cherry_pick(repo_root: String, oid: String) -> Result<GitOpResu
 
 /// revert 一个提交（生成反向提交，-S 签名，--no-edit）。冲突 → conflicted。
 #[tauri::command]
-pub async fn git_revert(repo_root: String, oid: String) -> Result<GitOpResult, String> {
+pub async fn git_revert(repo_root: String, oid: String, request_id: Option<String>) -> Result<GitOpResult, String> {
     super::blocking(move || {
-        let _lease = super::rebase_registry::lock_worktree(&super::open_repo(&repo_root)?)?;
-        let (ok, _, err) = run(&repo_root, &["revert", "--no-edit", "-S", "--end-of-options", &oid])?;
+        let operation = Operation::begin(&repo_root, request_id, OPERATION_TIMEOUT)?;
+        let (ok, _, err) = operation.run(&["revert", "--no-edit", "-S", "--end-of-options", &oid])?;
         finish_op(&repo_root, ok, &err, "revert 失败")
     })
     .await
 }
 
-/// 收尾 merge/cherry-pick/revert：成功取 HEAD；冲突 → conflicted（可解决）；非冲突失败 → best-effort 中止
-/// 进行中操作再报错——否则遗留 MERGE_HEAD/CHERRY_PICK_HEAD/REVERT_HEAD 会让下一笔 commit 静默完成被放弃的
-/// 操作、产出张冠李戴的多父提交（review 高危发现）。
+/// Report the actual remaining state; only an explicit abort may discard an incomplete operation.
 fn finish_op(repo: &str, ok: bool, err: &str, what: &str) -> Result<GitOpResult, GitError> {
     if ok {
         return Ok(GitOpResult {
@@ -148,10 +169,8 @@ fn finish_op(repo: &str, ok: bool, err: &str, what: &str) -> Result<GitOpResult,
             conflicted: true,
         });
     }
-    if let Some(sub) = in_progress_op(repo) {
-        let _ = run(repo, &[sub, "--abort"]); // best-effort 还原，忽略其退出码
-    }
-    Err(GitError::Git(format!("{what}: {}", err_msg(err, "未知错误"))))
+    let recovery = if in_progress_op(repo).is_some() { "；未完成操作已保留，请检查后继续提交，或执行“中止本地 Git 操作”" } else { "" };
+    Err(GitError::Git(format!("{what}: {}{recovery}", err_msg(err, "未知错误"))))
 }
 
 /// 检测进行中的 merge/cherry-pick/revert（按 .git 下 *_HEAD 标记），返回对应 git 子命令名供 --abort。
@@ -170,18 +189,18 @@ fn in_progress_op(repo: &str) -> Option<&'static str> {
 
 /// 中止进行中的 merge/cherry-pick/revert，把仓库还原到操作前（冲突卡死时的安全出口）。
 #[tauri::command]
-pub async fn git_abort_op(repo_root: String) -> Result<(), String> {
+pub async fn git_abort_op(repo_root: String, request_id: Option<String>) -> Result<(), String> {
     super::blocking(move || {
         if super::rebase_state::in_progress(&super::open_repo(&repo_root)?) {
-            let result = super::rebase::execute(&repo_root, super::rebase_registry::request_id(), super::rebase::RebaseAction::Abort)?;
+            let result = super::rebase::execute(&repo_root, request_id.unwrap_or_else(super::rebase_registry::request_id), super::rebase::RebaseAction::Abort)?;
             return if result.outcome == super::rebase::RebaseOutcome::Aborted { Ok(()) }
                 else { Err(GitError::Git(result.error.unwrap_or_else(|| "中止变基未完成".into()))) };
         }
-        let _lease = super::rebase_registry::lock_worktree(&super::open_repo(&repo_root)?)?;
+        let operation = Operation::begin(&repo_root, request_id, OPERATION_TIMEOUT)?;
         let Some(sub) = in_progress_op(&repo_root) else {
             return Err(GitError::Git("没有进行中的合并/拣选/回退操作".into()));
         };
-        let (ok, _, err) = run(&repo_root, &[sub, "--abort"])?;
+        let (ok, _, err) = operation.run(&[sub, "--abort"])?;
         if !ok {
             return Err(GitError::Git(format!("中止失败: {}", err_msg(&err, "未知错误"))));
         }
@@ -189,3 +208,12 @@ pub async fn git_abort_op(repo_root: String) -> Result<(), String> {
     })
     .await
 }
+
+#[tauri::command]
+pub async fn git_cancel_operation(repo_root: String, request_id: String) -> Result<bool, String> {
+    super::blocking(move || super::rebase_registry::cancel(&super::open_repo(&repo_root)?, request_id)).await
+}
+
+#[cfg(test)]
+#[path = "commit_tests.rs"]
+mod tests;

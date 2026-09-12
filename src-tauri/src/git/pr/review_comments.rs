@@ -1,5 +1,6 @@
 use super::{repo_target, token, with_headers, GhComment};
-use serde::{de::DeserializeOwned, Deserialize, Serialize};
+use serde::{Deserialize, Serialize};
+use super::http::{client, read};
 use std::time::Duration;
 
 #[derive(Debug, Serialize)]
@@ -36,27 +37,6 @@ impl From<RawComment> for ReviewComment {
             path: raw.path, line: raw.line, original_line: raw.original_line, diff_hunk: raw.diff_hunk,
             url: raw.comment.html_url, created_at: raw.comment.created_at }
     }
-}
-
-fn client() -> Result<reqwest::Client, String> {
-    reqwest::Client::builder().connect_timeout(Duration::from_secs(10)).timeout(Duration::from_secs(30))
-        .redirect(reqwest::redirect::Policy::none()).build().map_err(|error| error.to_string())
-}
-
-async fn read<T: DeserializeOwned>(mut response: reqwest::Response) -> Result<T, String> {
-    let status = response.status();
-    let mut bytes = Vec::new();
-    while let Some(chunk) = response.chunk().await.map_err(|error| format!("读取回复失败: {error}"))? {
-        if bytes.len() + chunk.len() > 8 * 1024 * 1024 { return Err("审阅讨论过大，请在 GitHub 查看。".into()); }
-        bytes.extend_from_slice(&chunk);
-    }
-    if !status.is_success() {
-        let message = serde_json::from_slice::<serde_json::Value>(&bytes).ok()
-            .and_then(|value| value.get("message").and_then(|value| value.as_str()).map(str::to_owned))
-            .unwrap_or_else(|| status.to_string());
-        return Err(format!("GitHub API 错误（{}）：{message}", status.as_u16()));
-    }
-    serde_json::from_slice(&bytes).map_err(|error| format!("解析审阅讨论失败: {error}"))
 }
 
 async fn list(client: &reqwest::Client, endpoint: &str, credential: &str) -> Result<Vec<ReviewComment>, String> {

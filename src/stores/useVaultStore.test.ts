@@ -4,6 +4,8 @@ import { openVault } from '../ipc/vault';
 import { startWatch, stopWatch } from '../ipc/events';
 import { useVaultStore } from './useVaultStore';
 import type { TreeNode, VaultInfo } from '../types/vault';
+const projectEntry = vi.hoisted(() => vi.fn().mockResolvedValue(true));
+vi.mock('../projects/actions', () => ({ openProjectDirectory: projectEntry }));
 
 vi.mock('../ipc/vault', () => ({
   openVault: vi.fn(),
@@ -93,7 +95,7 @@ describe('useVaultStore', () => {
   });
 });
 
-describe('switchVault (vaultFlow watch lifecycle)', () => {
+describe('switchVault project entry delegation', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     reset();
@@ -102,12 +104,14 @@ describe('switchVault (vaultFlow watch lifecycle)', () => {
     );
   });
 
-  it('切 vault：stop_watch 旧 + open_vault 新 + start_watch 新（D-07 单窗单 vault）', async () => {
-    await switchVault('/v');
-    expect(stopWatch).toHaveBeenCalled();
-    expect(openVault).toHaveBeenCalledWith('/v');
-    expect(startWatch).toHaveBeenCalledWith('/v');
-    expect(useVaultStore.getState().vault?.root).toBe('/v');
-    expect(useVaultStore.getState().recentVaults).toContain('/v');
+  it('目录入口只委派项目事务，不独立切换监听和数据所有者', async () => {
+    useVaultStore.getState().openVault(VAULT, TREE);
+    expect(await switchVault('/next', { confirmLeave: false })).toBe(true);
+    expect(projectEntry).toHaveBeenCalledWith('/next');
+    expect(stopWatch).not.toHaveBeenCalled();
+    expect(openVault).not.toHaveBeenCalled();
+    expect(startWatch).not.toHaveBeenCalled();
+    expect(useVaultStore.getState().vault).toBe(VAULT);
+    expect(useVaultStore.getState().tree).toEqual(TREE);
   });
 });

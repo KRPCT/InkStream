@@ -111,15 +111,17 @@ describe('draftFlow', () => {
     expect(useEditorStore.getState().tabs.some((t) => t.path === 'draft://1')).toBe(false);
   });
 
-  it('无 vault 保存：切到父目录作 vault 后按文件名打开 + 关草稿', async () => {
+  it('无项目另存为：保留独立草稿区身份，正文转为外部文件并保留历史', async () => {
     newDraftDocument();
     view.dispatch({ changes: { from: 0, insert: 'x' } });
     mockPick.mockResolvedValue('D:\\docs\\草稿.md');
     await saveDraftAs('draft://1');
     expect(mockWrite).toHaveBeenCalledWith('D:\\docs\\草稿.md', 'x');
-    expect(switchVault).toHaveBeenCalledWith('D:/docs', { confirmLeave: false });
-    expect(useEditorStore.getState().activePath).toBe('草稿.md');
-    expect(getDocForPath('草稿.md')).toBe('x');
+    expect(switchVault).not.toHaveBeenCalled();
+    expect(useVaultStore.getState().vault).toBeNull();
+    expect(useEditorStore.getState().activePath).toBe('D:/docs/草稿.md');
+    expect(getDocForPath('D:/docs/草稿.md')).toBe('x');
+    expect(useEditorStore.getState().tabs[0].external).toBe(true);
     expect(useEditorStore.getState().tabs.some((t) => t.path === 'draft://1')).toBe(false);
   });
 

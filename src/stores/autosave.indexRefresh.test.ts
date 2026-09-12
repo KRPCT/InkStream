@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { EditorView } from '@codemirror/view';
 
-const ipc = vi.hoisted(() => vi.fn<(command: string, args?: unknown) => Promise<null>>());
+const ipc = vi.hoisted(() => vi.fn<(command: string, args?: unknown) => Promise<unknown>>());
 vi.mock('../ipc/invoke', () => ({ invoke: ipc, invokeStreamed: vi.fn() }));
 vi.mock('../ipc/files', async (original) => ({
   ...await original<typeof import('../ipc/files')>(), readFile: vi.fn(), writeFileAtomic: vi.fn(),
@@ -25,6 +25,7 @@ import { useGitStore } from './useGitStore';
 import { useSettingsStore } from './useSettingsStore';
 import { useToastStore } from './useToastStore';
 import { useVaultStore } from './useVaultStore';
+import { nativeIndexReply } from '../test/indexLocationFixture';
 
 let view: EditorView;
 let disk: Map<string, string>;
@@ -56,7 +57,7 @@ beforeEach(async () => {
   root = `/index-refresh-${++generation}`;
   useVaultStore.setState({ vault: { root, name: root, repoRoot: null }, tree: [], files: [], expanded: new Set() });
   disk = new Map([['note.md', '原正文']]);
-  ipc.mockReset().mockResolvedValue(null);
+  ipc.mockReset().mockImplementation(async (command, args) => nativeIndexReply(command, args));
   vi.mocked(readFile).mockReset().mockImplementation(async (_root, path) => {
     if (!disk.has(path)) throw new Error('fixture file missing');
     return disk.get(path)!;
@@ -94,9 +95,9 @@ describe('落盘后的索引刷新不再把完整正文传回原生', () => {
       persisted = true;
       return null;
     });
-    ipc.mockImplementation(async (command) => {
+    ipc.mockImplementation(async (command, args) => {
       if (command === 'index_refresh_file' || command === 'index_upsert_doc') expect(persisted).toBe(true);
-      return null;
+      return nativeIndexReply(command, args);
     });
     expect(await flushAutosave('note.md')).toMatchObject({ kind: 'saved' });
     expect(disk.get('note.md')?.endsWith('TAIL')).toBe(true);
@@ -131,9 +132,9 @@ describe('落盘后的索引刷新不再把完整正文传回原生', () => {
   it('索引读盘或提交失败明确置error，不把成功文件保存回滚成失败', async () => {
     await openFileByPath('note.md');
     view.dispatch({ changes: { from: view.state.doc.length, insert: '已保存' }, userEvent: 'input.type' });
-    ipc.mockImplementation(async (command) => {
+    ipc.mockImplementation(async (command, args) => {
       if (command === 'index_refresh_file' || command === 'index_upsert_doc') throw new Error('fixture index read failed');
-      return null;
+      return nativeIndexReply(command, args);
     });
     expect(await flushAutosave('note.md')).toMatchObject({ kind: 'saved' });
     await vi.waitFor(() => expect(useIndexStore.getState().status).toBe('error'));

@@ -45,6 +45,10 @@ pub async fn zotero_cayw() -> Result<String, String> {
 /// BBT JSON-RPC `item.search("")` → 库内全部条目（CSL-JSON Value 数组）。短超时（非交互）。
 /// 连接拒绝=未运行、404=BBT 未装、超时分别友好报错。zotero_citekeys / zotero_items 共用。
 async fn bbt_search() -> Result<Vec<serde_json::Value>, String> {
+    bbt_search_at(JSONRPC_URL).await
+}
+
+async fn bbt_search_at(url: &str) -> Result<Vec<serde_json::Value>, String> {
     let client = reqwest::Client::builder()
         .timeout(Duration::from_secs(15))
         .build()
@@ -52,7 +56,7 @@ async fn bbt_search() -> Result<Vec<serde_json::Value>, String> {
     let payload =
         serde_json::json!({ "jsonrpc": "2.0", "method": "item.search", "params": [""], "id": 1 });
     let resp = client
-        .post(JSONRPC_URL)
+        .post(url)
         .header("Accept", "application/json")
         .json(&payload)
         .send()
@@ -69,14 +73,26 @@ async fn bbt_search() -> Result<Vec<serde_json::Value>, String> {
     if resp.status().as_u16() == 404 {
         return Err("Zotero 未安装 Better BibTeX 插件".to_string());
     }
-    let v: serde_json::Value = resp
+    if !resp.status().is_success() {
+        return Err(format!("Zotero 返回错误: {}", resp.status()));
+    }
+    let mut v: serde_json::Value = resp
         .json()
         .await
         .map_err(|e| format!("解析 Zotero 响应失败: {e}"))?;
-    Ok(v.get("result")
-        .and_then(|r| r.as_array())
-        .cloned()
-        .unwrap_or_default())
+    // BBT reports JSON-RPC errors with HTTP 200 too. Returning [] here would
+    // falsely clear the online library and bypass the caller's offline fallback.
+    if let Some(error) = v.get("error").filter(|error| !error.is_null()) {
+        let message: String = error.get("message").and_then(|value| value.as_str())
+            .unwrap_or("Better BibTeX 查询失败").chars().take(240).collect();
+        return Err(format!("Zotero 查询失败: {message}"));
+    }
+    let items = v.get_mut("result").and_then(|result| result.as_array_mut())
+        .ok_or_else(|| "Zotero 返回的文献列表格式错误，请重试。".to_string())?;
+    if items.iter().any(|item| !item.is_object()) {
+        return Err("Zotero 返回了格式错误的文献条目，请重试。".into());
+    }
+    Ok(std::mem::take(items))
 }
 
 /// CSL-JSON 字段名：citekey（BBT）/ citation-key（CSL），都试。
@@ -184,3 +200,7 @@ pub async fn zotero_csl(keys: Vec<String>) -> Result<Vec<serde_json::Value>, Str
         .filter_map(|k| by_key.get(k.as_str()).map(|v| (*v).clone()))
         .collect())
 }
+
+#[cfg(test)]
+#[path = "zotero_tests.rs"]
+mod tests;
