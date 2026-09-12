@@ -18,10 +18,11 @@
 /* ── 层 1 base：中性变量挂 data-theme（UI-SPEC 总表逐行照抄） ───────────── */
 
 html[data-theme='light'] {
-  --background-primary: hsl(230, 1%, 98%);
-  --background-primary-alt: hsl(230, 1%, 95%);
-  --background-secondary: hsl(230, 1%, 94%);
-  --background-secondary-alt: hsl(230, 1%, 92%);
+  color-scheme: light;
+  --background-primary: hsl(90, 6%, 98%);
+  --background-primary-alt: hsl(90, 4%, 95%);
+  --background-secondary: hsl(100, 4%, 94%);
+  --background-secondary-alt: hsl(100, 4%, 92%);
   --background-modifier-border: hsl(230, 4%, 86%);
   --background-modifier-hover: hsl(230, 8%, 24%, 0.06);
   --background-modifier-active: hsl(230, 8%, 24%, 0.1);
@@ -52,9 +53,9 @@ html[data-theme='light'] {
   /* 弹出层阴影（UI-SPEC：阴影仅弹出层使用，禁止卡片化滥用） */
   --shadow-popup: 0 4px 16px hsl(230 8% 24% / 0.12);
   /* 模式身份静态色点（与各模式 accent 同源，Plan 05 模式菜单消费） */
-  --mode-dot-standard: hsl(220, 10%, 50%);
-  --mode-dot-academic: hsl(220, 70%, 45%);
-  --mode-dot-creative: hsl(355, 65%, 50%);
+  --mode-dot-standard: hsl(145, 12%, 38%);
+  --mode-dot-academic: hsl(156, 17%, 35%);
+  --mode-dot-creative: hsl(130, 10%, 38%);
 
   /* CodeMirror 语法高亮 token（UI-SPEC §Color A，取值同源 Atom one-light）。
      仅随 data-theme 变，不吃模式 accent；highlightTheme.ts 经 var(--cm-*) 消费。 */
@@ -88,10 +89,11 @@ html[data-theme='light'] {
   --cm-table-header-bg: hsl(230, 8%, 94%);
   --cm-hr: hsl(230, 6%, 82%);
   --cm-checkbox-checked: hsl(var(--accent-hsl));
-  --cm-image-loading-bg: hsl(230, 1%, 95%);
+  --cm-image-loading-bg: hsl(90, 4%, 95%);
 }
 
 html[data-theme='dark'] {
+  color-scheme: dark;
   --background-primary: hsl(220, 13%, 18%);
   --background-primary-alt: hsl(220, 13%, 16%);
   --background-secondary: hsl(220, 13%, 15%);
@@ -99,11 +101,11 @@ html[data-theme='dark'] {
   --background-modifier-border: hsl(222, 13%, 11%);
   --background-modifier-hover: hsl(220, 14%, 71%, 0.08);
   --background-modifier-active: hsl(220, 14%, 71%, 0.12);
-  --text-normal: hsl(220, 14%, 71%);
+  --text-normal: hsl(145, 13%, 69%);
   --text-muted: hsl(220, 9%, 55%);
   --text-faint: hsl(220, 10%, 40%);
   --text-on-accent: hsl(220, 13%, 18%);
-  --color-error: hsl(355, 65%, 65%);
+  --color-error: hsl(130, 12%, 69%);
   --archive-canvas: hsl(150, 5%, 14%);
   --archive-ink: hsl(120, 5%, 90%);
   --archive-muted: hsl(140, 5%, 68%);
@@ -123,19 +125,19 @@ html[data-theme='dark'] {
   --crea-progress-track: hsl(220, 14%, 71%, 0.12);
   --cm-codex-mention: hsl(265, 48%, 70%);
   --shadow-popup: 0 4px 16px hsl(0 0% 0% / 0.18);
-  --mode-dot-standard: hsl(220, 14%, 71%);
-  --mode-dot-academic: hsl(207, 82%, 66%);
-  --mode-dot-creative: hsl(355, 65%, 65%);
+  --mode-dot-standard: hsl(145, 13%, 69%);
+  --mode-dot-academic: hsl(156, 18%, 69%);
+  --mode-dot-creative: hsl(130, 12%, 69%);
 
   /* CodeMirror 语法高亮 token（UI-SPEC §Color A，取值同源 Atom one-dark）。 */
   --cm-keyword: hsl(286, 60%, 67%);
   --cm-string: hsl(95, 38%, 62%);
   --cm-comment: hsl(220, 10%, 40%);
   --cm-number: hsl(29, 54%, 61%);
-  --cm-function: hsl(207, 82%, 66%);
+  --cm-function: hsl(156, 18%, 69%);
   --cm-type: hsl(39, 67%, 69%);
-  --cm-variable: hsl(355, 65%, 65%);
-  --cm-operator: hsl(220, 14%, 71%);
+  --cm-variable: hsl(130, 12%, 69%);
+  --cm-operator: hsl(145, 13%, 69%);
   /* R5-typography D-2：标题去红改正文色；对 background-primary(18% L) 对比 ≈ 6.55:1，超 4.5。 */
   --cm-heading: var(--text-normal);
   --cm-emphasis: hsl(286, 60%, 67%);
@@ -143,7 +145,7 @@ html[data-theme='dark'] {
   /* R5-typography §3.2：暗态链接微提到 70% L 保暗背景对比 ≈ 6.63:1。 */
   --cm-link: hsl(207, 82%, 70%);
   --cm-meta: hsl(220, 9%, 55%);
-  --cm-invalid: hsl(355, 65%, 65%);
+  --cm-invalid: hsl(130, 12%, 69%);
 
   /* Live Preview 装饰专用 token（Phase 3，UI-SPEC §Color 新增表，dark 镜像同源 Atom one-dark）。 */
   /* 光标行标记淡显不透明度（UAT #4）：dark 下略提一档保暗背景上仍可辨。 */
@@ -163,12 +165,12 @@ html[data-theme='dark'] {
 
 /* ── 层 2 mode：6 组合只覆写 --accent-hsl（3 模式 x 2 亮暗，D-14 一次定型） ── */
 
-html[data-mode='standard'][data-theme='light'] { --accent-hsl: 220 10% 50%; }
-html[data-mode='standard'][data-theme='dark'] { --accent-hsl: 220 14% 71%; }
-html[data-mode='academic'][data-theme='light'] { --accent-hsl: 220 70% 45%; }
-html[data-mode='academic'][data-theme='dark'] { --accent-hsl: 207 82% 66%; }
-html[data-mode='creative'][data-theme='light'] { --accent-hsl: 355 65% 50%; }
-html[data-mode='creative'][data-theme='dark'] { --accent-hsl: 355 65% 65%; }
+html[data-mode='standard'][data-theme='light'] { --accent-hsl: 145 12% 38%; }
+html[data-mode='standard'][data-theme='dark'] { --accent-hsl: 145 13% 69%; }
+html[data-mode='academic'][data-theme='light'] { --accent-hsl: 156 17% 35%; }
+html[data-mode='academic'][data-theme='dark'] { --accent-hsl: 156 18% 69%; }
+html[data-mode='creative'][data-theme='light'] { --accent-hsl: 130 10% 38%; }
+html[data-mode='creative'][data-theme='dark'] { --accent-hsl: 130 12% 69%; }
 
 /* ── 层 3 派生 + 动效 token（JS 永不注入色值，只切 data 属性） ──────────── */
 

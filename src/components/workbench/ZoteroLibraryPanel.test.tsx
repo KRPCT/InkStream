@@ -1,6 +1,7 @@
 import { fireEvent, render, screen } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ZoteroItem } from '../../types/zotero';
+import { useEditorStore } from '../../stores/useEditorStore';
 
 /** Sidebar Zotero 文献库回归门（Phase 8 ACAD-01）。zoteroItems 经替身，断言渲染 / 过滤 / 点击插入 / 错误态。 */
 
@@ -9,6 +10,8 @@ const zoteroItems = vi.fn<() => Promise<ZoteroItem[]>>(() => Promise.resolve([])
 vi.mock('../../ipc/zotero', () => ({
   zoteroItemsResilient: async () => ({ items: await zoteroItems(), offline: false }),
   onZoteroLibraryChanged: () => () => {},
+  currentZoteroLibraryRevision: () => 0,
+  zoteroCslResilient: async () => [{ id: 'lecunDeepLearning2015', type: 'article-journal', title: 'Deep learning', DOI: '10.1038/nature14539' }],
 }));
 const insertCitekey = vi.fn<(k: string) => void>();
 vi.mock('../../editor/academicActions', () => ({ insertCitekey: (k: string) => insertCitekey(k) }));
@@ -23,6 +26,7 @@ const ITEMS: ZoteroItem[] = [
 beforeEach(() => {
   zoteroItems.mockReset().mockResolvedValue(ITEMS);
   insertCitekey.mockClear();
+  useEditorStore.setState({ activePath: 'draft://references' });
 });
 
 describe('ZoteroLibraryPanel', () => {
@@ -42,9 +46,12 @@ describe('ZoteroLibraryPanel', () => {
     expect(screen.getByText('Attention Is All You Need')).toBeInTheDocument();
   });
 
-  it('点击条目 → insertCitekey(citekey)', async () => {
+  it('WB-03 选择文献先显示详情，明确插入才修改正文', async () => {
     render(<ZoteroLibraryPanel />);
     fireEvent.click(await screen.findByText('Deep learning'));
+    expect(insertCitekey).not.toHaveBeenCalled();
+    expect(await screen.findByRole('heading', { name: 'Deep learning' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '插入所选引用' }));
     expect(insertCitekey).toHaveBeenCalledWith('lecunDeepLearning2015');
   });
 

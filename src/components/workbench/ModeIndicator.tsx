@@ -1,8 +1,10 @@
 import { Check } from 'lucide-react';
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState, type CSSProperties } from 'react';
+import { createPortal } from 'react-dom';
 import { execute } from '../../commands/registry';
 import { MODE_PRESETS } from '../../modes/presets';
 import { useWorkbenchStore } from '../../stores/useWorkbenchStore';
+import { useProjectStore } from '../../stores/useProjectStore';
 import type { AppMode } from '../../types/workbench';
 import Menu, { type MenuEntry } from '../common/Menu';
 
@@ -16,7 +18,17 @@ const MODES: AppMode[] = ['standard', 'academic', 'creative'];
 export default function ModeIndicator() {
   const mode = useWorkbenchStore((s) => s.mode);
   const [open, setOpen] = useState(false);
+  const [position, setPosition] = useState<CSSProperties>({});
   const anchorRef = useRef<HTMLButtonElement>(null);
+  const blocked = useProjectStore((s) => s.archiveOpen || s.phase !== 'idle');
+  useEffect(() => {
+    if (!open) return;
+    const close = () => setOpen(false);
+    window.addEventListener('resize', close);
+    window.addEventListener('scroll', close, true);
+    const unsubscribe = useProjectStore.subscribe((state) => { if (state.archiveOpen || state.phase !== 'idle') close(); });
+    return () => { window.removeEventListener('resize', close); window.removeEventListener('scroll', close, true); unsubscribe(); };
+  }, [open]);
 
   const items: MenuEntry[] = MODES.map((m) => ({
     id: m,
@@ -49,7 +61,11 @@ export default function ModeIndicator() {
         data-testid="mode-indicator"
         aria-haspopup="menu"
         aria-expanded={open}
-        onClick={() => setOpen((v) => !v)}
+        onClick={() => {
+          const rect = anchorRef.current?.getBoundingClientRect();
+          if (rect) setPosition({ right: Math.max(8, window.innerWidth - rect.right), bottom: window.innerHeight - rect.top + 4 });
+          setOpen((v) => !v);
+        }}
         className={`flex h-full items-center gap-1.5 px-2 text-[12px] font-normal transition-colors duration-[var(--duration-fast)] hover:bg-[var(--background-modifier-hover)] hover:text-[var(--text-normal)] ${
           open
             ? 'bg-[var(--background-modifier-active)] text-[var(--text-normal)]'
@@ -59,14 +75,15 @@ export default function ModeIndicator() {
         <span aria-hidden="true" className="h-2 w-2 shrink-0 rounded-full bg-[var(--accent)]" />
         <span>{MODE_PRESETS[mode].label}</span>
       </button>
-      {open ? (
+      {open && !blocked ? createPortal(
         <Menu
           items={items}
           label="模式选择"
           onClose={() => setOpen(false)}
           anchorRef={anchorRef}
-          className="absolute right-0 bottom-full mb-1"
-        />
+          className="fixed"
+          style={position}
+        />, document.body
       ) : null}
     </div>
   );

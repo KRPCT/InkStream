@@ -41,11 +41,12 @@ function SettingRow({
   );
 }
 
-function Toggle({ checked, onChange }: { checked: boolean; onChange: (v: boolean) => void }) {
+function Toggle({ label, checked, onChange }: { label: string; checked: boolean; onChange: (v: boolean) => void }) {
   return (
     <button
       type="button"
       role="switch"
+      aria-label={label}
       aria-checked={checked}
       onClick={() => onChange(!checked)}
       className={`relative h-5 w-9 shrink-0 rounded-full transition-colors ${
@@ -158,25 +159,25 @@ export function GeneralSection() {
         label="书架"
         description="在菜单栏显示「书架」入口：保存阅读进度、管理导入的书籍（支持单文件与「书→卷→章」文件夹），以画廊形式浏览。关闭后仅隐藏入口，已保存的书架数据不会删除，重新开启即恢复。"
       >
-        <Toggle checked={bookshelfEnabled} onChange={setBookshelfEnabled} />
+        <Toggle label="书架" checked={bookshelfEnabled} onChange={setBookshelfEnabled} />
       </SettingRow>
       <SettingRow
         label="简易模式"
-        description="为轻度用户精简界面：关闭反链 / 知识图谱 / Git / Zotero / 搜索等全部高级功能，且不在工作区创建 .inkstream 索引文件夹，仅保留基础编辑、文件树与 Live Preview。随时可关，关闭后恢复全部功能（重开工作区自动重建索引）。"
+        description="保留文稿编辑、文件导航和大纲，隐藏文献、版本等高级入口。关闭简易模式后恢复完整工具，当前文稿保持不变。"
       >
-        <Toggle checked={simpleMode} onChange={setSimpleMode} />
+        <Toggle label="简易模式" checked={simpleMode} onChange={setSimpleMode} />
       </SettingRow>
       <SettingRow
         label="内置终端"
         description="在编辑区底部显示系统终端面板（默认关）：在工作区目录运行 shell，可执行命令、跑脚本。开启时需确认安全提示；开启后用 Ctrl+` 唤起或收起。仅在信任当前工作区时启用。"
       >
-        <Toggle checked={terminalEnabled} onChange={(v) => void onToggleTerminal(v)} />
+        <Toggle label="内置终端" checked={terminalEnabled} onChange={(v) => void onToggleTerminal(v)} />
       </SettingRow>
       <SettingRow
         label="导出水印页脚"
         description="导出 HTML / PDF / DOCX 时在文末附一行自定义水印（默认关闭）。生成器标识始终写入文件元数据，不受此开关影响。"
       >
-        <Toggle checked={exportBrandingFooter} onChange={setExportBrandingFooter} />
+        <Toggle label="导出水印页脚" checked={exportBrandingFooter} onChange={setExportBrandingFooter} />
       </SettingRow>
       {exportBrandingFooter ? (
         <SettingRow label="水印文字" description="导出页脚显示的文字，可自定义；留空则不附页脚。">
@@ -223,10 +224,10 @@ export function AppearanceSection() {
       </SettingRow>
       <ImportedThemeSection />
       <SettingRow label="减少动效" description="关闭项目档案的纵深过渡，保留即时状态反馈。系统减少动效偏好也会生效。">
-        <Toggle checked={reducedMotion} onChange={setReducedMotion} />
+        <Toggle label="减少动效" checked={reducedMotion} onChange={setReducedMotion} />
       </SettingRow>
       <SettingRow label="减少透明度" description="把亚克力和磨砂工具层换成实色表面，保留文字与边界的清晰度。">
-        <Toggle checked={reducedTransparency} onChange={setReducedTransparency} />
+        <Toggle label="减少透明度" checked={reducedTransparency} onChange={setReducedTransparency} />
       </SettingRow>
       <SettingRow
         label="界面缩放"
@@ -258,7 +259,7 @@ export function EditorSection() {
         label="自动保存"
         description="编辑后自动落盘。关闭后需手动保存（Ctrl+S）；未保存的更改仍保留在编辑器中。"
       >
-        <Toggle checked={autosave} onChange={setAutosave} />
+        <Toggle label="自动保存" checked={autosave} onChange={setAutosave} />
       </SettingRow>
       <SettingRow label="自动保存延迟" description="停止输入后多久落盘（自动保存开启时生效）。">
         <NumberInput

@@ -60,7 +60,8 @@ describe('buildLayoutPatch (UAT #6 面板独立性)', () => {
   it.each([0, -1, 199, 481, Number.NaN, Number.POSITIVE_INFINITY])('ignores an expanded sidebar measured at %s without losing its remembered width', (width) => {
     const patch = buildLayoutPatch(fakePanel(false, width), fakePanel(false, 320), false);
     expect(patch).toEqual({ rightPanelCollapsed: false, rightPanelWidth: 320 });
-    expect({ ...DEFAULT_LAYOUT, ...patch }.sidebarWidth).toBe(280);
+    // An existing user's chosen width is independent of the new-session default.
+    expect({ ...DEFAULT_LAYOUT, sidebarWidth: 292, ...patch }.sidebarWidth).toBe(292);
   });
 
   it.each([0, -1, 239, 561, Number.NaN, Number.POSITIVE_INFINITY])('ignores an expanded tool panel measured at %s', (width) => {
@@ -76,7 +77,7 @@ describe('buildLayoutPatch (UAT #6 面板独立性)', () => {
 
 describe('layout persistence requires a current user resize', () => {
   function setup() {
-    const context = { compact: false, blocked: false, projectId: 'first', mode: 'academic', layout: { ...DEFAULT_LAYOUT }, viewportWidth: 1440 };
+    const context = { compact: false, blocked: false, projectId: 'first', mode: 'academic', layout: { ...DEFAULT_LAYOUT, sidebarWidth: 280 }, viewportWidth: 1440 };
     const save = vi.fn();
     const writeback = createLayoutWriteback(() => context, save);
     return { context, save, writeback };
@@ -116,7 +117,7 @@ describe('layout persistence requires a current user resize', () => {
     const { context, save, writeback } = setup();
     writeback.begin();
     writeback.cancel();
-    context.layout = { ...DEFAULT_LAYOUT };
+    context.layout = { ...DEFAULT_LAYOUT, sidebarWidth: 280 };
     writeback.commit(fakePanel(false, 280), fakePanel(false, 560));
     writeback.commit(fakePanel(false, 280), fakePanel(false, 320));
     expect(save).not.toHaveBeenCalled();

@@ -1,4 +1,5 @@
 import type { EditorView } from '@codemirror/view';
+import { isolateHistory } from '@codemirror/commands';
 import { zoteroCayw } from '../ipc/zotero';
 import { useEditorStore } from '../stores/useEditorStore';
 import { showToast } from '../stores/useToastStore';
@@ -69,12 +70,12 @@ function insertCitationText(view: EditorView, cite: string): void {
   const path = useEditorStore.getState().activePath ?? '';
   const text = formatCitationFor(cite, languageFromDoc(view.state.doc.toString(), path));
   const { from, to } = view.state.selection.main;
-  view.dispatch({ changes: { from, to, insert: text }, selection: { anchor: from + text.length }, scrollIntoView: true });
+  view.dispatch({ changes: { from, to, insert: text }, selection: { anchor: from + text.length }, scrollIntoView: true, annotations: isolateHistory.of('full') });
   view.focus();
 }
 
 /**
- * 直接插入指定 citekey 的引用（ACAD-01 Sidebar 库点击）：不弹 CAYW，按文档语言重排后插光标处。
+ * 明确插入指定 citekey：不弹 CAYW，按文档语言重排，在独立撤销步骤中插入。
  */
 export function insertCitekey(citekey: string): void {
   runWritableCommand((view) => insertCitationText(view, `[@${citekey}]`));

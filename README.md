@@ -35,7 +35,7 @@
 
 ---
 
-**InkStream（墨流）** 是一款基于 Tauri 2 的桌面写作应用。它只用一个 CodeMirror 6 编辑器，提供 Standard（通用）、Academic（学术）、Creative（长篇创作）三种模式；git 版本管理、双向链接、Zotero 引用和 Typst / LaTeX / KaTeX 数学渲染都内置在应用里，而不是交给一堆插件。
+**InkStream（墨流）** 是一款基于 Tauri 2 的桌面写作应用。它以 CodeMirror 6 承载主文档编辑，提供 Standard（通用）、Academic（学术）、Creative（长篇创作）三种模式；git 版本管理、双向链接、Zotero 引用和 Typst / LaTeX / KaTeX 数学渲染都内置在应用里，而不是交给一堆插件。
 
 如果要一句话概括，它想成为文本编辑器里的 IntelliJ：纯文本的简单，配上 IDE 级的工具。
 
@@ -55,26 +55,26 @@
 
 ## 特性
 
-- **单一内核编辑器**：整个应用就一个 CodeMirror 6 实例，纯文本始终是文档的依据。Source 和 Live Preview 随时切换，光标所在行自动展开源码，支持 11 种语言高亮。
+- **单一内核编辑器**：主文档共用一个 CodeMirror 6 编辑视图，纯文本始终是文档的依据。Source 和 Live Preview 可切换，光标所在行展开源码；大文档默认进入基础编辑，可手动启用完整排版。表格单元格、公式和只读比较按需使用独立视图。
 - **本机项目档案**：`Ctrl+Alt+P` 打开左侧档案，管理名称、封面、收藏和内容目录。每个项目记住标签、光标与布局；独立草稿也会暂存在本机。切换前保存失败会留在原项目。详见[项目与恢复](docs/projects.md)。
 - **三类数学块**：math 走 KaTeX，typst 走 typst.ts（wasm 实时 SVG），latex 走 MathJax。都是懒加载，首屏不碰 wasm 和字体。
 - **双向链接知识网络**：`[[wiki-link]]` 支持别名、标题与块定位，SQLite FTS5 索引保存在本机应用数据目录，并支持一至两个字符的短词查找；反链面板列出有上下文的未链接提及。
 - **知识图谱**：`Ctrl+G` 打开全库 Graph View，d3-force 力导加 Canvas2D 自绘，布局放到 Worker 里跑。可缩放、拖拽、点击跳转、邻域高亮；右栏能看当前文件的局部图谱。
-- **git 原生**：基于 libgit2 的完整命令集，自绘三栏 git-graph（图谱、提交详情、文件 diff）。支持远程 clone / fetch / push / pull 和 SSH 签名提交。
+- **git 版本管理**：本地操作结合 libgit2 与系统 Git，自绘三栏 git-graph（图谱、提交详情、文件 diff）。提供克隆对话框、fetch / push / pull、本地变基、暂存记录管理和分支完整正文比较，提交支持 SSH 签名。
 - **句级 diff 与三向合并**：中英混排按句子比较，看的是「哪句话改了」而不是「哪行变了」。合并冲突可以逐句采纳本方或对方。
 - **Zotero 集成**：CAYW 一键插入 `[@citekey]`，Web API 离线缓存，GB/T 7714 / APA / Vancouver 参考文献，引用与 Typst / LaTeX 联动。
-- **GitHub 集成**：PAT 或 gh CLI 登录（token 存进系统钥匙串，不进前端），浏览、评论、创建 Issue 和 PR，内嵌 diff 审阅。
+- **GitHub 集成**：PAT、现有 gh CLI 凭据或配置了 Client ID 的设备授权登录（token 存进系统凭据库，不进前端），浏览、评论、创建 Issue 和 PR，内嵌 diff 审阅与讨论回复。
 - **创作模式**：章节场景树（带状态色点和字数）、`Codex/` 角色与设定卡（别名提及高亮、悬停预览）、Focus Mode、今日字数目标、场景概要。
 - **写作辅助**：打字机模式让光标行居中，专注模式淡化其余段落，写作 HUD 记码字速度、码字时间和番茄钟。默认都关着，只存在内存里。
 - **文件导出**：一键把当前文档导出成 HTML、PDF、DOCX，全本地转换；可加一行自定义水印（默认关）。装了 pandoc 还能导出 ODT、LaTeX、EPUB 等。
-- **沉浸阅读模式**：打开 txt、docx、epub、pdf 全屏阅读，自动认出小说还是文献并换排版，三套配色护眼。PDF 逐页懒渲染，编辑器不卸载，随时切回来。
+- **沉浸阅读模式**：txt、Markdown、docx、epub、pdf 可进入阅读视图；文本阅读提供文体识别、排版、目录、书签与续读，PDF 逐页懒渲染。书架可按设置启用，编辑器不卸载，随时切回来。
 - **应用内自动更新**：启动时静默检查新版本，一键下载并重启升级，更新包经签名验证。
 - **简易模式**：一键收起高级功能并关闭索引，保留写作、项目档案和草稿恢复。所有模式都不向内容目录写入新的项目元数据或索引库。
-- **中文优先**：中文输入法全程不被预览打断，中英混合字数统计，中文模糊搜索。
+- **中文优先**：组合输入期间暂停会干扰输入的预览更新，提供中英混合字数统计和中文模糊搜索；物理输入法的候选窗与连续上屏仍按[真机回归清单](specs/03-live-preview-ime.spec.md)验收。
 
 ## 下载安装
 
-前往 **[Releases](https://github.com/KRPCT/InkStream/releases/latest)** 下载对应平台安装包：
+**[2.0.0 已公开发布](https://github.com/KRPCT/InkStream/releases/tag/v2.0.0)**。前往 **[Releases](https://github.com/KRPCT/InkStream/releases/latest)** 下载对应平台安装包：
 
 | 平台 | 安装包 |
 |------|--------|
@@ -88,11 +88,13 @@
 
 三模式 = UI 布局预设 + 默认功能集 + 状态栏指标。不限制文件内容、不绑定文件格式，随时切换不丢数据。
 
-| 模式 | 定位 | 强调色 | 特色 |
-|------|------|--------|------|
-| Standard | 通用文本编辑 | 石墨灰 | 文件树、大纲 / 反链 / 局部图谱、Live Preview |
-| Academic | 学术写作 | 学院深蓝 | Zotero 文献库、Citation Panel、Typst 预览、学术工具栏 |
-| Creative | 长篇创作 | 朱砂红 | 章节导航树、Codex、Focus Mode、字数目标进度 |
+| 模式 | 定位 | 特色 |
+|------|------|------|
+| Standard | 通用文本编辑 | 文件树、大纲 / 反链 / 局部图谱、Live Preview |
+| Academic | 学术写作 | Zotero 文献库、引用面板、Typst 预览、学术工具栏 |
+| Creative | 长篇创作 | 章节导航树、Codex、专注模式、字数目标进度 |
+
+多栏分支统一采用纸白、石墨灰和低饱和灰绿，提供概览／文稿／文献／版本导航、多个项目快捷入口，以及先看详情再明确插入的引用流程。发布与验证范围见[当前状态](docs/CURRENT-STATE.md)，真实窗口观察见 [ComputerUse 验收](docs/WORKBENCH-ACCEPTANCE.md)。
 
 ## 技术栈
 
@@ -115,18 +117,20 @@
 
 ```bash
 corepack enable
-pnpm install          # 精确版本锁定
+pnpm install --frozen-lockfile
 pnpm tauri dev        # 开发模式启动桌面应用
 pnpm tauri build      # 打包本平台安装包（产物在 src-tauri/target/release/bundle/）
 ```
 
-本地检查：`pnpm typecheck`、`pnpm lint`、`pnpm test:ci`、`pnpm build`。`test:ci` 串行执行全部前端测试，保留每项测试的原有时限，记录进程清理与结果，避免大文档测试和其他 jsdom 实例争用资源。原生测试运行 `node scripts/acceptance/run-rust.mjs`。Linux 构建需先安装 webkit2gtk 等系统依赖（清单见 [.github/workflows/ci.yml](./.github/workflows/ci.yml)）；三平台安装包经 [.github/workflows/release.yml](./.github/workflows/release.yml) 在 CI 同时构建。
+本地检查：`pnpm typecheck`、`pnpm lint`、`pnpm test:ci`、`pnpm build`。`test:ci` 将功能测试与两份大文档性能测试分阶段串行执行，保留测试自身时限，记录结果与进程清理。原生入口 `node scripts/acceptance/run-rust.mjs` 执行 `cargo test --locked --manifest-path src-tauri/Cargo.toml --all-targets -- --test-threads=1`，覆盖库与应用二进制的编译和测试；CI 不再单独执行 `cargo check`。Unix 权限负控通过独立 runner 执行。
+
+`pnpm test:acceptance` 只运行人工映射的 Vitest 检查，不解释 Gherkin，不能据此宣称全部 BDD 场景通过。执行范围、硬超时和证据边界见 [BDD 自动化绑定状态](docs/specs/AUTOMATION.md)。Linux 系统依赖和三平台检查步骤见 [CI 配置](./.github/workflows/ci.yml)。[Release 工作流](./.github/workflows/release.yml)负责打包；标签发布在更新包签名与 `latest.json` 聚合完成后公开，手动触发仅上传构建产物，不创建公开 Release。打包成功不代替产品验收。
 
 ## 路线图
 
-v1 的 12 个阶段已经全部做完：三模式 Workbench、CM6 单内核与多语言高亮、Live Preview、FTS5 索引与双向链接、三类数学块、git 与 git-graph、句级 diff、Zotero 与学术模式、创作模式、知识图谱、GitHub 集成，以及三向合并和跨平台打包发布。
+2.0.0 已包含三模式工作台、本机项目与草稿恢复、编辑与索引、Git/GitHub、学术与创作、阅读与导出等功能。实现状态和发布状态分别记录；历史阶段的实现结束不表示所有验收结束。
 
-v1.1 之后又陆续加了简易模式、写作模式升级（打字机 / 专注 / 写作 HUD）、文件导出（含 pandoc 多格式）、沉浸阅读模式，还有应用内自动更新。
+2.0.0 对应 PR #40 已合并到 `main`（`ca4c214`），合并前 CI、main CI 与 Release 工作流均成功。外部真实账号、物理 IME、跨平台完整视觉与性能验证仍有开放事项，见 [Issues](https://github.com/KRPCT/InkStream/issues)及[验收边界](docs/specs/AUTOMATION.md)。
 
 还想做的：
 

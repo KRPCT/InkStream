@@ -8,7 +8,7 @@ export function effectiveCentralView(
   if (view === 'bookshelf' && !capabilities.bookshelfEnabled) return 'editor';
   if (
     capabilities.simpleMode &&
-    (view === 'gitGraph' || view === 'graph' || view === 'mergeResolve' || view === 'multibuffer')
+    (view === 'references' || view === 'projectVersions' || view === 'gitGraph' || view === 'graph' || view === 'mergeResolve' || view === 'multibuffer')
   ) {
     return 'editor';
   }

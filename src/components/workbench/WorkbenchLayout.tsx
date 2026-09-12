@@ -244,6 +244,7 @@ export default function WorkbenchLayout() {
           collapsible
           collapsedSize={0}
           className="workbench-navigation-panel h-full"
+          inert={layout.sidebarCollapsed}
         >
           <Sidebar />
         </Panel>
@@ -262,6 +263,7 @@ export default function WorkbenchLayout() {
           collapsible
           collapsedSize={0}
           className="workbench-tools-panel h-full"
+          inert={layout.rightPanelCollapsed}
         >
           <RightPanel />
         </Panel>

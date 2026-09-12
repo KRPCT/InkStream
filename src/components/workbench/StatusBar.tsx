@@ -41,7 +41,6 @@ export default function StatusBar() {
   return (
     <footer data-testid="status-bar" className={FOOTER_CLS} inert={blocked}>
       <div data-testid="status-bar-left" className="flex h-full min-w-0">
-        <span className="workbench-status-brand" aria-hidden="true">INKSTREAM</span>
         {caps.showGit ? <GitBranchIndicator /> : null}
         <FilePathIndicator />
       </div>

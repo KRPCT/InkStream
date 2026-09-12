@@ -6,6 +6,9 @@ import { DEFAULT_LAYOUT, type ModeLayout, type TabId } from '../types/workbench'
 /** 中央区视图：编辑器 / git-graph / 知识图谱 / 合并冲突解决器 / 阅读模式 / 书架 / 全库搜索（multibuffer）整页接管。 */
 export type CentralView =
   | 'editor'
+  | 'projectOverview'
+  | 'projectVersions'
+  | 'references'
   | 'gitGraph'
   | 'graph'
   | 'mergeResolve'
