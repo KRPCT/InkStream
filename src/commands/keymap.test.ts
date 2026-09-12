@@ -3,9 +3,12 @@ import { bind, dispose, init, normalizeEvent } from './keymap';
 import { hydrate } from './mru';
 import { register } from './registry';
 import { EditorState } from '@codemirror/state';
-import { EditorView } from '@codemirror/view';
+import { EditorView, keymap as editorKeymap } from '@codemirror/view';
+import { history, historyKeymap } from '@codemirror/commands';
+import { search, searchKeymap } from '@codemirror/search';
 import { setView } from '../editor/viewHandle';
 import { useWorkbenchStore } from '../stores/useWorkbenchStore';
+import { useSettingsStore } from '../stores/useSettingsStore';
 
 const disposers: Array<() => void> = [];
 
@@ -134,5 +137,104 @@ describe('editing shortcuts stay with the surface receiving the key', () => {
     view.contentDOM.dispatchEvent(event);
     expect(event.defaultPrevented).toBe(true);
     expect(run).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('browser editing defaults cannot undo a hidden document', () => {
+  let view: EditorView;
+  let button: HTMLButtonElement;
+  const marker = 'THIRD_VISIBLE_DRAFT';
+  beforeEach(() => {
+    useWorkbenchStore.setState({ centralView: 'editor' });
+    useSettingsStore.setState({ simpleMode: false, bookshelfEnabled: false });
+    view = new EditorView({ state: EditorState.create({ doc: 'Draft ', extensions: [history(), search(), editorKeymap.of([...historyKeymap, ...searchKeymap])] }) });
+    document.body.appendChild(view.dom);
+    setView(view);
+    view.dispatch({ changes: { from: 6, insert: marker }, userEvent: 'input.type' });
+    button = document.createElement('button');
+    button.textContent = '打开 Git Graph';
+    document.body.appendChild(button);
+    // No global Ctrl+Z binding: production also leaves history to CodeMirror.
+    init();
+  });
+  afterEach(() => {
+    dispose();
+    while (disposers.length) disposers.pop()!();
+    setView(null); view.destroy(); view.dom.remove(); button.remove();
+    useWorkbenchStore.setState({ centralView: 'editor' });
+  });
+
+  function showGraph(): void {
+    useWorkbenchStore.setState({ centralView: 'gitGraph' });
+    view.dom.style.display = 'none';
+    button.focus();
+    expect(document.activeElement).toBe(button);
+  }
+
+  it.each(['z', 'y', 'x', 'v'])('cancels the unbound native Ctrl+%s default on the graph button and preserves the main history', (letter) => {
+    showGraph();
+    const event = key({ key: letter, ctrlKey: true, bubbles: true });
+    button.dispatchEvent(event);
+    expect(event.defaultPrevented).toBe(true);
+    expect(view.state.doc.toString()).toBe(`Draft ${marker}`);
+    useWorkbenchStore.setState({ centralView: 'editor' });
+    view.dom.style.display = '';
+    view.focus();
+    const undo = key({ key: 'z', ctrlKey: true, bubbles: true });
+    view.contentDOM.dispatchEvent(undo);
+    expect(undo.defaultPrevented).toBe(true);
+    expect(view.state.doc.toString()).toBe('Draft ');
+  });
+
+  it.each(['historyUndo', 'historyRedo'])('cancels native beforeinput %s targeted at the hidden main editor', (inputType) => {
+    showGraph();
+    const event = new InputEvent('beforeinput', { inputType, bubbles: true, cancelable: true });
+    view.contentDOM.dispatchEvent(event);
+    expect(event.defaultPrevented).toBe(true);
+    expect(view.state.doc.toString()).toBe(`Draft ${marker}`);
+  });
+
+  it('lets a writable graph input own its native undo', () => {
+    showGraph();
+    const input = document.createElement('textarea');
+    document.body.appendChild(input);
+    input.focus();
+    try {
+      const event = key({ key: 'z', ctrlKey: true, bubbles: true });
+      input.dispatchEvent(event);
+      expect(event.defaultPrevented).toBe(false);
+      expect(view.state.doc.toString()).toBe(`Draft ${marker}`);
+    } finally { input.remove(); }
+  });
+
+  it('blocks browser undo on a readonly comparison while keeping copy available', () => {
+    showGraph();
+    const comparison = new EditorView({ state: EditorState.create({ doc: 'Committed text', extensions: [EditorState.readOnly.of(true), EditorView.editable.of(false)] }) });
+    document.body.appendChild(comparison.dom);
+    try {
+      const undo = key({ key: 'z', ctrlKey: true, bubbles: true });
+      comparison.contentDOM.dispatchEvent(undo);
+      expect(undo.defaultPrevented).toBe(true);
+      const copy = key({ key: 'c', ctrlKey: true, bubbles: true });
+      comparison.contentDOM.dispatchEvent(copy);
+      expect(copy.defaultPrevented).toBe(false);
+      expect(view.state.doc.toString()).toBe(`Draft ${marker}`);
+      expect(comparison.state.doc.toString()).toBe('Committed text');
+    } finally { comparison.destroy(); comparison.dom.remove(); }
+  });
+
+  it('reserves Ctrl+Shift+G for Git Graph before CodeMirror search consumes it', () => {
+    const toggle = vi.fn(() => useWorkbenchStore.getState().toggleCentralView('gitGraph'));
+    disposers.push(register({ id: 'git.toggle-graph', title: 'Git Graph', run: toggle }));
+    disposers.push(bind('Ctrl+Shift+G', 'git.toggle-graph'));
+    view.focus();
+    const selection = view.state.selection;
+    const event = key({ key: 'G', ctrlKey: true, shiftKey: true, bubbles: true });
+    view.contentDOM.dispatchEvent(event);
+    expect(event.defaultPrevented).toBe(true);
+    expect(toggle).toHaveBeenCalledTimes(1);
+    expect(useWorkbenchStore.getState().centralView).toBe('gitGraph');
+    expect(view.state.selection).toBe(selection);
+    expect(view.state.doc.toString()).toBe(`Draft ${marker}`);
   });
 });

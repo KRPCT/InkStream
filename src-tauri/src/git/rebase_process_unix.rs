@@ -37,6 +37,7 @@ fn drain(pipe: &mut impl Read, tail: &mut Tail, mut progress: Option<&mut Progre
 }
 
 /// Observe without reaping: the root PID cannot be reused before its owned group is terminated.
+#[cfg(not(target_os = "macos"))]
 fn exited(pid: u32) -> Result<bool, String> {
     let mut info: libc::siginfo_t = unsafe { std::mem::zeroed() };
     if unsafe { libc::waitid(libc::P_PID, pid, &mut info, libc::WEXITED | libc::WNOHANG | libc::WNOWAIT) } != 0 {
@@ -47,31 +48,49 @@ fn exited(pid: u32) -> Result<bool, String> {
     Ok(unsafe { info.si_pid() } == pid as i32)
 }
 
-fn signal_group(pid: u32, signal: i32) -> Result<(), String> {
-    if unsafe { libc::kill(-(pid as i32), signal) } == 0 { return Ok(()); }
-    let error = std::io::Error::last_os_error();
-    // Darwin skips zombies in killpg1 and returns EPERM when none remain signalable.
-    // Keep the root unreaped and independently verify every remaining member before
-    // accepting that result; a real permission failure must still stop cleanup.
-    #[cfg(target_os = "macos")]
-    if error.raw_os_error() == Some(libc::EPERM) && exited(pid)? && darwin::group_has_no_live_members(pid)? {
-        return Ok(());
+fn signal_group(pid: u32, signal: i32, _deadline: Instant) -> Result<(), String> {
+    loop {
+        if unsafe { libc::kill(-(pid as i32), signal) } == 0 { return Ok(()); }
+        let error = std::io::Error::last_os_error();
+        if error.raw_os_error() == Some(libc::ESRCH) { return Ok(()); }
+        // Darwin's signal and process-info snapshots can disagree while descendants
+        // are exiting together. EPERM is successful only after every member is known
+        // dead; otherwise retry within the existing cleanup deadline, never reap the
+        // leader or suppress a persistent permission failure.
+        #[cfg(target_os = "macos")]
+        if error.raw_os_error() == Some(libc::EPERM) {
+            if exited(pid)? && darwin::group_has_no_live_members(pid, _deadline)? { return Ok(()); }
+            if Instant::now() < _deadline {
+                std::thread::sleep(POLL);
+                continue;
+            }
+        }
+        return Err(format!("向自有 Git 进程组 {pid} 发送信号 {signal} 失败：{error}"));
     }
-    if error.raw_os_error() == Some(libc::ESRCH) { Ok(()) } else { Err(error.to_string()) }
 }
+
+#[cfg(target_os = "macos")]
+fn exited(pid: u32) -> Result<bool, String> { darwin::leader_exited(pid) }
 
 fn cleanup(child: &mut Child) -> Result<ExitStatus, String> {
     let pid = child.id();
     let deadline = Instant::now() + CLEANUP_LIMIT;
     if !exited(pid)? {
-        signal_group(pid, libc::SIGTERM)?;
-        let grace = Instant::now() + Duration::from_millis(200);
+        signal_group(pid, libc::SIGTERM, deadline)?;
+        let grace = deadline.min(Instant::now() + Duration::from_millis(200));
         while !exited(pid)? && Instant::now() < grace { std::thread::sleep(POLL); }
     }
     // The unreaped root still reserves the process-group id, even if only a pipe-holding child remains.
-    signal_group(pid, libc::SIGKILL)?;
+    signal_group(pid, libc::SIGKILL, deadline)?;
     while !exited(pid)? {
         if Instant::now() >= deadline { return Err("自有 Git 进程组未在回收期限内退出".into()); }
+        std::thread::sleep(POLL);
+    }
+    // Successful signal delivery is asynchronous. On Darwin, verify descendants
+    // have finished exiting too before releasing the leader's reserved group ID.
+    #[cfg(target_os = "macos")]
+    while !darwin::group_has_no_live_members(pid, deadline)? {
+        if Instant::now() >= deadline { return Err("自有 Git 子进程未在回收期限内退出".into()); }
         std::thread::sleep(POLL);
     }
     // Never signal the group again after this reap; no PID-reuse window is left open.

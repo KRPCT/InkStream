@@ -1,5 +1,7 @@
 import { execute } from './registry';
 import { getCommandView } from '../editor/commandView';
+import { getView } from '../editor/viewHandle';
+import { EditorView } from '@codemirror/view';
 
 /**
  * window 级单一 keydown 分发器（D-05 VSCode 惯例）：accelerator 字符串 → 命令 id。
@@ -44,11 +46,67 @@ export function bind(accelerator: string, commandId: string): () => void {
   };
 }
 
+function eventElement(event: Event): HTMLElement | null {
+  const target = event.target;
+  return target instanceof HTMLElement ? target : target instanceof Element ? target.parentElement : null;
+}
+
+/** The focused control, not the last browser editing host, must own a native write. */
+function ownsNativeEditing(target: HTMLElement | null): boolean {
+  if (!target) return false;
+  const main = getView();
+  if (main?.dom.contains(target) && getCommandView() !== main) return false;
+  const input = target.closest('input, textarea');
+  if (input instanceof HTMLTextAreaElement) return !input.readOnly && !input.disabled;
+  if (input instanceof HTMLInputElement) {
+    return !input.readOnly && !input.disabled && ['text', 'search', 'url', 'tel', 'email', 'password', 'number'].includes(input.type);
+  }
+  const editor = EditorView.findFromDOM(target);
+  if (editor) return !editor.state.readOnly && editor.state.facet(EditorView.editable);
+  const editable = target.closest('[contenteditable]')?.getAttribute('contenteditable');
+  return editable === '' || editable === 'true' || editable === 'plaintext-only';
+}
+
+function isNativeWriteKey(event: KeyboardEvent): boolean {
+  if (event.altKey) return false;
+  if (event.ctrlKey || event.metaKey) return ['z', 'y', 'x', 'v'].includes(event.key.toLowerCase());
+  return event.shiftKey && (event.key === 'Delete' || event.key === 'Insert');
+}
+
+function onKeydownCapture(event: KeyboardEvent): void {
+  if (event.defaultPrevented || event.isComposing || event.keyCode === 229) return;
+  // Chromium can apply browser historyUndo to a former contenteditable even when
+  // a button is focused and that editor is hidden. This must run before !bindings.
+  if (!getCommandView() && isNativeWriteKey(event) && !ownsNativeEditing(eventElement(event))) {
+    event.preventDefault();
+    event.stopPropagation();
+    return;
+  }
+  // This application shortcut is reserved; CodeMirror's searchKeymap otherwise
+  // consumes Ctrl+Shift+G as findPrevious before the window bubble listener sees it.
+  const accelerator = normalizeEvent(event);
+  if (accelerator && bindings.get(accelerator) === 'git.toggle-graph') {
+    event.preventDefault();
+    event.stopPropagation();
+    void execute('git.toggle-graph');
+  }
+}
+
+function onBeforeInput(event: Event): void {
+  if (!(event instanceof InputEvent) || event.isComposing || !['historyUndo', 'historyRedo'].includes(event.inputType)) return;
+  const target = eventElement(event);
+  const main = getView();
+  const editor = target ? EditorView.findFromDOM(target) : null;
+  if ((main && target && main.contentDOM.contains(target) && getCommandView() !== main) || editor?.state.readOnly) {
+    event.preventDefault();
+    event.stopPropagation();
+  }
+}
+
 function onKeydown(e: KeyboardEvent): void {
   // Pitfall 4：中文 IME 组合中（含旧引擎/WebView 的 keyCode 229）一律不分发
   if (e.isComposing || e.keyCode === 229) return;
-  // 防双消费（PROD-RELAY-DESIGN §2.4）：中继 keydown 桥经 runScopeHandlers 消费的键
-  // （Ctrl+Z/F 等）已 preventDefault 后仍冒泡到 window——此处必须短路，避免命令二次执行。
+  // CodeMirror 已处理的快捷键仍会冒泡；避免主编辑器命令被再次执行。
   if (e.defaultPrevented) return;
   const accel = normalizeEvent(e);
   if (!accel) return;
@@ -70,6 +128,8 @@ function onKeydown(e: KeyboardEvent): void {
 /** 挂载全局监听（幂等），main.tsx 启动时调用一次。 */
 export function init(): void {
   if (listening) return;
+  window.addEventListener('keydown', onKeydownCapture, true);
+  window.addEventListener('beforeinput', onBeforeInput, true);
   window.addEventListener('keydown', onKeydown);
   listening = true;
 }
@@ -77,6 +137,8 @@ export function init(): void {
 /** 卸载监听并清空绑定（测试复位用）。 */
 export function dispose(): void {
   if (listening) {
+    window.removeEventListener('keydown', onKeydownCapture, true);
+    window.removeEventListener('beforeinput', onBeforeInput, true);
     window.removeEventListener('keydown', onKeydown);
     listening = false;
   }
