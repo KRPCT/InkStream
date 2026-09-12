@@ -191,12 +191,13 @@ function vaultName(path: string): string {
   return i === -1 ? norm : norm.slice(i + 1);
 }
 
-function toEntry(cfg: ItemConfig, commands: Map<string, Command>): MenuEntry {
+function toEntry(cfg: ItemConfig, commands: Map<string, Command>, checkedCommands: Readonly<Partial<Record<string, boolean>>>): MenuEntry {
   const cmd = commands.get(cfg.commandId);
   return {
     id: cfg.commandId,
     label: cfg.label ?? cmd?.title ?? cfg.commandId,
     disabled: cmd === undefined,
+    checked: checkedCommands[cfg.commandId],
     trailing: cmd?.shortcut ? <Kbd tone="faint">{cmd.shortcut}</Kbd> : undefined,
     onSelect: () => void execute(cfg.commandId),
   };
@@ -239,6 +240,7 @@ export function toEntries(
   simpleMode = false,
   pandocAvailable = false,
   bookshelfEnabled = false,
+  checkedCommands: Readonly<Partial<Record<string, boolean>>> = {},
 ): MenuEntry[] {
   // 隐藏：简易模式下的 advanced 命令；未装 pandoc 时的 pandocOnly 命令；书架未开时的 bookshelfOnly 命令。
   const hidden = (id: string): boolean => {
@@ -261,10 +263,10 @@ export function toEntries(
       entries.push({
         id: `submenu-${item.label}`,
         label: item.label,
-        submenu: subs.map((sub) => toEntry(sub, commands)),
+        submenu: subs.map((sub) => toEntry(sub, commands, checkedCommands)),
       });
     } else if (!hidden(item.commandId)) {
-      entries.push(toEntry(item, commands));
+      entries.push(toEntry(item, commands, checkedCommands));
     }
   }
   return collapseSeparators(entries);

@@ -26,6 +26,7 @@ jobs:
   # 草稿 Release 一次性创建（job 永远跑，建 Release 步骤仅 tag push）。bundle 依赖它，杜绝并发建 Release 竞态。
   create-release:
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     steps:
       - name: Create draft release (tag push only)
         if: startsWith(github.ref, 'refs/tags/')
@@ -40,6 +41,7 @@ jobs:
 
   bundle:
     needs: create-release
+    timeout-minutes: 60
     strategy:
       fail-fast: false
       matrix:
@@ -141,6 +143,7 @@ jobs:
 
   latest-json:
     needs: bundle
+    timeout-minutes: 5
     if: startsWith(github.ref, 'refs/tags/')
     runs-on: ubuntu-latest
     steps:

@@ -13,7 +13,7 @@ type RunAction = (action: () => unknown | Promise<unknown>) => Promise<void>;
 function ProjectDetails({ project, busy, run }: { project: ProjectRecord; busy: boolean; run: RunAction }) {
   const [name, setName] = useState(project.name);
   return <aside className="project-details" aria-label={`${project.name} 项目资料`}>
-    <span className="material-eyebrow">PROJECT RECORD</span>
+    <h3 className="project-details-heading">项目资料</h3>
     <ProjectCover key={project.cover} name={project.name} path={project.cover} large />
     <form onSubmit={(event) => { event.preventDefault(); void run(() => renameProject(project.id, name.trim())); }}>
       <label className="project-field-label" htmlFor="project-name">项目名称</label>
@@ -102,9 +102,8 @@ function ArchiveContents() {
     <button className="project-archive-backdrop" type="button" tabIndex={-1} aria-label="关闭项目档案遮罩" onClick={close} disabled={busy} />
     <section ref={panel} role="dialog" aria-modal="true" aria-labelledby="project-archive-title" tabIndex={-1} onKeyDown={onKeyDown}
       className={`project-archive-panel${details ? ' has-details' : ''}${phase !== 'idle' ? ' is-switching' : ''}`}>
-      <div className="archive-depth" aria-hidden="true" />
       <header className="project-archive-heading">
-        <div><span className="material-eyebrow">LOCAL COLLECTION</span><h2 id="project-archive-title">项目档案</h2></div>
+        <h2 id="project-archive-title">项目档案</h2>
         <button type="button" className="material-icon-button" aria-label="关闭项目档案" disabled={busy} onClick={close}><X size={19} /></button>
       </header>
       <div className="project-archive-body">

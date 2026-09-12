@@ -3,6 +3,8 @@ import { getAll, subscribe } from '../../commands/registry';
 import { usePandocStore } from '../../stores/usePandocStore';
 import { useSettingsStore } from '../../stores/useSettingsStore';
 import { useVaultStore } from '../../stores/useVaultStore';
+import { useFocusModeStore } from '../../stores/useFocusModeStore';
+import { useTypewriterStore } from '../../stores/useTypewriterStore';
 import Menu from '../common/Menu';
 import { MENUS, toEntries } from './menuConfig';
 
@@ -18,6 +20,8 @@ export default function MenuBar() {
   const simpleMode = useSettingsStore((s) => s.simpleMode);
   const pandocAvailable = usePandocStore((s) => s.available);
   const bookshelfEnabled = useSettingsStore((s) => s.bookshelfEnabled);
+  const focusActive = useFocusModeStore((s) => s.active);
+  const typewriterActive = useTypewriterStore((s) => s.active);
 
   useEffect(() => subscribe(() => setVersion((v) => v + 1)), []);
 
@@ -25,7 +29,10 @@ export default function MenuBar() {
   // 整组门控后为空的菜单（如书架未开时的「书架」组）不渲染顶层按钮；索引随之收紧。
   const visible = MENUS.map((group) => ({
     group,
-    entries: toEntries(group, commands, recent, simpleMode, pandocAvailable, bookshelfEnabled),
+    entries: toEntries(group, commands, recent, simpleMode, pandocAvailable, bookshelfEnabled, {
+      'view.toggle-typewriter': typewriterActive,
+      'view.toggle-focus': focusActive,
+    }),
   })).filter((g) => g.entries.length > 0);
 
   // 顶层左右切换：Menu 未消费的 ArrowLeft/ArrowRight 冒泡到此

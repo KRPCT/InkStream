@@ -1,6 +1,6 @@
 [package]
 name = "inkstream"
-version = "1.3.0"
+version = "2.0.0"
 description = "InkStream desktop writing application"
 edition = "2021"
 
