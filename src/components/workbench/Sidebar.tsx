@@ -78,20 +78,20 @@ export default function Sidebar() {
 
   return (
     <div className="project-sidebar flex h-full flex-col bg-[var(--background-secondary)]">
-      <div className="project-navigation-heading"><span className="material-eyebrow">MANUSCRIPT</span><span title={vault.root}>{projectName ?? vault.name}</span></div>
+      <div className="project-navigation-heading"><span title={vault.root}>{projectName ?? vault.name}</span></div>
       {!simpleMode ? <div className="project-navigation-tabs" aria-label="项目导航分类">
         <button type="button" aria-pressed={shownSection === 'files'} onClick={() => setSection('files')}>文稿</button>
         {mode === 'academic' ? <button type="button" aria-pressed={shownSection === 'library'} onClick={() => setSection('library')}>文献</button> : null}
         {mode === 'creative' ? <button type="button" aria-pressed={shownSection === 'chapters'} onClick={() => setSection('chapters')}>章节</button> : null}
         <button type="button" aria-pressed={shownSection === 'git'} onClick={() => setSection('git')}>版本</button>
       </div> : null}
-      <div className="project-file-actions flex h-8 items-center gap-1 pr-1 pl-2">
+      {shownSection === 'files' ? <div className="project-file-actions flex h-8 items-center gap-1 pr-1 pl-2">
         <span className="min-w-0 flex-1 truncate text-[11px] text-[var(--text-muted)]">文件与文件夹</span>
         <HeaderAction icon={FilePlus} label="新建文件" onClick={newFileInTree} />
         <HeaderAction icon={FolderPlus} label="新建文件夹" onClick={newFolderInTree} />
         <HeaderAction icon={ListCollapse} label="折叠全部" onClick={collapseAllInTree} />
         <HeaderAction icon={RefreshCw} label="刷新" onClick={() => void refreshTree()} />
-      </div>
+      </div> : null}
       {/* 简易模式隐藏搜索/git/学术/创作高级面板，仅留文件树 */}
       {!simpleMode && shownSection === 'files' ? <SidebarSearch query={query} onQueryChange={setQuery} /> : null}
       {/* 有查询 → 扁平递归结果列表（R4 §4.2）；清空 → 恢复受控折叠树 */}

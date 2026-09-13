@@ -79,9 +79,9 @@ const NEUTRAL_VARS = [
 ];
 
 const ACCENTS: Record<string, { light: string; dark: string }> = {
-  standard: { light: '220 10% 50%', dark: '220 14% 71%' },
-  academic: { light: '220 70% 45%', dark: '207 82% 66%' },
-  creative: { light: '355 65% 50%', dark: '355 65% 65%' },
+  standard: { light: '145 12% 38%', dark: '145 13% 69%' },
+  academic: { light: '156 17% 35%', dark: '156 18% 69%' },
+  creative: { light: '130 10% 38%', dark: '130 12% 69%' },
 };
 
 describe('theme.css 变量架构（D-14 立约）', () => {

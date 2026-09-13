@@ -29,10 +29,10 @@ export interface ModePreset {
   label: string;
 }
 
-/** 默认布局（UI-SPEC Layout Contract：Sidebar 280 / RightPanel 320，均展开）。 */
+/** 原型日常写作比例；仅新会话和显式重置采用，已有项目保留记忆宽度。 */
 export const DEFAULT_LAYOUT: ModeLayout = {
-  sidebarWidth: 280,
-  rightPanelWidth: 320,
+  sidebarWidth: 220,
+  rightPanelWidth: 260,
   sidebarCollapsed: false,
   rightPanelCollapsed: false,
 };

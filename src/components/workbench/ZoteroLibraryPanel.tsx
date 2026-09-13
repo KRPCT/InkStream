@@ -1,131 +1,56 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useState } from 'react';
 import { BookMarked, CloudOff, RefreshCw } from 'lucide-react';
 import { insertCitekey } from '../../editor/academicActions';
-import { onZoteroLibraryChanged, zoteroItemsResilient } from '../../ipc/zotero';
-import type { ZoteroItem } from '../../types/zotero';
+import { useReferenceLibrary } from '../../academic/useReferenceLibrary';
+import { useEditorStore } from '../../stores/useEditorStore';
+import { execute } from '../../commands/registry';
 
-/**
- * Sidebar Zotero 文献库（Phase 8 ACAD-01）：Academic 模式 Sidebar 上半，列 Zotero 库条目（本地 BBT）。
- * 过滤 + 点击条目在编辑器光标处插入 `[@citekey]`（按文档语言重排）。连接态：未运行/无 BBT → 错误提示。
- * 离线全量缓存（Web API + SQLite）属 ZOT-02，本面板先经本地 BBT 实时取数。
- */
+const text = (value: unknown): string => typeof value === 'string' ? value : '';
 
-function errText(e: unknown): string {
-  return typeof e === 'string' ? e : e instanceof Error ? e.message : String(e);
-}
-
-export default function ZoteroLibraryPanel() {
-  const [items, setItems] = useState<ZoteroItem[]>([]);
-  const [error, setError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [offline, setOffline] = useState(false);
+/** Sidebar 与文献工作区共用同一浏览契约，插入由当前文稿的命令边界接管。 */
+export default function ZoteroLibraryPanel({ workspace = false, onInsert = insertCitekey }: {
+  workspace?: boolean; onInsert?: (citekey: string) => void;
+}) {
+  const library = useReferenceLibrary();
   const [filter, setFilter] = useState('');
-  const requestId = useRef(0);
-
-  const load = useCallback(async () => {
-    const currentRequest = ++requestId.current;
-    setLoading(true);
-    setError(null);
-    try {
-      const { items: list, offline: fromCache } = await zoteroItemsResilient();
-      if (currentRequest !== requestId.current) return;
-      setItems(list);
-      setOffline(fromCache);
-    } catch (e) {
-      if (currentRequest !== requestId.current) return;
-      setError(errText(e));
-      setItems([]);
-      setOffline(false);
-    } finally {
-      if (currentRequest === requestId.current) setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    const unsubscribe = onZoteroLibraryChanged(() => {
-      setItems([]);
-      setOffline(false);
-      setFilter('');
-      void load();
-    });
-    void load();
-    return () => {
-      requestId.current += 1;
-      unsubscribe();
-    };
-  }, [load]);
-
-  const q = filter.trim().toLowerCase();
-  const shown = q
-    ? items.filter(
-        (i) =>
-          i.title.toLowerCase().includes(q) ||
-          i.authors.toLowerCase().includes(q) ||
-          i.citekey.toLowerCase().includes(q),
-      )
-    : items;
-
-  return (
-    <div className="flex shrink-0 flex-col border-b border-[var(--background-modifier-border)]">
-      <div className="flex h-7 shrink-0 items-center gap-1 px-2 text-[12px]">
-        <BookMarked size={13} className="shrink-0 text-[var(--text-muted)]" aria-hidden="true" />
-        <span className="font-medium text-[var(--text-normal)]">Zotero 文献库</span>
-        <span className="text-[var(--text-faint)]">{error ? '未连接' : loading ? '…' : items.length}</span>
-        {offline && !error ? (
-          <CloudOff
-            size={12}
-            aria-label="离线缓存"
-            className="text-[var(--text-faint)]"
-          />
-        ) : null}
-        <button
-          type="button"
-          title="刷新文献库"
-          onClick={() => void load()}
-          className="ml-auto rounded p-1 text-[var(--text-muted)] hover:bg-[var(--background-modifier-hover)] hover:text-[var(--text-normal)]"
-        >
-          <RefreshCw size={12} aria-hidden="true" />
-        </button>
+  const activePath = useEditorStore((s) => s.activePath);
+  const { items, loading, error, offline, selected, detail, detailLoading, detailError } = library;
+  const query = filter.trim().toLocaleLowerCase();
+  const shown = items.filter((item) => [item.title, item.authors, item.year, item.citekey].some((value) => value.toLocaleLowerCase().includes(query)));
+  return <section className={`reference-library${workspace ? ' reference-workspace' : ''}`} aria-label="Zotero 文献库">
+    <header className="reference-library-heading">
+      <BookMarked size={16} aria-hidden="true" /><span>Zotero 文献库</span>
+      <span role="status">{error ? '未连接' : loading ? '加载中…' : items.length}</span>
+      {offline && !error ? <CloudOff size={14} aria-label="离线缓存" /> : null}
+      <button type="button" aria-label="刷新文献库" title="刷新文献库" disabled={loading} onClick={() => void library.load()}><RefreshCw size={15} /></button>
+    </header>
+    {error ? <div className="reference-empty" role="status"><p>{error}</p><p>连接 Zotero 与 Better BibTeX，或在设置中配置文献库。</p><button type="button" className="material-button" onClick={() => void execute('view.settings')}>打开设置</button></div> : <>
+      <label className="reference-filter"><span className="sr-only">过滤文献</span><input value={filter} onChange={(event) => setFilter(event.target.value)} placeholder="过滤文献…" /></label>
+      <div className="reference-browser">
+        <ul className="reference-list" aria-label="文献条目">
+          {!loading && shown.length === 0 ? <li className="reference-empty">{items.length === 0 ? '库为空' : '无匹配'}</li> : null}
+          {shown.map((item) => <li key={item.citekey}><button type="button" aria-pressed={selected?.citekey === item.citekey} onClick={() => void library.select(item)}>
+            <span>{item.title || item.citekey}</span><small>{[item.authors, item.year].filter(Boolean).join(' · ') || item.citekey}</small>
+          </button></li>)}
+        </ul>
+        <div className="reference-detail" aria-label="所选文献详情">
+          {selected ? <>
+            <div className="reference-detail-body">
+            <h2>{selected.title || selected.citekey}</h2><p>{[selected.authors, selected.year].filter(Boolean).join(' · ')}</p>
+            <dl><dt>引用键</dt><dd>{selected.citekey}</dd>
+              {text(detail?.['container-title']) ? <><dt>出版物</dt><dd>{text(detail?.['container-title'])}</dd></> : null}
+              {text(detail?.DOI) ? <><dt>DOI</dt><dd>{text(detail?.DOI)}</dd></> : null}
+            </dl>
+            {detailLoading ? <p role="status">加载详情…</p> : detailError ? <p role="status">详情暂不可用：{detailError}</p> : null}
+            {text(detail?.abstract) ? <p className="reference-abstract">{text(detail?.abstract)}</p> : null}
+            </div>
+            <div className="reference-detail-action">
+            <button type="button" className="reference-insert" disabled={!activePath} onClick={() => { const key = library.selectedKey(); if (key) onInsert(key); }}>插入所选引用</button>
+            <small>{activePath ? '插入到当前文稿的光标位置' : '先打开或新建文稿，再插入引用'}</small>
+            </div>
+          </> : <p className="reference-empty">选择一篇文献查看详情</p>}
+        </div>
       </div>
-      {error ? (
-        <div className="break-words px-2 pb-2 text-[12px] text-[var(--text-muted)]">{error}</div>
-      ) : (
-        <>
-          {items.length > 0 ? (
-            <input
-              value={filter}
-              onChange={(e) => setFilter(e.target.value)}
-              placeholder="过滤文献…"
-              className="mx-2 mb-1 rounded-[4px] border border-[var(--background-modifier-border)] bg-[var(--background-primary)] px-1.5 py-0.5 text-[12px] text-[var(--text-normal)] outline-none focus:border-[var(--accent)]"
-            />
-          ) : null}
-          <ul className="max-h-[36vh] min-h-0 overflow-y-auto overflow-x-hidden pb-1">
-            {shown.length === 0 ? (
-              <li className="px-2 py-1 text-[12px] text-[var(--text-faint)]">
-                {items.length === 0 ? '库为空' : '无匹配'}
-              </li>
-            ) : (
-              shown.map((it) => (
-                <li key={it.citekey}>
-                  <button
-                    type="button"
-                    onClick={() => insertCitekey(it.citekey)}
-                    title={`插入 [@${it.citekey}]`}
-                    className="flex w-full flex-col items-start gap-0.5 px-2 py-1 text-left hover:bg-[var(--background-modifier-hover)]"
-                  >
-                    <span className="min-w-0 max-w-full truncate text-[12px] text-[var(--text-normal)]">
-                      {it.title}
-                    </span>
-                    <span className="min-w-0 max-w-full truncate text-[11px] text-[var(--text-faint)]">
-                      {[it.authors, it.year].filter(Boolean).join(' · ') || it.citekey}
-                    </span>
-                  </button>
-                </li>
-              ))
-            )}
-          </ul>
-        </>
-      )}
-    </div>
-  );
+    </>}
+  </section>;
 }

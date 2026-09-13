@@ -1,5 +1,6 @@
 import { ListTree } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { flushSync } from 'react-dom';
 import { isComposing, queueAfterComposition } from '../../editor/composition';
 import { activeHeadingFrom, extractOutline, sameOutline, scrollToHeading, syncOutline } from '../../editor/outline';
 import { computeSectionMove, sectionRanges } from '../../editor/outlineMove';
@@ -26,6 +27,7 @@ export default function OutlinePanel() {
   const paused = useEditorStore((s) => s.documentBudget?.mode === 'basic');
   const cursor = useEditorStore((s) => s.cursor);
   const panelTab = useWorkbenchStore((s) => s.activeTab);
+  const centralView = useWorkbenchStore((s) => s.centralView);
   const activeFrom = useMemo(() => activeHeadingFrom(items, cursor), [items, cursor]);
   const activeRef = useRef<HTMLButtonElement>(null);
   const [dragIndex, setDragIndex] = useState<number | null>(null);
@@ -100,7 +102,7 @@ export default function OutlinePanel() {
             key={`${item.from}-${i}`}
             ref={active ? activeRef : undefined}
             type="button"
-            draggable
+            draggable={centralView === 'editor'}
             onDragStart={(e) => {
               setDragIndex(i);
               e.dataTransfer.effectAllowed = 'move';
@@ -118,7 +120,10 @@ export default function OutlinePanel() {
               endDrag();
             }}
             onDragEnd={endDrag}
-            onClick={() => scrollToHeading(item.from)}
+            onClick={() => {
+              flushSync(() => useWorkbenchStore.getState().setCentralView('editor'));
+              scrollToHeading(item.from);
+            }}
             title={item.text}
             aria-current={active ? 'location' : undefined}
             className={`block w-full truncate rounded-[4px] py-1 pr-3 text-left text-[13px] hover:bg-[var(--background-modifier-hover)] ${

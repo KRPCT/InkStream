@@ -24,27 +24,29 @@ export default function RightPanel() {
   const simpleMode = useSettingsStore((s) => s.simpleMode);
   // 简易模式仅留大纲（反链/局部图谱依赖索引，已关）。
   const tabs = simpleMode ? [...SIMPLE_RIGHT_TABS] : MODE_PRESETS[mode].rightPanelTabs;
-  // 开启简易模式（或启动即简易）时若 activeTab 停在已隐藏的 tab，收敛回 outline，避免右栏空白。
+  const visibleTab = tabs.includes(activeTab) ? activeTab : tabs[0];
+  // 能力恢复和项目快照同样可能留下不可用工具；先呈现有效目标，再收敛记忆。
   useEffect(() => {
-    if (simpleMode && activeTab !== 'outline') setActiveTab('outline');
-  }, [simpleMode, activeTab, setActiveTab]);
+    if (activeTab !== visibleTab) setActiveTab(visibleTab);
+  }, [activeTab, visibleTab, setActiveTab]);
 
   return (
     <div className="workbench-tools flex h-full flex-col bg-[var(--background-secondary)]">
       <PanelTabs
         tabs={tabs.map((id) => ({ id, label: TAB_LABELS[id] }))}
-        activeTab={activeTab}
+        activeTab={visibleTab}
         onSelect={setActiveTab}
       />
       <div className="min-h-0 flex-1">
         {tabs.map((id) => (
           <div
             key={id}
+            id={`panel-${id}`}
             data-testid={`tab-pane-${id}`}
             role="tabpanel"
             aria-labelledby={`tab-${id}`}
             className="h-full"
-            style={{ display: activeTab === id ? undefined : 'none' }}
+            style={{ display: visibleTab === id ? undefined : 'none' }}
           >
             {id === 'backlinks' ? (
               <BacklinksPanel />

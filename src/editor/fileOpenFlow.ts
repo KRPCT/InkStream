@@ -5,6 +5,7 @@ import { readFile } from '../ipc/files';
 import { showToast } from '../stores/useToastStore';
 import { useEditorStore } from '../stores/useEditorStore';
 import { useVaultStore } from '../stores/useVaultStore';
+import { useWorkbenchStore } from '../stores/useWorkbenchStore';
 import type { TreeNode } from '../types/vault';
 import { baseExtensions } from './extensions';
 import { openFile, snapshotBeforeSwitch, switchToTab } from './editorState';
@@ -27,6 +28,8 @@ function readFailure(error: unknown): string {
 export async function openFileInEditor(view: EditorView, node: TreeNode, request = beginDocumentNavigation()): Promise<void> {
   const vault = useVaultStore.getState().vault;
   if (!vault || node.isDir) return;
+  const workspace = useWorkbenchStore.getState();
+  if (['projectOverview', 'references', 'projectVersions'].includes(workspace.centralView)) workspace.setCentralView('editor');
   const active = useEditorStore.getState().activePath;
   if (active) snapshotBeforeSwitch(view, active);
   try {

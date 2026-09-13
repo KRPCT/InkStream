@@ -1,6 +1,7 @@
 import { act, render, screen } from '@testing-library/react';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { useWorkbenchStore } from '../../stores/useWorkbenchStore';
+import { useSettingsStore } from '../../stores/useSettingsStore';
 import RightPanel from './RightPanel';
 import WorkbenchLayout from './WorkbenchLayout';
 
@@ -13,7 +14,18 @@ function setMode(mode: 'standard' | 'academic' | 'creative') {
 describe('RightPanel 按模式渲染（消费 MODE_PRESETS）', () => {
   beforeEach(() => {
     useWorkbenchStore.setState(useWorkbenchStore.getInitialState(), true);
+    useSettingsStore.setState({ simpleMode: false });
     delete document.documentElement.dataset.mode;
+  });
+
+  it('WB-06 从简易模式返回创作后，选中可用工具并显示内容', () => {
+    render(<RightPanel />);
+    setMode('creative');
+    act(() => useSettingsStore.getState().setSimpleMode(true));
+    expect(screen.getByRole('tabpanel', { name: '大纲' })).toBeVisible();
+    act(() => useSettingsStore.getState().setSimpleMode(false));
+    expect(screen.getByRole('tab', { name: 'Codex', selected: true })).toBeVisible();
+    expect(screen.getByRole('tabpanel', { name: 'Codex' })).toBeVisible();
   });
 
   it('creative 模式渲染 Codex / 场景概要 两 tab 与空态文案', () => {

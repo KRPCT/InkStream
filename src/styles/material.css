@@ -2,8 +2,8 @@
 :root {
   --workbench-header-height: 44px;
   --workbench-status-height: 30px;
-  --project-rail-width: 64px;
-  --shell-frame: color-mix(in srgb, var(--background-secondary) 84%, #809889);
+  --project-rail-width: 100px;
+  --shell-frame: color-mix(in srgb, var(--background-secondary) 96%, var(--archive-sage));
   --shell-edge: color-mix(in srgb, var(--text-normal) 13%, transparent);
   --surface-paper: var(--background-primary);
   --surface-tool: color-mix(in srgb, var(--background-secondary) 84%, transparent);
@@ -38,7 +38,7 @@ html[data-theme='dark'] {
 .workbench-tool-tabs button { padding-left: 10px; padding-right: 10px; font-size: 12px; border-radius: 7px 7px 0 0; }
 .workbench-tool-tabs button[aria-selected='true'] { background: color-mix(in srgb, var(--background-primary) 68%, transparent); border-bottom-width: 1px; }
 .material-eyebrow { font-size: 9px; line-height: 1.5; font-weight: 650; letter-spacing: .18em; color: var(--text-muted); }
-.project-navigation-heading { min-height: 74px; padding: 17px 17px 12px; display: flex; flex-direction: column; gap: 5px; }
+.project-navigation-heading { min-height: 52px; padding: 16px 17px 12px; display: flex; flex-direction: column; gap: 5px; }
 .project-navigation-heading > span:last-child { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-size: 15px; font-weight: 550; letter-spacing: .015em; }
 .project-navigation-tabs { display: flex; margin: 0 12px 10px; padding: 3px; gap: 2px; border: 1px solid var(--shell-edge); border-radius: 9px; background: color-mix(in srgb, var(--shell-frame) 68%, transparent); }
 .project-navigation-tabs button { flex: 1; min-height: 29px; font-size: 12px; border-radius: 6px; color: var(--text-muted); }
@@ -55,9 +55,10 @@ html[data-theme='dark'] {
 .workbench-status-brand { margin-right: 14px; flex-shrink: 0; font-size: 8px; letter-spacing: .15em; opacity: .65; }
 .snapshot-retry { color: var(--color-error); padding: 0 8px; white-space: nowrap; }
 .snapshot-saving { padding: 0 8px; white-space: nowrap; }
-.project-rail { position: relative; width: var(--project-rail-width); flex-shrink: 0; display: flex; align-items: center; flex-direction: column; padding: 13px 6px 8px; gap: 18px; }
+.project-rail { position: relative; width: var(--project-rail-width); flex-shrink: 0; display: flex; align-items: center; flex-direction: column; padding: 13px 8px 8px; gap: 14px; }
 .inkstream-mark { display: block; width: 38px; height: 38px; object-fit: contain; flex-shrink: 0; }
-.project-rail-archive { position: relative; display: flex; flex-direction: column; align-items: center; gap: 11px; padding: 0 4px 11px; width: 49px; border-radius: 9px; }
+html[data-theme='dark'] .inkstream-mark { filter: invert(.8) hue-rotate(180deg); }
+.project-rail-archive { position: relative; display: flex; flex-direction: column; align-items: center; gap: 5px; padding: 9px 4px; width: 76px; border-radius: 9px; }
 .project-rail-archive:hover, .project-rail-archive[aria-expanded='true'] { background: var(--background-modifier-hover); }
 .project-rail-spine { width: 34px; height: 160px; position: relative; border: 1px solid var(--material-highlight); border-radius: 8px; background: linear-gradient(110deg, var(--archive-card), color-mix(in srgb, var(--archive-surface) 55%, transparent)); box-shadow: 3px 3px 9px var(--material-shadow), inset 3px 0 3px var(--material-highlight); animation: project-spine-enter var(--archive-switch-duration) var(--material-ease) both; overflow: hidden; }
 .project-rail-spine > span { display: block; padding: 12px 7px; writing-mode: vertical-rl; text-orientation: mixed; height: 100%; width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; line-height: 17px; letter-spacing: .06em; }
@@ -67,6 +68,17 @@ html[data-theme='dark'] {
 .project-rail-actions button { width: 34px; height: 34px; display: grid; place-items: center; border-radius: 8px; color: var(--text-muted); }
 .project-rail-actions button:hover { color: var(--text-normal); background: var(--background-modifier-hover); }
 .project-rail button:disabled { opacity: .4; cursor: default; }
+.project-rail-projects { width: 100%; min-height: 0; flex: 1; display: flex; flex-direction: column; gap: 8px; overflow: auto; }
+.project-rail-project { width: 100%; flex-shrink: 0; display: flex; flex-direction: column; align-items: center; gap: 9px; padding: 12px 5px; border-radius: 8px; }
+.project-rail-project:hover { background: var(--background-modifier-hover); }
+.project-rail-project[aria-current='true'] { background: var(--background-modifier-active); }
+.project-rail-project > span:last-child { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; width: 100%; font-size: 11px; line-height: 1.6; text-align: center; overflow-wrap: anywhere; }
+.project-rail-project .project-cover { width: 37px; height: 52px; }
+.project-rail-empty { margin-top: 15px; text-align: center; font-size: 11px; color: var(--text-muted); }
+.project-rail-actions button[aria-pressed='true'] { background: var(--background-modifier-active); color: var(--text-normal); }
+.workbench-statusbar { white-space: nowrap; }
+.workbench-statusbar [data-testid='status-bar-right'] { overflow-x: auto; max-width: 80%; scrollbar-width: none; }
+.workbench-statusbar [data-testid='status-bar-right'] > * { flex-shrink: 0; }
 .project-archive-overlay {
   --text-normal: var(--archive-ink);
   --text-muted: var(--archive-muted);
@@ -176,10 +188,10 @@ html[data-theme='dark'] {
   .workbench-status-brand { display: none; }
 }
 @media (max-width: 760px) {
-  :root { --project-rail-width: 52px; }
+  :root { --project-rail-width: 68px; }
   .workbench-stage { padding-right: 7px; padding-top: 6px; }
   .project-rail { padding-left: 3px; padding-right: 3px; }
-  .project-rail-archive { width: 44px; }
+  .project-rail-archive { width: 58px; }
   .workbench-group > #sidebar[data-panel] { position: absolute !important; left: 0; top: 0; bottom: 0; z-index: 13; width: min(var(--navigation-width, 232px), 60vw) !important; flex: none !important; max-width: none !important; box-shadow: 10px 0 25px var(--material-shadow); }
   .workbench-group > #right-panel[data-panel] { width: min(var(--tools-width, 304px), 70vw) !important; }
   .workbench-window-title { display: none; }

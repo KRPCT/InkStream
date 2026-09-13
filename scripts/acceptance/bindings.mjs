@@ -1,5 +1,7 @@
 // Human-reviewed links to named Vitest checks. This file does not parse or execute Gherkin.
+import { workbenchGroups, workbenchScenarios } from './workbench-bindings.mjs';
 export const groups = [
+  ...workbenchGroups,
   { file: 'src/test/document-session.integration.test.tsx', tests: [
     ['doc-close', 'FE-01: closing active A must activate B content before B can be saved'],
     ['doc-failed-save', 'FE-02: a failed close-save must preserve the dirty background A buffer and tab'],
@@ -9,9 +11,9 @@ export const groups = [
     ['doc-save-as', 'Save As retains edits made while the chosen file is being written'],
   ] },
   { file: 'src/editor/workspaceSession.integration.test.ts', tests: [
-    ['workspace-missing', 'an inaccessible target leaves the original workspace and its watcher operational'],
-    ['workspace-order', 'prepares the complete target before publishing, and later requests finish consistently'],
-    ['workspace-watch', 'does not publish a target whose watcher cannot start'],
+    ['workspace-missing', '目标目录无法打开时保留原文档与监听'],
+    ['workspace-order', '完整准备目标后才发布，后续切换请求按同一会话队列完成'],
+    ['workspace-watch', '目标监听启动失败会恢复旧监听和旧编辑会话，失败不伪装成功'],
   ] },
   { file: 'src/editor/documentFileMutations.test.ts', tests: [
     ['file-rename', '重命名后活动身份、显示名、缓存和未保存正文一致，后续只写新路径'],
@@ -40,6 +42,7 @@ const document = 'docs/specs/document-session.feature';
 const workspace = 'docs/specs/workspace-session.feature';
 // A passed related check never changes partial/pending into complete. Gaps require additional evidence.
 export const scenarios = [
+  ...workbenchScenarios,
   { id: 'DOC-01', file: document, name: '关闭活动 A 后继续编辑的是 B', status: 'partial', checks: ['doc-close'], gap: '补充输入后的 B 保存、A 磁盘不变及真实文件往返仍需对应证据。' },
   { id: 'DOC-02', file: document, name: '未成功保存时关闭请求保留正文', status: 'partial', checks: ['doc-failed-save'], gap: '仅磁盘失败回归；外部冲突 Examples 行、明确反馈断言仍待绑定。' },
   { id: 'DOC-03', file: document, name: '保留我的内容写入失败后仍可继续裁决冲突', status: 'partial', checks: ['doc-conflict'], gap: '绑定冲突提示/冻结/正文；再次裁决和自动保存不得越权的完整流程待绑定。' },

@@ -1,15 +1,15 @@
-import { fireEvent, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import * as registry from '../../commands/registry';
 import { useEditorStore } from '../../stores/useEditorStore';
-import { useWorkbenchStore } from '../../stores/useWorkbenchStore';
+import type { SaveOutcome } from '../../types/documentSession';
 import EditorTabs from './EditorTabs';
 
 /** 关 tab 时序记录：flush 必须在 dispose/closeTab 之前完成（CR-02）。 */
 const closeOrder: string[] = [];
 let releaseFlush: (() => void) | null = null;
 
-const flushAutosave = vi.fn().mockResolvedValue({ kind: 'saved' });
+const flushAutosave = vi.fn<(path: string) => Promise<SaveOutcome>>().mockResolvedValue({ kind: 'saved' });
 const switchTab = vi.fn();
 const disposeStateSpy = vi.fn((path: string) => {
   closeOrder.push(`dispose:${path}`);
@@ -39,7 +39,7 @@ vi.mock('../../stores/useConfirmStore', () => ({
 }));
 
 function reset(): void {
-  useEditorStore.setState({ tabs: [], activePath: null, dirty: {}, cursor: 0, frozen: {} });
+  useEditorStore.setState({ tabs: [], activePath: null, dirty: {}, cursor: 0, frozen: {}, externalChanged: {} });
 }
 
 describe('EditorTabs', () => {
@@ -48,8 +48,8 @@ describe('EditorTabs', () => {
     closeOrder.length = 0;
     releaseFlush = null;
     flushAutosave.mockResolvedValue({ kind: 'saved' });
+    confirmDestructive.mockResolvedValue(false);
     reset();
-    useWorkbenchStore.setState(useWorkbenchStore.getInitialState(), true);
     useEditorStore.getState().openTab({ path: 'a.md', name: 'a.md' });
     useEditorStore.getState().openTab({ path: 'b.md', name: 'b.md' });
     useEditorStore.getState().setActive('a.md');
@@ -57,7 +57,6 @@ describe('EditorTabs', () => {
 
   afterEach(() => {
     reset();
-    useWorkbenchStore.setState(useWorkbenchStore.getInitialState(), true);
   });
 
   it('渲染所有打开的 tab', () => {
@@ -165,31 +164,185 @@ describe('EditorTabs', () => {
     expect(useEditorStore.getState().tabs.some((t) => t.path === 'draft://1')).toBe(true);
   });
 
-  // ---- R4 §3.2 侧栏 / 右栏一键开关按钮 ----
+  // docs/specs/workbench-ux.feature：WB-05，文档入口、键盘切换与既有关闭裁决。
 
-  it('渲染两端贴边面板开关，默认展开态 aria-pressed=true', () => {
+  it('WB-05：文档栏只承载文档入口及其关闭操作，不重复项目轨的面板开关', () => {
     render(<EditorTabs />);
-    const left = screen.getByRole('button', { name: /侧边栏/ });
-    const right = screen.getByRole('button', { name: /右侧面板/ });
-    // DEFAULT_LAYOUT 两侧均展开（collapsed=false）→ pressed=true
-    expect(left).toHaveAttribute('aria-pressed', 'true');
-    expect(right).toHaveAttribute('aria-pressed', 'true');
+    const tablist = within(screen.getByRole('tablist', { name: '已打开的文档' }));
+    expect(tablist.getAllByRole('tab')).toHaveLength(2);
+    const buttons = tablist.getAllByRole('button');
+    expect(buttons).toHaveLength(2);
+    expect(buttons[0]).toHaveAccessibleName('关闭 a.md');
+    expect(buttons[1]).toHaveAccessibleName('关闭 b.md');
+    expect(tablist.queryByRole('button', { name: /侧边栏|右侧面板/ })).not.toBeInTheDocument();
   });
 
-  it('点左开关走 view.toggle-sidebar 命令、右开关走 view.toggle-right-panel', () => {
-    const exec = vi.spyOn(registry, 'execute').mockResolvedValue(undefined);
-    render(<EditorTabs />);
-    fireEvent.click(screen.getByRole('button', { name: /侧边栏/ }));
-    fireEvent.click(screen.getByRole('button', { name: /右侧面板/ }));
-    expect(exec).toHaveBeenCalledWith('view.toggle-sidebar');
-    expect(exec).toHaveBeenCalledWith('view.toggle-right-panel');
-    exec.mockRestore();
+  it('WB-05：Tab 只进入活动文档及其可见关闭按钮，然后离开文档栏', async () => {
+    const user = userEvent.setup();
+    useEditorStore.getState().setActive('b.md');
+    useEditorStore.getState().markDirty('b.md');
+    render(<><EditorTabs /><button type="button">后续内容</button></>);
+
+    const activeTab = screen.getByRole('tab', { name: /b\.md/ });
+    expect(activeTab).toHaveAttribute('tabindex', '0');
+    expect(screen.getByRole('tab', { name: /a\.md/ })).toHaveAttribute('tabindex', '-1');
+    expect(screen.getByRole('button', { name: '关闭 a.md' })).toHaveAttribute('tabindex', '-1');
+    await user.tab();
+    expect(activeTab).toHaveFocus();
+
+    const closeButton = screen.getByRole('button', { name: '关闭 b.md' });
+    expect(closeButton).toBeVisible();
+    await user.tab();
+    expect(closeButton).toHaveFocus();
+    await user.tab();
+    expect(screen.getByRole('button', { name: '后续内容' })).toHaveFocus();
+    await user.tab({ shift: true });
+    expect(closeButton).toHaveFocus();
+    expect(closeButton).toBeVisible();
+    await user.tab({ shift: true });
+    expect(activeTab).toHaveFocus();
   });
 
-  it('折叠态 → aria-pressed=false 且 aria-label/标题切到“展开”', () => {
-    useWorkbenchStore.getState().toggleSidebar();
+  it.each([
+    ['{ArrowRight}', 'b.md'],
+    ['{ArrowLeft}', 'c.md'],
+    ['{End}', 'c.md'],
+    ['{ArrowRight}{Home}', 'a.md'],
+    ['{End}{ArrowRight}', 'a.md'],
+    ['{End}{ArrowLeft}', 'b.md'],
+  ])('WB-05：按 %s 后焦点和活动文档切换到 %s，首尾循环', async (keys, name) => {
+    const user = userEvent.setup();
+    useEditorStore.getState().openTab({ path: 'c.md', name: 'c.md' });
     render(<EditorTabs />);
-    const left = screen.getByRole('button', { name: /展开侧边栏/ });
-    expect(left).toHaveAttribute('aria-pressed', 'false');
+    await user.tab();
+    await user.keyboard(keys);
+
+    const selected = screen.getByRole('tab', { selected: true });
+    expect(selected).toHaveTextContent(name);
+    expect(selected).toHaveFocus();
+    expect(selected).toHaveAttribute('tabindex', '0');
+    for (const tab of screen.getAllByRole('tab', { selected: false })) {
+      expect(tab).toHaveAttribute('tabindex', '-1');
+    }
+    expect(useEditorStore.getState().activePath).toBe(name);
+    expect(switchTab).toHaveBeenLastCalledWith(name);
+    expect(flushAutosave).not.toHaveBeenCalled();
+  });
+
+  it.each(['{Enter}', ' '])('WB-05：按 %s 激活已聚焦的文档入口', async (key) => {
+    const user = userEvent.setup();
+    render(<EditorTabs />);
+    const tab = screen.getByRole('tab', { name: /b\.md/ });
+    act(() => tab.focus());
+    await user.keyboard(key);
+    expect(tab).toHaveFocus();
+    expect(tab).toHaveAttribute('aria-selected', 'true');
+    expect(tab).toHaveAttribute('tabindex', '0');
+    expect(switchTab).toHaveBeenCalledTimes(1);
+    expect(switchTab).toHaveBeenCalledWith('b.md');
+  });
+
+  it('WB-05：关闭按钮上的方向键不切文档，回车只执行关闭请求', async () => {
+    const user = userEvent.setup();
+    flushAutosave.mockResolvedValue({ kind: 'failed' });
+    render(<EditorTabs />);
+    await user.tab();
+    await user.tab();
+    const closeButton = screen.getByRole('button', { name: '关闭 a.md' });
+    expect(closeButton).toHaveFocus();
+    await user.keyboard('{ArrowRight}{Home}{End}');
+    expect(closeButton).toHaveFocus();
+    await user.keyboard('{Enter}');
+    expect(flushAutosave).toHaveBeenCalledTimes(1);
+    expect(flushAutosave).toHaveBeenCalledWith('a.md');
+    expect(switchTab).not.toHaveBeenCalled();
+    expect(screen.getByRole('tab', { name: /a\.md/ })).toHaveAttribute('aria-selected', 'true');
+  });
+
+  it.each<{ label: string; outcome: SaveOutcome }>([
+    { label: '保存失败', outcome: { kind: 'failed' } },
+    { label: '外部冲突', outcome: { kind: 'blocked', reason: 'conflict' } },
+    { label: '保存期间修订改变', outcome: { kind: 'changed' } },
+    { label: '保存返回后仍有新修改', outcome: { kind: 'saved' } },
+  ])('WB-05：键盘关闭遇到$label时保留文档、脏标记及关闭焦点', async ({ outcome }) => {
+    const user = userEvent.setup();
+    useEditorStore.getState().markDirty('a.md');
+    if (outcome.kind === 'blocked') {
+      useEditorStore.getState().freezeAutosave('a.md');
+      useEditorStore.getState().markExternalChange('a.md');
+    }
+    flushAutosave.mockResolvedValue(outcome);
+    render(<EditorTabs />);
+    await user.tab();
+    await user.tab();
+    const closeButton = screen.getByRole('button', { name: '关闭 a.md' });
+    expect(closeButton).toHaveFocus();
+    expect(closeButton).toBeVisible();
+    await user.keyboard('{Enter}');
+
+    expect(screen.getByRole('tab', { name: /a\.md/ })).toHaveAttribute('aria-selected', 'true');
+    expect(screen.getByTestId('dirty-dot-a.md')).toBeInTheDocument();
+    expect(closeButton).toHaveFocus();
+    expect(disposeStateSpy).not.toHaveBeenCalled();
+    expect(useEditorStore.getState().dirty['a.md']).toBe(true);
+    if (outcome.kind === 'blocked') {
+      expect(useEditorStore.getState().frozen['a.md']).toBe(true);
+      expect(useEditorStore.getState().externalChanged['a.md']).toBe(true);
+    }
+  });
+
+  it('WB-05：键盘关闭脏文档在保存成功清除脏标记后才移除标签', async () => {
+    const user = userEvent.setup();
+    useEditorStore.getState().markDirty('a.md');
+    flushAutosave.mockImplementationOnce(async (path) => {
+      useEditorStore.getState().clearDirty(path);
+      return { kind: 'saved' };
+    });
+    render(<EditorTabs />);
+    await user.tab();
+    await user.tab();
+    await user.keyboard(' ');
+
+    await waitFor(() => expect(screen.queryByRole('tab', { name: /a\.md/ })).not.toBeInTheDocument());
+    expect(flushAutosave).toHaveBeenCalledWith('a.md');
+    expect(screen.getByRole('tab', { name: /b\.md/ })).toHaveAttribute('aria-selected', 'true');
+    expect(switchTab).not.toHaveBeenCalled();
+  });
+
+  it('WB-05：键盘关闭脏草稿仍可取消丢弃，且不调用落盘', async () => {
+    const user = userEvent.setup();
+    useEditorStore.getState().openTab({ path: 'draft://1', name: '未命名-1' });
+    useEditorStore.getState().markDirty('draft://1');
+    render(<EditorTabs />);
+    await user.tab();
+    await user.keyboard('{End}');
+    await user.tab();
+    await user.keyboard('{Enter}');
+
+    expect(confirmDestructive).toHaveBeenCalledTimes(1);
+    expect(flushAutosave).not.toHaveBeenCalled();
+    expect(screen.getByRole('tab', { name: /未命名-1/ })).toHaveAttribute('aria-selected', 'true');
+    expect(screen.getByRole('button', { name: '关闭 未命名-1' })).toHaveFocus();
+    expect(useEditorStore.getState().dirty['draft://1']).toBe(true);
+    expect(disposeStateSpy).not.toHaveBeenCalled();
+  });
+
+  it('WB-05：键盘可到达外部文档，保留非工作区标记并按原绝对路径关闭', async () => {
+    const user = userEvent.setup();
+    const path = 'D:/outside/reference.md';
+    useEditorStore.getState().openTab({ path, name: 'reference.md', external: true });
+    render(<EditorTabs />);
+    await user.tab();
+    await user.keyboard('{End}');
+    const tab = screen.getByRole('tab', { name: /reference\.md/ });
+    expect(tab).toHaveFocus();
+    expect(tab).toHaveAttribute('aria-selected', 'true');
+    expect(within(tab).getByLabelText('非工作区文件')).toBeInTheDocument();
+    expect(within(tab).getByText('reference.md')).toHaveAttribute('title', `非工作区文件：${path}`);
+    await user.tab();
+    await user.keyboard('{Enter}');
+    await waitFor(() => expect(screen.queryByRole('tab', { name: /reference\.md/ })).not.toBeInTheDocument());
+    expect(flushAutosave).toHaveBeenCalledWith(path);
+    expect(disposeStateSpy).toHaveBeenCalledWith(path);
   });
 });
