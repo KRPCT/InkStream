@@ -69,9 +69,15 @@ cargo test --locked --manifest-path src-tauri/Cargo.toml --all-targets -- --test
 
 正常退出、失败、超时及中断均检查可观察的所属进程树；Windows 用明确 PID 的 `taskkill /T`，Unix 用该次新建的进程组。主动脱离父子链/进程组的未知进程不被推定为本次所有，相关限制写入记录。文件存在本身不构成运行通过声明，必须读取对应执行的报告。
 
-## 2.0.0 发布记录与剩余验收
+## 2.1.0 合并与发布验证
 
-截至 2026-09-13 已复核的发布基线为 `main` / `v2.0.0` / `ca4c214`，[PR #40](https://github.com/KRPCT/InkStream/pull/40) 已合并，[2.0.0 Release](https://github.com/KRPCT/InkStream/releases/tag/v2.0.0) 已公开：
+多栏行为由开发提交 `09b32ff` 验收：1910 项前端断言、41 项显式行为绑定及三轮 Windows ComputerUse，范围见[工作台验收记录](../WORKBENCH-ACCEPTANCE.md)。追加版本与软件内公告的发布提交 `a0c98ff` 已通过[三平台 CI](https://github.com/KRPCT/InkStream/actions/runs/34737464772)，经 [PR 49](https://github.com/KRPCT/InkStream/pull/49) 合并 main。合并后的 README 与状态更新仅涉及文档。2.1.0 安装包和签名更新清单的就绪状态见[发行页](https://github.com/KRPCT/InkStream/releases/tag/v2.1.0)。
+
+以下旧发布证据与未完成场景继续保留，不能由新版本号代替验收。
+
+## 2.0.0 历史发布记录与剩余验收
+
+2.0.0 的历史发布基线为 `main` / `v2.0.0` / `ca4c214`，[PR #40](https://github.com/KRPCT/InkStream/pull/40) 已合并，[2.0.0 Release](https://github.com/KRPCT/InkStream/releases/tag/v2.0.0) 已公开：
 
 | 执行 | 结果 | 证据范围 |
 |---|---|---|

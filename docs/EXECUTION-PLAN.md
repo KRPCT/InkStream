@@ -1,6 +1,6 @@
 # 多栏工作台执行计划
 
-基线 main / 2.0.0 / ca4c214。工作入口为[任务地图](https://github.com/KRPCT/InkStream/issues/45)。
+实施起点为 main / 2.0.0 / ca4c214；计划已完成，其实现与 2.1.0 发行配置已由 PR 49 合并 main。工作入口为[任务地图](https://github.com/KRPCT/InkStream/issues/45)。
 
 | 顺序 | 产出 | 完成判据 |
 | --- | --- | --- |

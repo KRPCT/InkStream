@@ -1,6 +1,6 @@
 # 旧 PRD 功能覆盖与验收索引
 
-更新于 2026-09-13，基线 2.0.0。旧审计中的“缺少 rebase/clone/Codex/项目会话”等实现缺口已经合并发布，不能继续当作当前待开发项。原始用户要求的编号与内容保留在下表；状态区分实现与专项验收，不声称 v1 总验收已完成。
+更新于 2026-09-13，当前代码为 main / 2.1.0，保留 2.0.0 旧功能修复的逐项证据。旧审计中的“缺少 rebase/clone/Codex/项目会话”等实现缺口已经合并发布，不能继续当作当前待开发项。原始用户要求的编号与内容保留在下表；状态区分实现与专项验收，不声称 v1 总验收已完成。
 
 | 编号 | 原承诺 | 当前状态与后续 |
 | --- | --- | --- |
@@ -59,12 +59,12 @@
 | `git_commit` | `src-tauri/src/git/commit.rs` 的系统 `git commit -S`、`src/editor/gitActions.ts` | 补全实现已随 2.0.0 合并，对应实现票已关闭；组合用户流程继续归[总验收](https://github.com/KRPCT/InkStream/issues/25)。 |
 | `git_checkout` | `src-tauri/src/git/refops.rs`、`BranchManager.tsx`、`GitContextMenu.tsx` | 补全实现已随 2.0.0 合并，对应实现票已关闭；组合用户流程继续归[总验收](https://github.com/KRPCT/InkStream/issues/25)。 |
 | `git_merge` | `src-tauri/src/git/commit.rs`、`MergeResolver.tsx` | 补全实现已随 2.0.0 合并，对应实现票已关闭；组合用户流程继续归[总验收](https://github.com/KRPCT/InkStream/issues/25)。 |
-| `git_rebase` | `src/types/ipc.ts`、`src-tauri/src/lib.rs` 与 `src-tauri/src/git/` 未见本地 rebase command | 补全实现已随 2.0.0 合并，对应实现票已关闭；组合用户流程继续归[总验收](https://github.com/KRPCT/InkStream/issues/25)。 |
+| `git_rebase` | `src-tauri/src/git/rebase.rs` 提供 `git_rebase` 与 `git_rebase_status`，支持本地变基与状态恢复 | 补全实现已随 2.0.0 合并，对应实现票已关闭；组合用户流程继续归[总验收](https://github.com/KRPCT/InkStream/issues/25)。 |
 | `git_cherry_pick` | `src-tauri/src/git/commit.rs`、`GitContextMenu.tsx` | 补全实现已随 2.0.0 合并，对应实现票已关闭；组合用户流程继续归[总验收](https://github.com/KRPCT/InkStream/issues/25)。 |
 | `git_stash` | `src-tauri/src/git/stash.rs` 提供 save/list/pop/drop，`gitActions.ts` 有 stash 动作 | 补全实现已随 2.0.0 合并，对应实现票已关闭；组合用户流程继续归[总验收](https://github.com/KRPCT/InkStream/issues/25)。 |
 | `git_tag` | `src-tauri/src/git/refops.rs` create/delete、`GitContextMenu.tsx` | 补全实现已随 2.0.0 合并，对应实现票已关闭；组合用户流程继续归[总验收](https://github.com/KRPCT/InkStream/issues/25)。 |
 | `git_reset` | `src-tauri/src/git/refops.rs` soft/mixed/hard、`GitContextMenu.tsx` | 补全实现已随 2.0.0 合并，对应实现票已关闭；组合用户流程继续归[总验收](https://github.com/KRPCT/InkStream/issues/25)。 |
-| `git_clone` | `src-tauri/src/git/remote.rs`、`src/ipc/git.ts:gitClone`；`docs/git.md` 明示无应用内克隆对话框 | 补全实现已随 2.0.0 合并，对应实现票已关闭；组合用户流程继续归[总验收](https://github.com/KRPCT/InkStream/issues/25)。 |
+| `git_clone` | `src-tauri/src/git/clone.rs` 与 `GitCloneDialog.tsx` 提供可取消的克隆与完成后打开流程 | 补全实现已随 2.0.0 合并，对应实现票已关闭；组合用户流程继续归[总验收](https://github.com/KRPCT/InkStream/issues/25)。 |
 | `git_push` | `src-tauri/src/git/remote.rs`、`src/editor/gitActions.ts` | 补全实现已随 2.0.0 合并，对应实现票已关闭；组合用户流程继续归[总验收](https://github.com/KRPCT/InkStream/issues/25)。 |
 | `git_pull` | `src-tauri/src/git/remote.rs` fetch + ff-only merge | 补全实现已随 2.0.0 合并，对应实现票已关闭；组合用户流程继续归[总验收](https://github.com/KRPCT/InkStream/issues/25)。 |
 | `git_fetch` | `src-tauri/src/git/remote.rs`、Git 工具条/侧栏 | 补全实现已随 2.0.0 合并，对应实现票已关闭；组合用户流程继续归[总验收](https://github.com/KRPCT/InkStream/issues/25)。 |

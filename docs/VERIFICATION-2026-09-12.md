@@ -1,6 +1,6 @@
 # 历史记录：VERIFICATION-2026-09-12.md
 
-此文件保留原日期、原工作树与当时证据。2.0.0 的实现/合并/发布现状见 [CURRENT-STATE](CURRENT-STATE.md)；下面“尚未实施/未推送/草稿 PR”等文字是历史状态，不作为当前指令。
+此文件保留原日期、原工作树与当时证据。最新实现/合并/发布状态见 [CURRENT-STATE](CURRENT-STATE.md)；下面“尚未实施/未推送/草稿 PR”等文字是历史状态，不作为当前指令。
 
 <details>
 <summary>查看原始历史记录</summary>

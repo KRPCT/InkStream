@@ -1,6 +1,6 @@
 # 架构现状与工作台边界
 
-基线：2.0.0 / main `ca4c214`，2026-09-13。发布与验收状态统一见 [CURRENT-STATE](CURRENT-STATE.md)。
+现状：2.1.0 / main（PR 49 合并提交 `491a235`），2026-09-13。发布与验收状态统一见 [CURRENT-STATE](CURRENT-STATE.md)。
 
 | 职责 | 实现入口 | 权威边界 |
 | --- | --- | --- |

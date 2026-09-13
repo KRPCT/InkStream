@@ -40,11 +40,11 @@ InkStream（墨流）各功能的使用指南。每篇都从用户视角讲怎�
 ## 验收与维护
 
 - [BDD 自动化绑定状态](./specs/AUTOMATION.md)：人工映射 Vitest、CI / Rust 执行范围和仍开放的验证事项
-- [工作台验收清单](../specs/01-workbench.spec.md)：当前 2.0 工作台行为及自动、真机验证分工
+- [工作台验收清单](../specs/01-workbench.spec.md)：当前 2.1 工作台行为及自动、真机验证分工
 - [中文 IME 真机回归清单](../specs/03-live-preview-ime.spec.md)：物理输入法矩阵，自动桩与发布结果不能代替签核
 
 ---
 
 ← 返回 [README](../README.md)
 
-多栏分支的已实现行为、测试与真实窗口观察见 [ComputerUse 验收记录](WORKBENCH-ACCEPTANCE.md)。
+2.1.0 多栏工作台的已实现行为、测试与真实窗口观察见 [ComputerUse 验收记录](WORKBENCH-ACCEPTANCE.md)。

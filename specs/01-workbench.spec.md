@@ -1,9 +1,9 @@
-# 01 三模式 Workbench 验收规范（2.0 基线与多栏分支）
+# 01 三模式 Workbench 验收规范（2.1.0）
 
 > 用户视角 ATDD 验收清单。每项标注验证方式：
 > **自动** = 指定测试文件中对应行为的断言，需核对实际发现、执行与结果；**人工** = 真实窗口操作步骤。
 > `pnpm test` / `test:ci` 通过不等于每条验收或全部 BDD 完成；jsdom 不能证明真实 WebView、物理 IME、跨平台视觉与性能通过。
-> 本清单在 `v2.0.0` / `ca4c214` 基线上更新到多栏分支行为，勾选须附对应提交证据。它与 [工作台行为规格](../docs/specs/workbench-ux.feature)、[BDD 绑定状态](../docs/specs/AUTOMATION.md)和 [ComputerUse 记录](../docs/WORKBENCH-ACCEPTANCE.md)共同使用；发布范围以 CURRENT-STATE 为准。
+> 本清单在 `v2.0.0` / `ca4c214` 基线上更新到 2.1.0 多栏行为，勾选须附对应提交证据。它与 [工作台行为规格](../docs/specs/workbench-ux.feature)、[BDD 绑定状态](../docs/specs/AUTOMATION.md)和 [ComputerUse 记录](../docs/WORKBENCH-ACCEPTANCE.md)共同使用；发布范围以 CURRENT-STATE 为准。
 
 ## 1. 启动、项目导航与布局
 

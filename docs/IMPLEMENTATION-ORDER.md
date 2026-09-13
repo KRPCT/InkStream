@@ -1,6 +1,6 @@
 # 当前实施顺序
 
-2026-09-13：2.0.0 已合并发布，旧缺陷实现阶段不再列为未开始。发布与未验收边界见 [CURRENT-STATE](CURRENT-STATE.md)。
+2026-09-13：以下多栏实施与验收步骤已完成，PR 49 已将 2.1.0 合并 main；README 在合并后重构。发布与未验收边界见 [CURRENT-STATE](CURRENT-STATE.md)。
 
 1. 完成[文档与 issue 同步](https://github.com/KRPCT/InkStream/issues/46)，清理过时事实并保留历史证据。
 2. 完成[多栏 DDD/BDD 实现](https://github.com/KRPCT/InkStream/issues/47)：明确导航/文档/工具职责，以用户行为场景和失败测试驱动。

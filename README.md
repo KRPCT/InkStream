@@ -1,176 +1,133 @@
-<h1 align="center">InkStream / 墨流</h1>
+<p align="center">
+  <img src="public/inkstream-icon.svg" alt="InkStream 图标" width="88" height="88">
+</p>
 
-<p align="center"><b>单内核 · 三模式 · git 原生的桌面写作应用</b></p>
-<p align="center">一个应用里写论文、写小说、写文档。Zotero 引用、双向链接、Typst / LaTeX / KaTeX 数学排版、git 图谱和句级 diff 都做进了应用本身，不用自己拼插件。</p>
+<h1 align="center">InkStream · 墨流</h1>
+
+<p align="center"><b>把文稿、资料和修改记录，放在同一张写作桌上。</b></p>
+<p align="center">面向日常记录、学术写作与长篇创作的桌面应用。文件保存在本机，写作工具随需要展开。</p>
 
 <p align="center">
-  <a href="https://github.com/KRPCT/InkStream/releases/latest"><img alt="Release" src="https://img.shields.io/github/v/release/KRPCT/InkStream?style=flat-square&color=3b8774&label=release"></a>
-  <a href="https://github.com/KRPCT/InkStream/releases"><img alt="Downloads" src="https://img.shields.io/github/downloads/KRPCT/InkStream/total?style=flat-square&color=3b8774"></a>
-  <img alt="Tauri 2" src="https://img.shields.io/badge/Tauri-2-24C8DB?style=flat-square&logo=tauri&logoColor=white">
-  <img alt="React 19" src="https://img.shields.io/badge/React-19-149ECA?style=flat-square&logo=react&logoColor=white">
-  <img alt="TypeScript strict" src="https://img.shields.io/badge/TypeScript-strict-3178C6?style=flat-square&logo=typescript&logoColor=white">
-  <img alt="CodeMirror 6" src="https://img.shields.io/badge/CodeMirror-6-d30707?style=flat-square">
-  <a href="https://github.com/KRPCT/InkStream/stargazers"><img alt="Stars" src="https://img.shields.io/github/stars/KRPCT/InkStream?style=flat-square&color=f5c518"></a>
-  <a href="./LICENSE"><img alt="License" src="https://img.shields.io/badge/license-PolyForm%20NC%201.0.0-cf7a3a?style=flat-square"></a>
+  <a href="https://github.com/KRPCT/InkStream/releases/latest"><img alt="最新版本" src="https://img.shields.io/github/v/release/KRPCT/InkStream?style=flat&color=62766b&label=Release"></a>
+  <a href=".github/workflows/ci.yml"><img alt="CI" src="https://github.com/KRPCT/InkStream/actions/workflows/ci.yml/badge.svg?branch=main"></a>
 </p>
 
 <p align="center">
-  <a href="#特性">特性</a> ·
-  <a href="#下载安装">下载安装</a> ·
-  <a href="#三模式">三模式</a> ·
-  <a href="docs/index.md">功能文档</a> ·
-  <a href="#技术栈">技术栈</a> ·
-  <a href="#从源码构建">从源码构建</a> ·
-  <a href="#路线图">路线图</a> ·
-  <a href="#star-趋势">Star 趋势</a> ·
-  <a href="#赞助">赞助</a> ·
-  <a href="#许可证">许可证</a>
+  <a href="https://github.com/KRPCT/InkStream/releases/latest"><b>下载 InkStream</b></a> ·
+  <a href="docs/index.md">使用指南</a> ·
+  <a href="docs/releases/2.1.0.md">2.1.0 更新日志</a> ·
+  <a href="https://github.com/KRPCT/InkStream/issues">反馈问题</a>
 </p>
 
-<p align="center">
-  <a href="https://github.com/KRPCT/InkStream/releases/latest"><b>↓ 下载最新版（Windows / macOS / Linux）</b></a>
-  &nbsp;&nbsp;·&nbsp;&nbsp;
-  <a href="docs/index.md"><b>功能文档 / 使用指南 →</b></a>
-</p>
+![InkStream 多栏工作台：左侧项目与文献、中间文稿、右侧大纲](docs/assets/workbench/writing.jpg)
 
----
+*Windows 实际窗口，使用示例文稿与文献。纸白、石墨灰和低饱和灰绿构成日常写作界面。*
 
-**InkStream（墨流）** 是一款基于 Tauri 2 的桌面写作应用。它以 CodeMirror 6 承载主文档编辑，提供 Standard（通用）、Academic（学术）、Creative（长篇创作）三种模式；git 版本管理、双向链接、Zotero 引用和 Typst / LaTeX / KaTeX 数学渲染都内置在应用里，而不是交给一堆插件。
+## 下载与开始写作
 
-如果要一句话概括，它想成为文本编辑器里的 IntelliJ：纯文本的简单，配上 IDE 级的工具。
+前往 [2.1.0 发行页](https://github.com/KRPCT/InkStream/releases/tag/v2.1.0)，选择与你的系统对应的安装包。
 
-> 一条原则：**一个内核，以纯文本为准**。任何时刻 `state.doc.toString()` 就是文档本身。三种模式只切换布局和工具，不绑定文件格式，也不会偷偷转换或丢数据。
+| 系统 | 安装包 |
+| --- | --- |
+| Windows x64 | `InkStream_*_x64-setup.exe` |
+| macOS · Apple Silicon | `InkStream_*_aarch64.dmg` |
+| Linux x64 | `InkStream_*_amd64.deb` 或 `InkStream_*_amd64.AppImage` |
 
-## 目录
+应用内可检查更新、下载安装并重启升级。安装包尚未做 Windows Authenticode 签名与 macOS 公证，首次运行可能出现开发者提示；自动更新载荷有独立的签名校验。详见[更新说明](docs/update.md)。
 
-- [特性](#特性)
-- [下载安装](#下载安装)
-- [三模式](#三模式)
-- [技术栈](#技术栈)
-- [从源码构建](#从源码构建)
-- [路线图](#路线图)
-- [Star 趋势](#star-趋势)
-- [赞助](#赞助)
-- [许可证](#许可证)
+1. 打开应用，点击左侧「项目档案」，或按 `Ctrl+Alt+P`，选择已有内容文件夹。
+2. 打开或新建文稿，直接写作；也可以从独立草稿开始，稍后另存为文件。
+3. 按需要展开文献、大纲或版本记录。切换项目时，应用会先保存当前编辑，再恢复目标项目的文稿和布局。
 
-## 特性
+正文仍在你选择的文件夹里。项目名称、封面、会话和搜索索引保存在本机应用数据目录。保存或切换失败会保留原文稿并显示原因。恢复方式与边界见[项目与恢复](docs/projects.md)。
 
-- **单一内核编辑器**：主文档共用一个 CodeMirror 6 编辑视图，纯文本始终是文档的依据。Source 和 Live Preview 可切换，光标所在行展开源码；大文档默认进入基础编辑，可手动启用完整排版。表格单元格、公式和只读比较按需使用独立视图。
-- **本机项目档案**：`Ctrl+Alt+P` 打开左侧档案，管理名称、封面、收藏和内容目录。每个项目记住标签、光标与布局；独立草稿也会暂存在本机。切换前保存失败会留在原项目。详见[项目与恢复](docs/projects.md)。
-- **三类数学块**：math 走 KaTeX，typst 走 typst.ts（wasm 实时 SVG），latex 走 MathJax。都是懒加载，首屏不碰 wasm 和字体。
-- **双向链接知识网络**：`[[wiki-link]]` 支持别名、标题与块定位，SQLite FTS5 索引保存在本机应用数据目录，并支持一至两个字符的短词查找；反链面板列出有上下文的未链接提及。
-- **知识图谱**：`Ctrl+G` 打开全库 Graph View，d3-force 力导加 Canvas2D 自绘，布局放到 Worker 里跑。可缩放、拖拽、点击跳转、邻域高亮；右栏能看当前文件的局部图谱。
-- **git 版本管理**：本地操作结合 libgit2 与系统 Git，自绘三栏 git-graph（图谱、提交详情、文件 diff）。提供克隆对话框、fetch / push / pull、本地变基、暂存记录管理和分支完整正文比较，提交支持 SSH 签名。
-- **句级 diff 与三向合并**：中英混排按句子比较，看的是「哪句话改了」而不是「哪行变了」。合并冲突可以逐句采纳本方或对方。
-- **Zotero 集成**：CAYW 一键插入 `[@citekey]`，Web API 离线缓存，GB/T 7714 / APA / Vancouver 参考文献，引用与 Typst / LaTeX 联动。
-- **GitHub 集成**：PAT、现有 gh CLI 凭据或配置了 Client ID 的设备授权登录（token 存进系统凭据库，不进前端），浏览、评论、创建 Issue 和 PR，内嵌 diff 审阅与讨论回复。
-- **创作模式**：章节场景树（带状态色点和字数）、`Codex/` 角色与设定卡（别名提及高亮、悬停预览）、Focus Mode、今日字数目标、场景概要。
-- **写作辅助**：打字机模式让光标行居中，专注模式淡化其余段落，写作 HUD 记码字速度、码字时间和番茄钟。默认都关着，只存在内存里。
-- **文件导出**：一键把当前文档导出成 HTML、PDF、DOCX，全本地转换；可加一行自定义水印（默认关）。装了 pandoc 还能导出 ODT、LaTeX、EPUB 等。
-- **沉浸阅读模式**：txt、Markdown、docx、epub、pdf 可进入阅读视图；文本阅读提供文体识别、排版、目录、书签与续读，PDF 逐页懒渲染。书架可按设置启用，编辑器不卸载，随时切回来。
-- **应用内自动更新**：启动时静默检查新版本，一键下载并重启升级，更新包经签名验证。
-- **简易模式**：一键收起高级功能并关闭索引，保留写作、项目档案和草稿恢复。所有模式都不向内容目录写入新的项目元数据或索引库。
-- **中文优先**：组合输入期间暂停会干扰输入的预览更新，提供中英混合字数统计和中文模糊搜索；物理输入法的候选窗与连续上屏仍按[真机回归清单](specs/03-live-preview-ime.spec.md)验收。
+## 2.1.0 的工作台
 
-## 下载安装
+概览、文稿、文献、版本共用一个工作区。查看资料或修改记录后回到正文，光标、选区和撤销记录仍在。
 
-**[InkStream 2.1.0 发行页](https://github.com/KRPCT/InkStream/releases/tag/v2.1.0)**。前往 **[Releases](https://github.com/KRPCT/InkStream/releases/latest)** 下载对应平台安装包：
+| 入口 | 用途 |
+| --- | --- |
+| 概览 | 查看项目中的文件、已打开文稿与待保存内容 |
+| 文稿 | 连续写作，按需展开文件树、大纲和上下文工具 |
+| 文献 | 筛选文献、查看详情，再点击「插入所选引用」；插入可单独撤销 |
+| 版本 | 查看真实提交记录，进入完整版本管理进行分支与差异操作 |
 
-| 平台 | 安装包 |
-|------|--------|
-| Windows | `InkStream_*_x64-setup.exe`（NSIS 安装器） |
-| macOS（Apple Silicon） | `InkStream_*_aarch64.dmg` |
-| Linux | `InkStream_*_amd64.deb` / `InkStream_*_amd64.AppImage` |
+左侧项目轨提供收藏与最近项目的快捷入口。左右面板可独立折叠、调整宽度；工作区、文稿和工具标签支持方向键及 `Home` / `End`。本版还修复了模式菜单裁剪、退出简易模式后创作工具空白等问题。[查看完整更新](docs/releases/2.1.0.md)。
 
-> **首次运行提示**：当前版本尚未做代码签名。Windows 在 SmartScreen 选「更多信息 → 仍要运行」；macOS 右键图标 →「打开」绕过 Gatekeeper；Linux 的 AppImage `chmod +x` 后双击运行。
+<details>
+<summary>查看暗色工作台</summary>
 
-## 三模式
+![InkStream 暗色工作台实际窗口](docs/assets/workbench/dark.jpg)
 
-三模式 = UI 布局预设 + 默认功能集 + 状态栏指标。不限制文件内容、不绑定文件格式，随时切换不丢数据。
+</details>
 
-| 模式 | 定位 | 特色 |
-|------|------|------|
-| Standard | 通用文本编辑 | 文件树、大纲 / 反链 / 局部图谱、Live Preview |
-| Academic | 学术写作 | Zotero 文献库、引用面板、Typst 预览、学术工具栏 |
-| Creative | 长篇创作 | 章节导航树、Codex、专注模式、字数目标进度 |
+## 三种写作方式
 
-2.1.0 多栏工作台统一采用纸白、石墨灰和低饱和灰绿，提供概览／文稿／文献／版本导航、多个项目快捷入口，以及先看详情再明确插入的引用流程。发布与验证范围见[当前状态](docs/CURRENT-STATE.md)，真实窗口观察见 [ComputerUse 验收](docs/WORKBENCH-ACCEPTANCE.md)。
+模式调整布局和工具，不限制文稿格式。可以随时切换；简易模式则进一步收起高级功能，保留写作、项目和草稿恢复。
 
-## 技术栈
+| 模式 | 常用工具 | 使用指南 |
+| --- | --- | --- |
+| 通用 · Standard | 文件树、实时预览、大纲、双向链接与知识图谱 | [编辑器](docs/editor.md) · [链接与知识网络](docs/links.md) |
+| 学术 · Academic | Zotero 文献、引用与参考文献、公式编号、Typst 预览 | [学术写作](docs/academic.md) · [数学排版](docs/math.md) |
+| 创作 · Creative | 章节与场景、角色设定卡、场景概要、字数目标 | [长篇创作](docs/creative.md) |
 
-| 层 | 选型 |
-|----|------|
-| 桌面壳 | Tauri 2（Rust + Web，体积优先） |
-| 前端 | React 19 + TypeScript strict + Zustand 5 |
-| 样式 | Tailwind 4（布局）+ 原生 CSS 变量（主题，Obsidian 命名习惯） |
-| 编辑器内核 | CodeMirror 6 + @lezer/markdown（单实例单内核 + 三层装饰范式 + 统一 IME 冻结门） |
-| 数学排版 | KaTeX / @myriaddreamin/typst.ts (wasm) / MathJax |
-| 知识图谱 | d3-force 力导 + Canvas2D 自绘（布局 Worker 化） |
-| Git / GitHub | git2 (libgit2 Rust binding) / Rust reqwest 直连 GitHub REST + keyring |
-| 全文索引 | SQLite FTS5（Rust 端单写入队列，中文 trigram 分词） |
+更多内置工具：
 
-> 依赖全部**精确锁版本**（无 `^` / `~` / `latest`），供应链零信任。
+- **写作与专注**：源码和实时预览切换，打字机模式、段落专注与写作计时。「视图」菜单会显示打字机和专注模式的启用状态。[写作辅助](docs/writing.md)
+- **修改记录**：本地 Git 提交、分支、远端同步、句级差异与三向合并；GitHub Issue、PR 和审阅集中在版本工具中。[版本管理](docs/git.md) · [GitHub](docs/github.md)
+- **阅读与交付**：阅读 Markdown、TXT、DOCX、EPUB、PDF，保存书签与阅读进度；导出 HTML、PDF、DOCX，安装 pandoc 后可使用更多格式。[阅读](docs/reading.md) · [导出](docs/export.md)
 
-## 从源码构建
+Zotero 本机引用功能需要 Zotero 与 Better BibTeX；远端 Git 操作需要相应的 Git 环境和凭据。各项配置与快捷键见[完整使用指南](docs/index.md)。
 
-环境要求：**Node 24（见 `.node-version`）· Rust stable（rustup）· pnpm 11.5.2**（经 corepack 激活）。
+## 从源码运行
+
+项目使用 Tauri 2、Rust、React、TypeScript 和 CodeMirror 6。准备 Node.js 24、pnpm 11.5.2、Rust stable，以及本平台的 Tauri 构建依赖。具体平台依赖可对照 [CI 配置](.github/workflows/ci.yml)。
 
 ```bash
+git clone https://github.com/KRPCT/InkStream.git
+cd InkStream
 corepack enable
+corepack prepare pnpm@11.5.2 --activate
 pnpm install --frozen-lockfile
-pnpm tauri dev        # 开发模式启动桌面应用
-pnpm tauri build      # 打包本平台安装包（产物在 src-tauri/target/release/bundle/）
+pnpm tauri dev
 ```
 
-本地检查：`pnpm typecheck`、`pnpm lint`、`pnpm test:ci`、`pnpm build`。`test:ci` 将功能测试与两份大文档性能测试分阶段串行执行，保留测试自身时限，记录结果与进程清理。原生入口 `node scripts/acceptance/run-rust.mjs` 执行 `cargo test --locked --manifest-path src-tauri/Cargo.toml --all-targets -- --test-threads=1`，覆盖库与应用二进制的编译和测试；CI 不再单独执行 `cargo check`。Unix 权限负控通过独立 runner 执行。
+运行 `pnpm tauri build --no-bundle` 编译本平台桌面程序，产物位于 `src-tauri/target/release/`。正式安装包及签名更新载荷由 [Release 工作流](.github/workflows/release.yml)生成；本机完整打包需要配置更新签名，或在本地构建配置中关闭 `bundle.createUpdaterArtifacts`。
 
-`pnpm test:acceptance` 只运行人工映射的 Vitest 检查，不解释 Gherkin，不能据此宣称全部 BDD 场景通过。执行范围、硬超时和证据边界见 [BDD 自动化绑定状态](docs/specs/AUTOMATION.md)。Linux 系统依赖和三平台检查步骤见 [CI 配置](./.github/workflows/ci.yml)。[Release 工作流](./.github/workflows/release.yml)负责打包；标签发布在更新包签名与 `latest.json` 聚合完成后公开，手动触发仅上传构建产物，不创建公开 Release。打包成功不代替产品验收。
+常用检查：
 
-## 路线图
+```bash
+pnpm typecheck
+pnpm lint
+pnpm test:ci
+pnpm build
+node scripts/acceptance/run-rust.mjs
+```
 
-2.1.0 包含多栏导航、文献详情与明确插入，并延续三模式工作台、本机项目与草稿恢复、编辑与索引、Git/GitHub、学术与创作、阅读与导出等功能。实现状态和发布状态分别记录；历史阶段的实现结束不表示所有验收结束。
+`test:ci` 串行运行功能与大文档性能测试；原生入口覆盖 Rust 的全部生产目标。`pnpm test:acceptance` 运行显式映射的行为检查，不解释 Gherkin。覆盖范围见 [BDD 自动化绑定](docs/specs/AUTOMATION.md)。
 
-2.1.0 的合并入口为 [PR #49](https://github.com/KRPCT/InkStream/pull/49)，软件内更新公告已同步；安装包和自动更新清单见[发行页](https://github.com/KRPCT/InkStream/releases/tag/v2.1.0)。开发提交 `09b32ff` 已通过三平台 CI，发布提交的检查记录以 PR 为准。外部真实账号、物理 IME、跨平台完整视觉与性能验证仍有开放事项，见 [Issues](https://github.com/KRPCT/InkStream/issues)及[验收边界](docs/specs/AUTOMATION.md)。
+代码入口与领域边界见[架构说明](docs/ARCHITECTURE.md)、[领域词汇](CONTEXT.md)和[设计决定](docs/DECISIONS.md)。提交问题时请附上版本、系统、复现步骤；涉及文稿时优先提供不含个人资料的最小样本。
 
-还想做的：
+## 项目状态
 
-- [ ] 代码签名（Windows Authenticode / macOS 公证）
-- [ ] macOS Intel（x86_64）构建
-- [ ] 超大 vault 的 Graph View 用 WebGL 渲染
+2.1.0 完成多栏工作台、文献详情与明确插入流程，并同步软件内更新日志。本轮实现已通过三平台 CI、1910 项前端断言、41 项显式行为绑定和三轮 Windows ComputerUse；实际截图与验收范围见[工作台验收记录](docs/WORKBENCH-ACCEPTANCE.md)。
 
-不打算做：实时多人协作、移动端、插件市场、内置 AI 写作、变成代码 IDE、复刻 Obsidian 插件 API。
+真实外部账号、物理输入法、安装图标和完整跨平台体验仍有专项验收。系统代码签名、macOS Intel 构建与超大知识图谱的 WebGL 渲染尚未提供。最新进展见[当前状态](docs/CURRENT-STATE.md)与 [Issues](https://github.com/KRPCT/InkStream/issues)。
 
-## Star 趋势
+## 支持与许可
 
-如果 InkStream 对你有帮助，欢迎点一个 Star，这是对独立开发最直接的鼓励。
+InkStream 由个人开发与维护，无订阅、无广告。欢迎反馈问题、参与改进，或通过赞助支持开发；赞助不影响功能访问。
 
-<a href="https://star-history.com/#KRPCT/InkStream&Date">
-  <img alt="Star History Chart" src="https://api.star-history.com/svg?repos=KRPCT/InkStream&type=Date" width="640">
-</a>
-
-## 赞助
-
-InkStream 由个人利用业余时间开发与维护，免费、源码公开、无订阅、无广告。如果它替你省下了一份写作或笔记软件的订阅，或者你希望它继续做下去，欢迎请作者喝杯咖啡。完全自愿，和功能访问没有关系。
+<details>
+<summary>微信与支付宝赞助</summary>
 
 <table>
   <tr>
-    <td align="center" width="320">
-      <img src="docs/assets/donate-wechat.jpg" alt="微信支付" width="260"><br>
-      <b>微信支付</b>
-    </td>
-    <td align="center" width="320">
-      <img src="docs/assets/donate-alipay.jpg" alt="支付宝" width="260"><br>
-      <b>支付宝</b>
-    </td>
+    <td align="center"><img src="docs/assets/donate-wechat.jpg" alt="微信赞助二维码" width="240"><br>微信支付</td>
+    <td align="center"><img src="docs/assets/donate-alipay.jpg" alt="支付宝赞助二维码" width="240"><br>支付宝</td>
   </tr>
 </table>
 
-## 许可证
+</details>
 
-InkStream 以 **[PolyForm Noncommercial License 1.0.0](./LICENSE)** 授权：个人、研究、教育与非营利组织可出于任何**非商业**目的自由使用、修改与再分发，**不得用于商业用途**。如需商业授权，请联系作者。
-
-> 这是一份「源码公开、禁商用」的许可证，并非 OSI 定义的开源许可（后者均允许商业使用），故文中用「源码公开」而非「开源」。
-
----
-
-<p align="center"><i>用一条墨线，流过论文、小说与代码。</i></p>
+源码按 [PolyForm Noncommercial License 1.0.0](LICENSE) 提供，使用、修改与再分发须遵守许可证的非商业用途条件。商业授权请联系作者。
