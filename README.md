@@ -14,6 +14,7 @@
 
 <p align="center">
   <a href="https://github.com/KRPCT/InkStream/releases/latest"><b>下载 InkStream</b></a> ·
+  <a href="https://inkstream.catinbox.top/">官网</a> ·
   <a href="docs/index.md">使用指南</a> ·
   <a href="docs/releases/2.1.0.md">2.1.0 更新日志</a> ·
   <a href="https://github.com/KRPCT/InkStream/issues">反馈问题</a>

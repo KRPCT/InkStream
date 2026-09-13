@@ -1,0 +1,529 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <meta name="theme-color" content="#f4f5ef" />
+    <meta
+      name="description"
+      content="InkStream 墨流，让写作保持连续。把文稿、资料与修改记录放在同一张有序的写作桌上，提供多栏工作台、本机项目与草稿恢复、Zotero 引用、Git 版本管理和阅读导出。"
+    />
+    <link rel="canonical" href="https://inkstream.catinbox.top/" />
+    <meta property="og:type" content="website" />
+    <meta property="og:locale" content="zh_CN" />
+    <meta property="og:site_name" content="InkStream 墨流" />
+    <meta property="og:title" content="InkStream 墨流 · 让写作，保持连续。" />
+    <meta
+      property="og:description"
+      content="文稿、资料与修改记录，放在同一张有序的写作桌上。Windows、macOS 与 Linux 桌面写作应用。"
+    />
+    <meta property="og:url" content="https://inkstream.catinbox.top/" />
+    <meta property="og:image" content="https://inkstream.catinbox.top/assets/daylight-hero.png" />
+    <meta
+      property="og:image:alt"
+      content="纸白实验室中的磨砂亚克力与墨带雕塑，呼应 InkStream 图标"
+    />
+    <meta name="twitter:card" content="summary_large_image" />
+    <title>InkStream 墨流 · 让写作，保持连续。</title>
+    <link rel="icon" href="assets/inkstream-icon.svg" type="image/svg+xml" />
+    <link
+      rel="preload"
+      href="assets/fonts/serif-headings.woff2"
+      as="font"
+      type="font/woff2"
+      crossorigin
+    />
+    <link rel="stylesheet" href="daylight.css?v=2.1.0-a1" />
+    <script id="software-data" type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "SoftwareApplication",
+        "name": "InkStream 墨流",
+        "applicationCategory": "ProductivityApplication",
+        "operatingSystem": "Windows, macOS, Linux",
+        "softwareVersion": "2.1.0",
+        "url": "https://inkstream.catinbox.top/",
+        "downloadUrl": "https://github.com/KRPCT/InkStream/releases/latest",
+        "license": "https://github.com/KRPCT/InkStream/blob/main/LICENSE"
+      }
+    </script>
+    <script type="module" src="daylight.js?v=2.1.0-a1"></script>
+  </head>
+  <body id="top">
+    <a class="skip-link" href="#main">跳到正文</a>
+    <header class="site-header">
+      <div class="header-inner">
+        <a class="brand" href="#top" aria-label="InkStream 墨流首页"
+          ><img src="assets/inkstream-icon.svg" width="40" height="40" alt="" /><span
+            >InkStream</span
+          ><span class="brand-cn">墨流</span></a
+        >
+        <button class="menu-toggle" type="button" aria-controls="primary-nav" aria-expanded="false">
+          菜单 <span aria-hidden="true">＋</span>
+        </button>
+        <nav id="primary-nav" class="primary-nav" aria-label="主导航">
+          <a href="#features">功能</a><a href="#workspace">工作台</a><a href="#download">下载</a
+          ><a href="https://github.com/KRPCT/InkStream/blob/main/docs/index.md">文档</a>
+          <a class="button button-small" href="#download"
+            >下载 <span data-release-version>2.1.0</span></a
+          >
+        </nav>
+      </div>
+    </header>
+    <main id="main">
+      <section class="hero" aria-labelledby="hero-title">
+        <div class="hero-art" aria-hidden="true">
+          <img
+            src="assets/daylight-hero.png"
+            width="1536"
+            height="1024"
+            fetchpriority="high"
+            alt=""
+          />
+        </div>
+        <div class="container hero-inner">
+          <div class="hero-copy">
+            <h1 id="hero-title">让写作，<br />保持连续。</h1>
+            <p class="hero-description">文稿、资料与修改记录，<br />放在同一张有序的写作桌上。</p>
+            <div class="hero-actions">
+              <a class="button" href="#download">下载 InkStream <span aria-hidden="true">↘</span></a
+              ><a class="button button-outline" href="#workspace">了解工作台</a>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="workspace container section" id="workspace" aria-labelledby="workspace-title">
+        <span id="kernel" class="anchor-alias" aria-hidden="true"></span>
+        <div class="ruled-heading">
+          <span aria-hidden="true"></span>
+          <div>
+            <h2 id="workspace-title">文稿在中央，工具在手边。</h2>
+            <p>概览 / 文稿 / 文献 / 版本</p>
+          </div>
+          <span aria-hidden="true"></span>
+        </div>
+        <p class="section-intro">
+          查阅资料、回看修改，再返回正文。光标、选区和撤销记录都留在原处。
+        </p>
+        <div class="gallery" data-gallery>
+          <div class="gallery-tabs" role="tablist" aria-label="查看应用界面">
+            <button
+              type="button"
+              id="tab-writing"
+              role="tab"
+              aria-selected="true"
+              aria-controls="panel-writing"
+              tabindex="0"
+            >
+              文稿工作台
+            </button>
+            <button
+              type="button"
+              id="tab-projects"
+              role="tab"
+              aria-selected="false"
+              aria-controls="panel-projects"
+              tabindex="-1"
+            >
+              项目档案
+            </button>
+            <button
+              type="button"
+              id="tab-dark"
+              role="tab"
+              aria-selected="false"
+              aria-controls="panel-dark"
+              tabindex="-1"
+            >
+              暗色创作
+            </button>
+          </div>
+          <figure
+            class="gallery-panel"
+            id="panel-writing"
+            role="tabpanel"
+            aria-labelledby="tab-writing"
+            tabindex="0"
+          >
+            <div class="app-frame">
+              <img
+                src="assets/workbench-light.jpg"
+                width="1441"
+                height="1009"
+                loading="lazy"
+                alt="InkStream 多栏工作台：左侧项目与文献，中间文稿，右侧大纲"
+              />
+            </div>
+            <figcaption>
+              <span>资料与正文相邻，工具按需要展开。</span
+              ><span>Windows 实际界面 · 示例文稿与文献</span>
+            </figcaption>
+          </figure>
+          <figure
+            class="gallery-panel"
+            id="panel-projects"
+            role="tabpanel"
+            aria-labelledby="tab-projects"
+            tabindex="0"
+            hidden
+          >
+            <div class="app-frame">
+              <img
+                src="assets/project-archive.jpg"
+                width="1441"
+                height="1009"
+                loading="lazy"
+                alt="InkStream 项目档案浮层，可搜索、收藏并切换本机项目"
+              />
+            </div>
+            <figcaption>
+              <span>每个项目，恢复自己的文稿和布局。</span><span>Windows 实际界面 · 示例项目</span>
+            </figcaption>
+          </figure>
+          <figure
+            class="gallery-panel"
+            id="panel-dark"
+            role="tabpanel"
+            aria-labelledby="tab-dark"
+            tabindex="0"
+            hidden
+          >
+            <div class="app-frame">
+              <img
+                src="assets/workbench-dark.jpg"
+                width="1441"
+                height="1009"
+                loading="lazy"
+                alt="InkStream 暗色创作模式：章节文件、正文与角色设定工具"
+              />
+            </div>
+            <figcaption>
+              <span>换一种光线，继续同一段写作。</span><span>Windows 实际界面 · 示例文稿</span>
+            </figcaption>
+          </figure>
+        </div>
+        <noscript
+          ><p class="no-script">
+            更多界面与操作方式见<a
+              href="https://github.com/KRPCT/InkStream/blob/main/docs/WORKBENCH-ACCEPTANCE.md"
+              >工作台说明</a
+            >。
+          </p></noscript
+        >
+      </section>
+
+      <section class="projects container section" id="features" aria-labelledby="projects-title">
+        <div class="project-intro">
+          <h2 id="projects-title">从一页文稿，<br />到一个完整项目。</h2>
+          <p>
+            打开一个内容文件夹，就有了自己的写作空间。<br
+              class="desktop-break"
+            />也可以先写一份独立草稿，稍后再安放它。
+          </p>
+          <img
+            class="archive-material"
+            src="assets/archive-material.png"
+            width="1536"
+            height="1024"
+            loading="lazy"
+            alt="整齐排列的磨砂亚克力档案板，表现纸面与档案的材质层次"
+          />
+        </div>
+        <div class="project-details">
+          <article>
+            <h3>项目与恢复</h3>
+            <p>
+              收藏、最近项目与独立会话。切换前保存，回来时恢复文稿、选区和布局；保存失败时留在原项目。
+            </p>
+            <a
+              class="text-link"
+              href="https://github.com/KRPCT/InkStream/blob/main/docs/projects.md"
+              >了解项目与恢复 <span aria-hidden="true">↗</span></a
+            >
+          </article>
+          <article>
+            <h3>文献与引用</h3>
+            <p>先看资料，再明确插入引用。一次插入可以单独撤销，文稿和资料各自保持清晰的边界。</p>
+            <a
+              class="text-link"
+              href="https://github.com/KRPCT/InkStream/blob/main/docs/academic.md"
+              >了解学术写作 <span aria-hidden="true">↗</span></a
+            >
+          </article>
+          <article>
+            <h3>版本与改稿</h3>
+            <p>保留每一次修改的来路。查看项目提交，比较分支正文，按句子理解文字的变化。</p>
+            <a class="text-link" href="#git">了解版本管理 <span aria-hidden="true">↓</span></a>
+          </article>
+        </div>
+      </section>
+
+      <section class="modes-section section" id="modes" aria-labelledby="modes-title">
+        <div class="container modes-inner">
+          <div class="modes-heading">
+            <p class="eyebrow">三种写作方式</p>
+            <h2 id="modes-title">工具随场景改变，<br />文字始终属于你。</h2>
+            <p>模式调整布局和工具，不改变文稿格式。<br />简易模式可以进一步收起高级功能。</p>
+          </div>
+          <div class="mode-list">
+            <details open>
+              <summary>
+                <span>通用写作</span><span class="mode-name">Standard</span
+                ><span class="detail-mark" aria-hidden="true"></span>
+              </summary>
+              <div class="mode-body">
+                <p>
+                  记录想法、整理笔记、完成日常文档。源码与实时预览可切换，文件树、大纲和双向链接帮助你找到上下文。
+                </p>
+                <a
+                  class="text-link"
+                  href="https://github.com/KRPCT/InkStream/blob/main/docs/editor.md"
+                  >编辑与实时预览 ↗</a
+                >
+              </div>
+            </details>
+            <details>
+              <summary>
+                <span>学术研究</span><span class="mode-name">Academic</span
+                ><span class="detail-mark" aria-hidden="true"></span>
+              </summary>
+              <div class="mode-body">
+                <p>
+                  在正文旁查看 Zotero 文献，插入引用、脚注和公式编号，生成 GB/T 7714、APA 或
+                  Vancouver 参考文献。
+                </p>
+                <a
+                  class="text-link"
+                  href="https://github.com/KRPCT/InkStream/blob/main/docs/academic.md"
+                  >Zotero 与学术工具 ↗</a
+                >
+              </div>
+            </details>
+            <details>
+              <summary>
+                <span>长篇创作</span><span class="mode-name">Creative</span
+                ><span class="detail-mark" aria-hidden="true"></span>
+              </summary>
+              <div class="mode-body">
+                <p>
+                  用章节与场景组织长文，管理角色和设定，记录场景概要与字数目标。打字机和专注模式在「视图」菜单中显示启用状态。
+                </p>
+                <a
+                  class="text-link"
+                  href="https://github.com/KRPCT/InkStream/blob/main/docs/creative.md"
+                  >章节、场景与角色设定 ↗</a
+                >
+              </div>
+            </details>
+          </div>
+        </div>
+      </section>
+
+      <section class="research container section" id="write" aria-labelledby="research-title">
+        <div class="research-heading">
+          <h2 id="research-title">让资料，<br />成为思考的一部分。</h2>
+          <p>写下来的文字，也能连接到读过的文献、想过的公式和整理过的知识。</p>
+        </div>
+        <div class="research-capabilities">
+          <article class="research-primary">
+            <span class="feature-symbol" aria-hidden="true">［ ］</span>
+            <h3>连接想法，追溯上下文</h3>
+            <p>
+              用双向链接连接文稿，查看反向链接与知识图谱。资料目录保持纯文本，本机索引帮助查找。
+            </p>
+            <a class="text-link" href="https://github.com/KRPCT/InkStream/blob/main/docs/links.md"
+              >双向链接与知识网络 ↗</a
+            >
+          </article>
+          <article>
+            <h3>让引用有据可查</h3>
+            <p>Zotero 文献库、引用面板与参考文献。使用本机引用功能需要 Zotero 与 Better BibTeX。</p>
+            <a
+              class="text-link"
+              href="https://github.com/KRPCT/InkStream/blob/main/docs/academic.md"
+              >配置文献工具 ↗</a
+            >
+          </article>
+          <article>
+            <h3>给公式合适的表达</h3>
+            <p>支持 KaTeX、Typst 与 LaTeX 数学块，以及公式编号、文内引用和预览。</p>
+            <a class="text-link" href="https://github.com/KRPCT/InkStream/blob/main/docs/math.md"
+              >数学排版与支持范围 ↗</a
+            >
+          </article>
+        </div>
+      </section>
+
+      <section class="revision-section section" id="git" aria-labelledby="revision-title">
+        <div class="container revision-inner">
+          <div>
+            <p class="eyebrow">写作也需要回看</p>
+            <h2 id="revision-title">每一次修改，<br />都有来路。</h2>
+            <p>
+              从项目时间线到完整 Git
+              版本管理，查看提交、分支与文件差异。句级比较和三向合并，让改稿回到文字本身。
+            </p>
+            <a class="text-link" href="https://github.com/KRPCT/InkStream/blob/main/docs/git.md"
+              >Git 与远端同步 ↗</a
+            >
+          </div>
+          <div class="prose-example">
+            <p class="example-label">一句话，两次推敲 · 句级差异示意</p>
+            <blockquote>
+              <del>清晨的光穿过窗户，照亮房间。</del
+              ><ins>清晨的光越过窗框，落在尚未写满的纸页上。</ins>
+            </blockquote>
+            <div class="prose-links">
+              <a href="https://github.com/KRPCT/InkStream/blob/main/docs/diff-merge.md"
+                >句级差异与合并 ↗</a
+              ><a href="https://github.com/KRPCT/InkStream/blob/main/docs/github.md"
+                >GitHub 集成 ↗</a
+              >
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="reading container section" id="reading" aria-labelledby="reading-title">
+        <div>
+          <span id="bookshelf" class="anchor-alias" aria-hidden="true"></span>
+          <h2 id="reading-title">写下去，<br />也读进去。</h2>
+          <p>打开一本书，留下一枚书签。<br />把完成的文稿，交付成合适的格式。</p>
+        </div>
+        <div class="reading-columns">
+          <article>
+            <h3>阅读与续读</h3>
+            <p>
+              阅读 Markdown、TXT、DOCX、EPUB 和 PDF。文本阅读提供目录与书签，书架可按需要开启；PDF
+              按页阅读并记录进度。
+            </p>
+            <a class="text-link" href="https://github.com/KRPCT/InkStream/blob/main/docs/reading.md"
+              >阅读与书架 ↗</a
+            >
+          </article>
+          <article>
+            <h3>导出与分享</h3>
+            <p>
+              内置 HTML、PDF 和 DOCX 导出。安装 pandoc 后可使用更多格式；具体排版支持见导出说明。
+            </p>
+            <a class="text-link" href="https://github.com/KRPCT/InkStream/blob/main/docs/export.md"
+              >格式与导出说明 ↗</a
+            >
+          </article>
+        </div>
+      </section>
+
+      <section class="download-section" id="download" aria-labelledby="download-title">
+        <div class="container download-inner">
+          <div>
+            <h2 id="download-title">开始你的下一篇。</h2>
+            <p>
+              InkStream <span data-release-version>2.1.0</span
+              ><span class="release-label">当前稳定版</span>
+            </p>
+            <a
+              class="text-link"
+              data-release-notes
+              href="https://github.com/KRPCT/InkStream/releases/tag/v2.1.0"
+              >查看更新日志 ↗</a
+            >
+          </div>
+          <div class="download-options">
+            <a
+              class="download-option primary"
+              data-download="windows"
+              href="https://github.com/KRPCT/InkStream/releases/download/v2.1.0/InkStream_2.1.0_x64-setup.exe"
+              ><span><strong>Windows x64</strong><small>NSIS 安装包</small></span
+              ><span class="download-arrow" aria-hidden="true">↓</span></a
+            >
+            <a
+              class="download-option"
+              data-download="macos"
+              href="https://github.com/KRPCT/InkStream/releases/download/v2.1.0/InkStream_2.1.0_aarch64.dmg"
+              ><span><strong>macOS</strong><small>Apple Silicon · DMG</small></span
+              ><span class="download-arrow" aria-hidden="true">↓</span></a
+            >
+            <div class="linux-option">
+              <a
+                class="download-option"
+                data-download="linux"
+                href="https://github.com/KRPCT/InkStream/releases/download/v2.1.0/InkStream_2.1.0_amd64.AppImage"
+                ><span><strong>Linux x64</strong><small>AppImage</small></span
+                ><span class="download-arrow" aria-hidden="true">↓</span></a
+              ><a
+                class="deb-link"
+                data-download="deb"
+                href="https://github.com/KRPCT/InkStream/releases/download/v2.1.0/InkStream_2.1.0_amd64.deb"
+                >也可下载 .deb 安装包 ↗</a
+              >
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="faq container section" aria-labelledby="faq-title">
+        <div>
+          <h2 id="faq-title">开始之前。</h2>
+          <p>
+            更多操作方式，见<a href="https://github.com/KRPCT/InkStream/blob/main/docs/index.md"
+              >使用文档</a
+            >。
+          </p>
+        </div>
+        <div class="faq-list">
+          <details>
+            <summary>
+              我的文稿保存在哪里？<span class="detail-mark" aria-hidden="true"></span>
+            </summary>
+            <p>
+              正文保留在你选择的内容目录。项目名称、封面、文稿会话和搜索索引保存在本机应用数据目录。Git
+              远端同步和 Zotero 连接需要相应配置。
+            </p>
+          </details>
+          <details>
+            <summary>
+              安装和更新需要注意什么？<span class="detail-mark" aria-hidden="true"></span>
+            </summary>
+            <p>
+              当前提供 Windows x64、macOS Apple Silicon 和 Linux x64 安装包。Windows 安装包尚未做
+              Authenticode 签名，macOS
+              尚未公证，首次运行可能出现开发者提示。应用内自动更新有独立的载荷签名校验。详见<a
+                href="https://github.com/KRPCT/InkStream/blob/main/docs/update.md"
+                >安装与更新说明</a
+              >。
+            </p>
+          </details>
+          <details>
+            <summary>
+              如何获取源码、反馈问题或支持开发？<span class="detail-mark" aria-hidden="true"></span>
+            </summary>
+            <p>
+              源码按
+              <a href="https://github.com/KRPCT/InkStream/blob/main/LICENSE"
+                >PolyForm Noncommercial License 1.0.0</a
+              >
+              提供。可在
+              <a href="https://github.com/KRPCT/InkStream/issues">GitHub Issues</a>
+              反馈问题，也欢迎通过<a href="https://azz.ee/catinbox">赞助页</a
+              >支持开发。赞助不影响功能访问。
+            </p>
+          </details>
+        </div>
+      </section>
+    </main>
+    <footer class="site-footer container">
+      <a class="brand footer-brand" href="#top"
+        ><img src="assets/inkstream-icon.svg" width="31" height="31" alt="" /><span>InkStream</span
+        ><span class="brand-cn">墨流</span></a
+      >
+      <nav aria-label="页脚导航">
+        <a href="https://github.com/KRPCT/InkStream">GitHub</a
+        ><a href="https://github.com/KRPCT/InkStream/blob/main/docs/index.md">使用文档</a
+        ><a data-release-notes href="https://github.com/KRPCT/InkStream/releases/tag/v2.1.0"
+          >更新日志</a
+        ><a href="https://azz.ee/catinbox">支持开发 ↗</a>
+      </nav>
+    </footer>
+  </body>
+</html>
