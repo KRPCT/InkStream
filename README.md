@@ -74,7 +74,7 @@
 
 ## 下载安装
 
-**[2.0.0 已公开发布](https://github.com/KRPCT/InkStream/releases/tag/v2.0.0)**。前往 **[Releases](https://github.com/KRPCT/InkStream/releases/latest)** 下载对应平台安装包：
+**[InkStream 2.1.0 发行页](https://github.com/KRPCT/InkStream/releases/tag/v2.1.0)**。前往 **[Releases](https://github.com/KRPCT/InkStream/releases/latest)** 下载对应平台安装包：
 
 | 平台 | 安装包 |
 |------|--------|
@@ -94,7 +94,7 @@
 | Academic | 学术写作 | Zotero 文献库、引用面板、Typst 预览、学术工具栏 |
 | Creative | 长篇创作 | 章节导航树、Codex、专注模式、字数目标进度 |
 
-多栏分支统一采用纸白、石墨灰和低饱和灰绿，提供概览／文稿／文献／版本导航、多个项目快捷入口，以及先看详情再明确插入的引用流程。发布与验证范围见[当前状态](docs/CURRENT-STATE.md)，真实窗口观察见 [ComputerUse 验收](docs/WORKBENCH-ACCEPTANCE.md)。
+2.1.0 多栏工作台统一采用纸白、石墨灰和低饱和灰绿，提供概览／文稿／文献／版本导航、多个项目快捷入口，以及先看详情再明确插入的引用流程。发布与验证范围见[当前状态](docs/CURRENT-STATE.md)，真实窗口观察见 [ComputerUse 验收](docs/WORKBENCH-ACCEPTANCE.md)。
 
 ## 技术栈
 
@@ -128,9 +128,9 @@ pnpm tauri build      # 打包本平台安装包（产物在 src-tauri/target/re
 
 ## 路线图
 
-2.0.0 已包含三模式工作台、本机项目与草稿恢复、编辑与索引、Git/GitHub、学术与创作、阅读与导出等功能。实现状态和发布状态分别记录；历史阶段的实现结束不表示所有验收结束。
+2.1.0 包含多栏导航、文献详情与明确插入，并延续三模式工作台、本机项目与草稿恢复、编辑与索引、Git/GitHub、学术与创作、阅读与导出等功能。实现状态和发布状态分别记录；历史阶段的实现结束不表示所有验收结束。
 
-2.0.0 对应 PR #40 已合并到 `main`（`ca4c214`），合并前 CI、main CI 与 Release 工作流均成功。外部真实账号、物理 IME、跨平台完整视觉与性能验证仍有开放事项，见 [Issues](https://github.com/KRPCT/InkStream/issues)及[验收边界](docs/specs/AUTOMATION.md)。
+2.1.0 的合并入口为 [PR #49](https://github.com/KRPCT/InkStream/pull/49)，软件内更新公告已同步；安装包和自动更新清单见[发行页](https://github.com/KRPCT/InkStream/releases/tag/v2.1.0)。开发提交 `09b32ff` 已通过三平台 CI，发布提交的检查记录以 PR 为准。外部真实账号、物理 IME、跨平台完整视觉与性能验证仍有开放事项，见 [Issues](https://github.com/KRPCT/InkStream/issues)及[验收边界](docs/specs/AUTOMATION.md)。
 
 还想做的：
 

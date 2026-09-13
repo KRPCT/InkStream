@@ -11,4 +11,4 @@
 | 5 | ComputerUse | 实际窗口中完成写作/资料/版本/布局流程，保存截图、结果与限制 |
 | 6 | 文档/issues 收尾 | 只把实际达到判据的任务标记完成，列明未验证项 |
 
-进程盘点、硬超时、串行重任务与回收沿用现有 acceptance runner。用户原测试工作树保留，当前实现位于 InkStream-workbench-v2。新版本合并发布不属于本轮自动步骤。
+进程盘点、硬超时、串行重任务与回收沿用现有 acceptance runner。用户原测试工作树保留，当前实现位于 InkStream-workbench-v2。开发验收之后，用户已追加授权合并 main 并发布 2.1.0；合并与资产就绪见 [PR 49](https://github.com/KRPCT/InkStream/pull/49)、[发行页](https://github.com/KRPCT/InkStream/releases/tag/v2.1.0)。

@@ -1,8 +1,8 @@
 # 当前状态与证据
 
-核对日期：2026-09-13。已发布基线为 [InkStream 2.0.0](https://github.com/KRPCT/InkStream/releases/tag/v2.0.0)，main 提交 `ca4c214a4d045c4c23da21d0f1fba1a43abdcd58`。分支 `codex/workbench-ux-v2` 已实现多栏对齐，本分支改动尚未发布。
+核对日期：2026-09-13。当前版本配置为 **2.1.0**，用户已确认合并并发布。合并记录见 [PR 49](https://github.com/KRPCT/InkStream/pull/49)，安装包和自动更新清单见 [2.1.0 发行页](https://github.com/KRPCT/InkStream/releases/tag/v2.1.0)；实际就绪状态以上述页面为准。
 
-## 已完成并发布
+## 2.0.0 历史发布基线
 
 - [PR 40](https://github.com/KRPCT/InkStream/pull/40) 已合并。项目档案、独立会话/草稿、本机索引及文稿/Git/学术流程修复已进入 2.0.0。
 - 图标采用用户选定的双层竖板与墨带 SVG。项目 popup 使用纸白、石墨灰、灰绿，已清理两处装饰英文。
@@ -36,4 +36,4 @@
 
 ## 多栏分支完成状态
 
-已实现项目轨、概览／文稿／文献／版本目的地、文献详情与明确插入、键盘标签导航、布局和显示收敛。1910 项前端断言、41 项显式绑定、类型/Lint/前端/原生构建通过；三轮 ComputerUse 已完成并清理进程。实际截图、发现与修复、证据限制见 [验收记录](WORKBENCH-ACCEPTANCE.md)。此结果属于当前分支，main 和公开 Release 仍为上述 2.0.0 基线。
+已实现项目轨、概览／文稿／文献／版本目的地、文献详情与明确插入、键盘标签导航、布局和显示收敛。1910 项前端断言、41 项显式绑定、类型/Lint/前端/原生构建通过；三轮 ComputerUse 已完成并清理进程。实际截图、发现与修复、证据限制见 [验收记录](WORKBENCH-ACCEPTANCE.md)。这些工作台行为验收对应开发提交 `09b32ff`，其[三平台 CI](https://github.com/KRPCT/InkStream/actions/runs/34719252134)已通过；2.1.0 追加版本与发行说明。后续发布由用户明确授权，合并与发行入口见本页顶部。

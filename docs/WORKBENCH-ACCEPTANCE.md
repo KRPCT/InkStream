@@ -1,6 +1,6 @@
 # 多栏工作台验收记录
 
-2026-09-13，实施分支 `codex/workbench-ux-v2`，发布基线 `v2.0.0 / ca4c214`。本轮记录对应[地图 45](https://github.com/KRPCT/InkStream/issues/45)、[实现 47](https://github.com/KRPCT/InkStream/issues/47)、[ComputerUse 48](https://github.com/KRPCT/InkStream/issues/48)。本分支尚未发布。
+2026-09-13，实施分支 `codex/workbench-ux-v2`，发布基线 `v2.0.0 / ca4c214`。本轮记录对应[地图 45](https://github.com/KRPCT/InkStream/issues/45)、[实现 47](https://github.com/KRPCT/InkStream/issues/47)、[ComputerUse 48](https://github.com/KRPCT/InkStream/issues/48)。该开发阶段验收已完成；其实现纳入 2.1.0，用户随后授权合并与发布，见 [PR 49](https://github.com/KRPCT/InkStream/pull/49)及[发行页](https://github.com/KRPCT/InkStream/releases/tag/v2.1.0)。以下截图与行为证据对应开发提交 `09b32ff`，不将版本说明更新当作新的行为验收。
 
 ## 方法和边界
 
