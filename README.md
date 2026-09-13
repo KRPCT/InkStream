@@ -118,16 +118,6 @@ node scripts/acceptance/run-rust.mjs
 
 InkStream 由个人开发与维护，无订阅、无广告。欢迎反馈问题、参与改进，或通过赞助支持开发；赞助不影响功能访问。
 
-<details>
-<summary>微信与支付宝赞助</summary>
-
-<table>
-  <tr>
-    <td align="center"><img src="docs/assets/donate-wechat.jpg" alt="微信赞助二维码" width="240"><br>微信支付</td>
-    <td align="center"><img src="docs/assets/donate-alipay.jpg" alt="支付宝赞助二维码" width="240"><br>支付宝</td>
-  </tr>
-</table>
-
-</details>
+[前往赞助页支持开发](https://azz.ee/catinbox)
 
 源码按 [PolyForm Noncommercial License 1.0.0](LICENSE) 提供，使用、修改与再分发须遵守许可证的非商业用途条件。商业授权请联系作者。
